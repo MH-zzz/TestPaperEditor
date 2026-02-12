@@ -125,6 +125,9 @@
                   </view>
                   <text class="module-state__hint">{{ currentModuleStatusHint }}</text>
                 </view>
+                <view class="panel__header-actions">
+                  <button class="btn btn-outline btn-xs" @click="openReadonlyFlowVisual">查看流程图</button>
+                </view>
               </view>
               <view class="panel__body">
                 <ListeningChoiceFlowDiagram
@@ -394,6 +397,60 @@
               </view>
             </view>
 
+            <view class="panel panel--guide">
+              <view class="panel__header">
+                <view class="panel__header-left">
+                  <text class="panel__title">编辑上手引导</text>
+                  <text class="panel__desc">建议按“题目编辑 → 流程编辑 → 路由编辑”完成一次全链路配置</text>
+                </view>
+                <view class="panel__header-actions">
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{ 'is-active': onboardingStage === 'question' }"
+                    @click="setOnboardingStage('question')"
+                  >题目编辑</button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{ 'is-active': onboardingStage === 'flow' }"
+                    @click="setOnboardingStage('flow')"
+                  >流程编辑</button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{ 'is-active': onboardingStage === 'routing' }"
+                    @click="setOnboardingStage('routing')"
+                  >路由编辑</button>
+                </view>
+              </view>
+              <view class="panel__body">
+                <view class="onboarding">
+                  <text class="onboarding__stage">{{ onboardingStageMeta.title }}</text>
+                  <text class="onboarding__desc">{{ onboardingStageMeta.description }}</text>
+                  <view class="onboarding__list">
+                    <text
+                      v-for="(item, idx) in onboardingStageMeta.checklist"
+                      :key="`${onboardingStage}:${idx}`"
+                      class="onboarding__item"
+                    >{{ idx + 1 }}. {{ item }}</text>
+                  </view>
+                  <view class="onboarding__actions">
+                    <button
+                      v-for="action in onboardingStageMeta.actions"
+                      :key="action.key"
+                      class="btn btn-outline btn-xs"
+                      @click="runOnboardingAction(action.key)"
+                    >{{ action.label }}</button>
+                  </view>
+                  <view v-if="onboardingStage === 'routing'" class="onboarding__preset">
+                    <text class="onboarding__preset-title">路由预置模板</text>
+                    <view class="onboarding__preset-actions">
+                      <button class="btn btn-outline btn-xs" @click="applyRoutePreset('national_default')">全国通用</button>
+                      <button class="btn btn-outline btn-xs" @click="applyRoutePreset('region_scene_demo')">地区+场景示例</button>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+
             <view class="panel" :class="{ 'panel--focus': routePanelFocusActive }">
               <view class="panel__header">
                 <view class="panel__header-left">
@@ -406,6 +463,11 @@
                     :disabled="flowProfilesMigratableToCurrentVersion.length === 0"
                     @click="migrateFlowProfilesToCurrentVersion"
                   >迁移到当前版本{{ flowProfilesMigratableToCurrentVersion.length > 0 ? `(${flowProfilesMigratableToCurrentVersion.length})` : '' }}</button>
+                  <button
+                    class="btn btn-outline btn-xs danger"
+                    :disabled="flowModulesArchivableToCurrentVersion.length === 0"
+                    @click="archiveHistoricalStandards"
+                  >批量归档旧版本{{ flowModulesArchivableToCurrentVersion.length > 0 ? `(${flowModulesArchivableToCurrentVersion.length})` : '' }}</button>
                   <button class="btn btn-outline btn-xs" @click="addFlowProfileRule">新增路由</button>
                   <button class="btn btn-outline btn-xs" @click="resetFlowProfileRules">重置路由</button>
                 </view>
@@ -691,6 +753,40 @@
                       </view>
                     </view>
                   </view>
+
+                  <view class="flow-diagnostics">
+                    <view class="flow-diagnostics__head">
+                      <view class="flow-diagnostics__head-main">
+                        <text class="flow-diagnostics__title">引擎诊断面板</text>
+                        <text class="flow-diagnostics__desc">汇总路由命中、当前 step、autoNext 原因，并记录 trace 轨迹</text>
+                      </view>
+                      <view class="flow-diagnostics__head-actions">
+                        <button class="btn btn-outline btn-xs" @click="clearFlowCenterDiagnosticsTrace">清空 trace</button>
+                        <button class="btn btn-outline btn-xs" @click="exportFlowCenterDiagnostics">导出 trace</button>
+                      </view>
+                    </view>
+
+                    <view class="flow-diagnostics__grid">
+                      <text class="flow-diagnostics__line">命中规则：{{ flowCenterHitRuleText }}</text>
+                      <text class="flow-diagnostics__line">模块版本：{{ flowCenterHitModuleVersionText }}</text>
+                      <text class="flow-diagnostics__line">当前 step：{{ flowCenterCurrentStepText }}</text>
+                      <text class="flow-diagnostics__line">autoNext 原因：{{ flowCenterAutoNextReasonText }}</text>
+                    </view>
+
+                    <view class="flow-diagnostics__trace">
+                      <text class="flow-diagnostics__trace-title">trace</text>
+                      <view v-if="flowCenterTraceEvents.length > 0" class="flow-diagnostics__trace-list">
+                        <view v-for="item in flowCenterTraceEvents.slice(0, 8)" :key="item.id" class="flow-diagnostics__trace-item">
+                          <view class="flow-diagnostics__trace-head">
+                            <text class="flow-diagnostics__trace-time">{{ item.time }}</text>
+                            <text class="flow-diagnostics__trace-type">{{ item.type }}</text>
+                          </view>
+                          <text class="flow-diagnostics__trace-text">{{ item.message }}</text>
+                        </view>
+                      </view>
+                      <view v-else class="empty-tip">暂无 trace</view>
+                    </view>
+                  </view>
                 </view>
               </view>
             </view>
@@ -739,12 +835,129 @@
         </view>
       </view>
     </view>
+
+    <view v-if="readonlyFlowVisualVisible" class="flow-visual-modal">
+      <view class="flow-visual-modal__mask" @click="closeReadonlyFlowVisual" />
+      <view class="flow-visual-modal__panel">
+        <view class="flow-visual-modal__header">
+          <view class="flow-visual-modal__title-wrap">
+            <text class="flow-visual-modal__title">只读流程图</text>
+            <text class="flow-visual-modal__desc">由当前流程步骤自动生成，可用于结构检查与节点详情查看</text>
+          </view>
+          <view class="flow-visual-modal__actions">
+            <button
+              class="btn btn-outline btn-xs"
+              :disabled="!canReadonlyFlowVisualUndo"
+              @click="undoReadonlyFlowVisual"
+            >撤销</button>
+            <button
+              class="btn btn-outline btn-xs"
+              :disabled="!canReadonlyFlowVisualRedo"
+              @click="redoReadonlyFlowVisual"
+            >重做</button>
+            <button
+              class="btn btn-outline btn-xs"
+              :disabled="!readonlyFlowCompileResult.ok"
+              @click="applyReadonlyFlowVisualToDraft"
+            >应用到流程草稿</button>
+            <button
+              class="btn btn-outline btn-xs"
+              :disabled="!readonlyFlowCompileResult.ok"
+              @click="applyReadonlyFlowVisualToPreview"
+            >应用到预览</button>
+            <button
+              class="btn btn-outline btn-xs"
+              :disabled="!hasVisualPreviewOverride"
+              @click="clearReadonlyFlowVisualPreviewOverride"
+            >清除预览覆盖</button>
+            <button class="btn btn-outline btn-xs" @click="closeReadonlyFlowVisual">关闭</button>
+          </view>
+        </view>
+
+        <view class="flow-visual-modal__body">
+          <view class="flow-visual-stencil-pane">
+            <StencilPanel
+              :items="flowVisualStencilItems"
+              @add="addReadonlyFlowVisualStep"
+              @drag-start="onReadonlyFlowVisualDragStart"
+              @drag-end="onReadonlyFlowVisualDragEnd"
+            />
+          </view>
+
+          <view
+            class="flow-visual-canvas-dropzone"
+            @dragover.stop.prevent
+            @drop.stop.prevent="onReadonlyFlowVisualDrop"
+          >
+            <scroll-view scroll-y class="flow-visual-canvas-wrap">
+              <ReadonlyFlowCanvas
+                :graph="readonlyFlowGraph"
+                :active-node-id="readonlyFlowVisualActiveNodeId"
+                :recently-moved-node-id="readonlyFlowRecentlyMovedNodeId"
+                @select-node="selectReadonlyFlowVisualNode"
+                @reorder-node="reorderReadonlyFlowVisualNode"
+                @insert-stencil-near-node="insertReadonlyFlowVisualStepNearNode"
+              />
+            </scroll-view>
+          </view>
+
+          <view class="flow-visual-detail">
+            <text class="flow-visual-detail__title">节点详情</text>
+            <template v-if="readonlyFlowVisualActiveNode">
+              <text class="flow-visual-detail__line">节点：{{ readonlyFlowVisualActiveNode.label }}</text>
+              <text class="flow-visual-detail__line">kind：{{ readonlyFlowVisualActiveNode.data.stepKind || '-' }}</text>
+              <text class="flow-visual-detail__line">stepId：{{ readonlyFlowVisualActiveNode.data.stepId || '-' }}</text>
+              <text class="flow-visual-detail__line">autoNext：{{ readonlyFlowVisualActiveNode.data.autoNext || '-' }}</text>
+              <text class="flow-visual-detail__line">题组：{{ readonlyFlowVisualActiveNode.data.groupId || '-' }}</text>
+              <text class="flow-visual-detail__line">小题数：{{ readonlyFlowVisualActiveNode.data.questionCount }}</text>
+            </template>
+            <text v-else class="flow-visual-detail__line">暂无节点</text>
+
+            <PropertyPanel
+              :node="readonlyFlowVisualActiveNode"
+              :fields="readonlyFlowVisualPropertyFields"
+              @patch="patchReadonlyFlowVisualNode"
+              @remove="removeReadonlyFlowVisualNode"
+              @move-up="moveReadonlyFlowVisualNodeUp"
+              @move-down="moveReadonlyFlowVisualNodeDown"
+              @reset="resetReadonlyFlowVisualFromQuestion"
+            />
+
+            <view class="flow-visual-compile">
+              <text class="flow-visual-detail__title">线性编译结果</text>
+              <text class="flow-visual-detail__line">预览覆盖：{{ hasVisualPreviewOverride ? '已启用' : '未启用' }}</text>
+              <template v-if="readonlyFlowCompileResult.ok">
+                <text class="flow-visual-compile__status is-ok">状态：可编译（{{ readonlyFlowCompileResult.steps.length }} steps）</text>
+                <view class="flow-visual-compile__list">
+                  <text
+                    v-for="item in readonlyFlowCompiledStepPreview"
+                    :key="item.id"
+                    class="flow-visual-detail__line"
+                  >{{ item.id }} · {{ item.kind }} · {{ item.autoNext || 'manual' }}</text>
+                </view>
+              </template>
+              <template v-else>
+                <text class="flow-visual-compile__status is-error">状态：不可编译（{{ readonlyFlowCompileResult.errors.length }} errors）</text>
+                <view class="flow-visual-compile__list">
+                  <text
+                    v-for="item in readonlyFlowCompileResult.errors.slice(0, 5)"
+                    :key="`${item.code}:${item.path}`"
+                    class="flow-visual-detail__line"
+                  >{{ item.code }} · {{ item.message }}</text>
+                </view>
+              </template>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
+  FlowAutoNext,
   FlowModuleRef,
   FlowProfileV1,
   ListeningChoiceFlowModuleV1,
@@ -755,6 +968,9 @@ import type {
 import ListeningChoiceEditor from '/components/editor/ListeningChoiceEditor.vue'
 import ListeningChoiceFlowDiagram from '/components/editor/ListeningChoiceFlowDiagram.vue'
 import FlowStepQuickAdd from '/components/editor/FlowStepQuickAdd.vue'
+import ReadonlyFlowCanvas from '/components/editor/flow-visual/ReadonlyFlowCanvas.vue'
+import StencilPanel from '/components/editor/flow-visual/StencilPanel.vue'
+import PropertyPanel from '/components/editor/flow-visual/PropertyPanel.vue'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
 import { contentTemplates } from '/stores/contentTemplates'
 import { flowLibrary } from '/stores/flowLibrary'
@@ -762,6 +978,7 @@ import { flowModules } from '/stores/flowModules'
 import { flowProfiles } from '/stores/flowProfiles'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'
+import { runtimeDebug, type RuntimeDebugEvent } from '/stores/runtimeDebug'
 import {
   patchListeningChoiceQuestionFlow
 } from './flow-modules/currentQuestionBridge'
@@ -774,19 +991,27 @@ import {
   type FlowProfileFixSuggestion as FlowProfileFixSuggestionUsecase,
   type FlowProfileSubmitValidation
 } from '/domain/flow-profile/usecases/scoreProfiles'
+import { buildModuleDiffSummary, formatModuleDiffSummary } from '/domain/flow-module/usecases/buildModuleDiffSummary'
 import { validateListeningChoiceModuleCommitCrossChecks } from '/domain/flow-module/usecases/validateModuleCommitCrossChecks'
 import {
   DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   type ListeningChoiceStandardFlowModuleV1,
   materializeListeningChoiceStandardSteps,
-  materializeListeningChoiceTemplateSteps
+  materializeListeningChoiceTemplateSteps,
+  validateListeningChoiceStandardModule
 } from '../../flows/listeningChoiceFlowModules'
 import {
   usePerGroupStepEditor,
   type QuickAddPerGroupKind
 } from './flow-modules/usePerGroupStepEditor'
 import { useRouteSimulator } from './flow-modules/useRouteSimulator'
+import {
+  useEditableFlowGraph,
+  type FlowVisualNodePatch
+} from './flow-modules/useEditableFlowGraph'
+import type { VisualLinearStep } from '/domain/flow-visual/usecases/compileGraphToSteps'
+import { buildListeningChoiceModuleFromLinearSteps } from '/domain/flow-visual/usecases/buildListeningChoiceModuleFromLinearSteps'
 import {
   useModuleLifecycle,
   type ModuleCommitValidationPayload,
@@ -818,6 +1043,110 @@ function makeStableIdFactory(prefix = 'demo_step') {
 function toInt(v: unknown): number {
   const n = parseInt(String(v || '0'), 10)
   return Number.isFinite(n) ? n : 0
+}
+
+function formatAutoNextReason(autoNext: string): string {
+  const value = String(autoNext || '').trim()
+  if (!value) return '未配置自动推进'
+  if (value === 'audioEnded') return '音频播放结束后自动进入下一步'
+  if (value === 'countdownEnded') return '倒计时结束后自动进入下一步'
+  if (value === 'timeEnded') return '作答时间结束后自动进入下一步'
+  if (value === 'tapNext') return '需手动点击下一步'
+  return `自定义触发：${value}`
+}
+
+function toFlowAutoNext(value: string | undefined): FlowAutoNext {
+  if (value === 'audioEnded') return 'audioEnded'
+  if (value === 'countdownEnded') return 'countdownEnded'
+  if (value === 'timeEnded') return 'timeEnded'
+  return 'tapNext'
+}
+
+function buildPreviewFlowStepFromVisual(
+  item: VisualLinearStep,
+  index: number,
+  fallbackGroupId: string,
+  fallbackSeconds: number
+): ListeningChoiceQuestion['flow']['steps'][number] {
+  const kind = String(item.kind || '').trim()
+  const id = String(item.id || `visual_step_${index + 1}`)
+  const autoNext = toFlowAutoNext(item.autoNext)
+  const groupId = String(item.groupId || fallbackGroupId || '')
+
+  if (kind === 'intro') {
+    return {
+      id,
+      kind: 'intro',
+      autoNext,
+      showTitle: true
+    }
+  }
+
+  if (kind === 'countdown') {
+    return {
+      id,
+      kind: 'countdown',
+      autoNext,
+      seconds: Math.max(0, fallbackSeconds),
+      label: '倒计时'
+    }
+  }
+
+  if (kind === 'playAudio') {
+    return {
+      id,
+      kind: 'playAudio',
+      autoNext,
+      groupId,
+      audioSource: 'content',
+      showTitle: true
+    }
+  }
+
+  if (kind === 'promptTone') {
+    return {
+      id,
+      kind: 'promptTone',
+      autoNext,
+      groupId: groupId || undefined,
+      url: '/static/audio/small_time.mp3'
+    }
+  }
+
+  if (kind === 'answerChoice') {
+    return {
+      id,
+      kind: 'answerChoice',
+      autoNext,
+      groupId: groupId || undefined
+    }
+  }
+
+  if (kind === 'groupPrompt') {
+    return {
+      id,
+      kind: 'groupPrompt',
+      autoNext,
+      groupId
+    }
+  }
+
+  if (kind === 'finish') {
+    return {
+      id,
+      kind: 'finish',
+      autoNext,
+      text: '流程完成'
+    }
+  }
+
+  return {
+    id,
+    kind: 'intro',
+    autoNext,
+    showTitle: true,
+    title: `未识别步骤：${kind || 'unknown'}`
+  }
 }
 
 function normalizeText(v: unknown): string | undefined {
@@ -963,6 +1292,72 @@ const flowProfileSubmitValidation = computed<FlowProfileSubmitValidation>(() => 
   return canSubmitFlowProfiles(flowProfileRules.value || [])
 })
 const pendingFlowProfileFixSuggestions = ref<FlowProfileFixPreviewItem[]>([])
+type OnboardingStage = 'question' | 'flow' | 'routing'
+
+type OnboardingAction = {
+  key: string
+  label: string
+}
+
+type OnboardingStageMeta = {
+  title: string
+  description: string
+  checklist: string[]
+  actions: OnboardingAction[]
+}
+
+type RoutePresetKind = 'national_default' | 'region_scene_demo'
+
+const onboardingStage = ref<OnboardingStage>('question')
+const onboardingStageMetaMap: Record<OnboardingStage, OnboardingStageMeta> = {
+  question: {
+    title: '题目编辑',
+    description: '先确认题面字段完整，再把上下文写入当前题目，避免后续流程预览偏差。',
+    checklist: [
+      '校对题组结构、音频字段和准备时长',
+      '读取当前题目上下文（地区/场景/年级）',
+      '必要时把模拟上下文写回当前题目'
+    ],
+    actions: [
+      { key: 'question_load_ctx', label: '读取题目上下文' },
+      { key: 'question_sync_ctx', label: '写回题目上下文' },
+      { key: 'question_apply_standard', label: '套用当前流程' }
+    ]
+  },
+  flow: {
+    title: '流程编辑',
+    description: '在流程图侧完成步骤增删改，并通过“保存/另存/发布”沉淀为可路由版本。',
+    checklist: [
+      '配置介绍页、每题组步骤及关键参数',
+      '先保存草稿，再另存新版本做增量调整',
+      '确认无阻断项后发布当前版本'
+    ],
+    actions: [
+      { key: 'flow_save_draft', label: '保存题型流程' },
+      { key: 'flow_save_next', label: '另存新版本' },
+      { key: 'flow_publish', label: '发布当前版本' }
+    ]
+  },
+  routing: {
+    title: '路由编辑',
+    description: '通过规则把流程版本绑定到地区/场景/年级，并用模拟器验证命中结果。',
+    checklist: [
+      '新增或调整路由规则并设置优先级',
+      '将旧规则批量迁移到当前流程版本',
+      '执行路由命中模拟并确认模块版本'
+    ],
+    actions: [
+      { key: 'routing_add_rule', label: '新增路由' },
+      { key: 'routing_migrate', label: '迁移到当前版本' },
+      { key: 'routing_simulate', label: '加载题目上下文模拟' }
+    ]
+  }
+}
+const onboardingStageMeta = computed(() => onboardingStageMetaMap[onboardingStage.value])
+
+function setOnboardingStage(stage: OnboardingStage) {
+  onboardingStage.value = stage
+}
 
 function loadRouteSimFromCurrentQuestion() {
   routeSimulator.loadRouteSimFromCurrentQuestion()
@@ -970,6 +1365,30 @@ function loadRouteSimFromCurrentQuestion() {
 
 function syncRouteSimToCurrentQuestion() {
   routeSimulator.syncRouteSimToCurrentQuestion()
+}
+
+function clearFlowCenterDiagnosticsTrace() {
+  runtimeDebug.resetSession(flowCenterDebugSessionId, {
+    keepMeta: true
+  })
+  syncFlowCenterDebugMeta()
+  uni.showToast({ title: '已清空 trace', icon: 'none' })
+}
+
+function exportFlowCenterDiagnostics() {
+  syncFlowCenterDebugMeta()
+  const json = runtimeDebug.exportDiagnosticsJson(flowCenterDebugSessionId)
+  if (!json) {
+    uni.showToast({ title: '暂无可导出的 trace', icon: 'none' })
+    return
+  }
+
+  uni.setClipboardData({
+    data: json,
+    success: () => {
+      uni.showToast({ title: '诊断包已复制', icon: 'none' })
+    }
+  })
 }
 
 type FlowProfileFixSuggestion = FlowProfileFixSuggestionUsecase
@@ -1303,7 +1722,8 @@ const {
   canSaveCurrentStandard,
   canPublishCurrentStandard,
   canArchiveCurrentStandard,
-  flowProfilesMigratableToCurrentVersion
+  flowProfilesMigratableToCurrentVersion,
+  flowModulesArchivableToCurrentVersion
 } = moduleLifecycle
 
 function addFlowProfileRule() {
@@ -1407,6 +1827,137 @@ function bindProfileToModuleRef(id: string, ref: { id: string; version: number }
   })
 }
 
+function runOnboardingAction(actionKey: string) {
+  if (actionKey === 'question_load_ctx') {
+    loadRouteSimFromCurrentQuestion()
+    return
+  }
+  if (actionKey === 'question_sync_ctx') {
+    syncRouteSimToCurrentQuestion()
+    return
+  }
+  if (actionKey === 'question_apply_standard') {
+    applyStandardToCurrentQuestion()
+    return
+  }
+  if (actionKey === 'flow_save_draft') {
+    saveStandard()
+    return
+  }
+  if (actionKey === 'flow_save_next') {
+    saveStandardAsNextVersion()
+    return
+  }
+  if (actionKey === 'flow_publish') {
+    publishCurrentStandard()
+    return
+  }
+  if (actionKey === 'routing_add_rule') {
+    addFlowProfileRule()
+    return
+  }
+  if (actionKey === 'routing_migrate') {
+    migrateFlowProfilesToCurrentVersion()
+    return
+  }
+  if (actionKey === 'routing_simulate') {
+    loadRouteSimFromCurrentQuestion()
+  }
+}
+
+function applyRoutePreset(kind: RoutePresetKind) {
+  const targetModule = {
+    id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
+    version: Math.max(1, toInt(draftModuleVersion.value || 1))
+  }
+
+  if (kind === 'national_default') {
+    uni.showModal({
+      title: '应用路由预置：全国通用',
+      content: '将重置为单条默认路由并绑定当前流程版本。是否继续？',
+      confirmText: '应用',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return
+        flowProfiles.resetToDefault()
+        patchFlowProfile('profile:listening_choice:default', {
+          module: targetModule,
+          priority: 0,
+          enabled: true,
+          note: '全国通用默认路由'
+        })
+        uni.showToast({ title: '已应用全国通用预置', icon: 'success' })
+      }
+    })
+    return
+  }
+
+  if (kind === 'region_scene_demo') {
+    uni.showModal({
+      title: '应用路由预置：地区+场景示例',
+      content: '将创建“地区/场景”示例规则并重置现有路由。是否继续？',
+      confirmText: '应用',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return
+        const ts = Date.now()
+        const presetRules: FlowProfileV1[] = [
+          {
+            id: 'profile:listening_choice:default',
+            questionType: 'listening_choice',
+            region: undefined,
+            scene: undefined,
+            grade: undefined,
+            module: targetModule,
+            priority: 0,
+            enabled: true,
+            note: '全国通用兜底规则'
+          },
+          {
+            id: `profile:listening_choice:preset:region:${ts}`,
+            questionType: 'listening_choice',
+            region: '广东',
+            scene: '中考',
+            grade: '九年级',
+            module: targetModule,
+            priority: 120,
+            enabled: true,
+            note: '地区优先示例：广东中考'
+          },
+          {
+            id: `profile:listening_choice:preset:scene:${ts}`,
+            questionType: 'listening_choice',
+            region: undefined,
+            scene: '模考',
+            grade: '九年级',
+            module: targetModule,
+            priority: 80,
+            enabled: true,
+            note: '场景优先示例：九年级模考'
+          }
+        ]
+        flowProfiles.resetToDefault()
+        let okCount = 0
+        for (const profile of presetRules) {
+          const result = flowProfiles.upsertWithDiagnostics(profile)
+          if (result.ok) okCount += 1
+        }
+        if (okCount < presetRules.length) {
+          showFlowProfileSubmitBlocked(flowProfiles.validateBeforeSubmit('listening_choice'))
+          uni.showToast({ title: '预置应用失败，请检查路由诊断', icon: 'none' })
+          return
+        }
+        uni.showToast({ title: '已应用地区+场景预置', icon: 'success' })
+      }
+    })
+  }
+}
+
+const visualPreviewOverrideSteps = ref<ListeningChoiceQuestion['flow']['steps'] | null>(null)
+const hasVisualPreviewOverride = computed(() => {
+  return Array.isArray(visualPreviewOverrideSteps.value) && visualPreviewOverrideSteps.value.length > 0
+})
+
 const demoQuestion = computed<ListeningChoiceQuestion>(() => {
   const base = demoBase.value
   const module = toLegacyStandardModule({
@@ -1419,6 +1970,8 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
     overrides: {},
     module
   }) as ListeningChoiceQuestion['flow']['steps']
+  const overrideSteps = visualPreviewOverrideSteps.value
+  const effectiveSteps = Array.isArray(overrideSteps) && overrideSteps.length > 0 ? overrideSteps : steps
   return {
     ...base,
     flow: {
@@ -1429,10 +1982,251 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
         version: draftModuleVersion.value,
         overrides: {}
       },
-      steps
+      steps: effectiveSteps
     }
   }
 })
+
+const flowVisualEditor = useEditableFlowGraph(demoQuestion)
+const flowVisualStencilItems = flowVisualEditor.stencilItems
+const readonlyFlowVisualPropertyFields = flowVisualEditor.propertyFieldsForSelectedNode
+const flowVisualDraggingKind = ref('')
+const readonlyFlowVisualVisible = ref(false)
+const readonlyFlowGraph = flowVisualEditor.graph
+const readonlyFlowCompileResult = flowVisualEditor.compileResult
+const readonlyFlowCompiledStepPreview = flowVisualEditor.compiledStepPreview
+const canReadonlyFlowVisualUndo = flowVisualEditor.canUndo
+const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
+const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
+const readonlyFlowVisualActiveNodeId = flowVisualEditor.selectedNodeId
+const readonlyFlowVisualActiveNode = flowVisualEditor.selectedNode
+
+function openReadonlyFlowVisual() {
+  readonlyFlowVisualVisible.value = true
+  flowVisualEditor.reloadFromQuestion()
+}
+
+function closeReadonlyFlowVisual() {
+  readonlyFlowVisualVisible.value = false
+}
+
+function selectReadonlyFlowVisualNode(id: string) {
+  flowVisualEditor.selectNode(id)
+}
+
+function addReadonlyFlowVisualStep(kind: string) {
+  flowVisualEditor.appendNode(kind)
+}
+
+function reorderReadonlyFlowVisualNode(payload: { sourceId: string; targetId: string; position: 'before' | 'after' }) {
+  flowVisualEditor.reorderNodes(payload.sourceId, payload.targetId, payload.position)
+}
+
+function insertReadonlyFlowVisualStepNearNode(payload: { kind: string; targetId: string; position: 'before' | 'after' }) {
+  flowVisualEditor.insertNodeNearTarget(payload.kind, payload.targetId, payload.position)
+}
+
+function undoReadonlyFlowVisual() {
+  flowVisualEditor.undo()
+}
+
+function redoReadonlyFlowVisual() {
+  flowVisualEditor.redo()
+}
+
+function onReadonlyFlowVisualDragStart(kind: string) {
+  flowVisualDraggingKind.value = String(kind || '')
+}
+
+function onReadonlyFlowVisualDragEnd() {
+  flowVisualDraggingKind.value = ''
+}
+
+function onReadonlyFlowVisualDrop(event: Event) {
+  const drag = event as DragEvent
+  const fromTransfer = drag.dataTransfer?.getData('text/flow-kind') || ''
+  const kind = String(fromTransfer || flowVisualDraggingKind.value || '')
+  if (!kind) return
+  flowVisualEditor.appendNode(kind)
+  flowVisualDraggingKind.value = ''
+}
+
+function patchReadonlyFlowVisualNode(patch: FlowVisualNodePatch) {
+  flowVisualEditor.patchSelectedNode(patch)
+}
+
+function removeReadonlyFlowVisualNode() {
+  flowVisualEditor.removeSelectedNode()
+}
+
+function isTextEditingElement(target: EventTarget | null): boolean {
+  if (!target || typeof target !== 'object') return false
+  const el = target as HTMLElement
+  const tag = String(el.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  if (el.isContentEditable) return true
+  return false
+}
+
+function onFlowVisualKeydown(event: KeyboardEvent) {
+  if (!readonlyFlowVisualVisible.value) return
+  if (isTextEditingElement(event.target)) return
+  const lower = String(event.key || '').toLowerCase()
+  const mod = event.metaKey || event.ctrlKey
+  if (mod && !event.altKey) {
+    if (lower === 'z' && event.shiftKey) {
+      if (!canReadonlyFlowVisualRedo.value) return
+      event.preventDefault()
+      redoReadonlyFlowVisual()
+      return
+    }
+    if (lower === 'y') {
+      if (!canReadonlyFlowVisualRedo.value) return
+      event.preventDefault()
+      redoReadonlyFlowVisual()
+      return
+    }
+    if (lower === 'z') {
+      if (!canReadonlyFlowVisualUndo.value) return
+      event.preventDefault()
+      undoReadonlyFlowVisual()
+      return
+    }
+  }
+  const key = String(event.key || '')
+  if (key !== 'Delete' && key !== 'Backspace') return
+  if (!readonlyFlowVisualActiveNode.value) return
+  event.preventDefault()
+  removeReadonlyFlowVisualNode()
+}
+
+function moveReadonlyFlowVisualNodeUp() {
+  flowVisualEditor.moveSelectedNodeUp()
+}
+
+function moveReadonlyFlowVisualNodeDown() {
+  flowVisualEditor.moveSelectedNodeDown()
+}
+
+function resetReadonlyFlowVisualFromQuestion() {
+  flowVisualEditor.reloadFromQuestion()
+}
+
+function buildPreviewStepsFromVisual(compiledSteps: VisualLinearStep[]): ListeningChoiceQuestion['flow']['steps'] {
+  const groups = demoBase.value?.content?.groups || []
+  const firstGroupId = String(groups[0]?.id || 'group_1')
+  const firstPrepareSeconds = Math.max(0, toInt(groups[0]?.prepareSeconds || 0))
+  return (compiledSteps || []).map((item, index) => {
+    return buildPreviewFlowStepFromVisual(item, index, firstGroupId, firstPrepareSeconds)
+  })
+}
+
+function applyReadonlyFlowVisualToPreview() {
+  if (!readonlyFlowCompileResult.value.ok) {
+    uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
+    return
+  }
+  visualPreviewOverrideSteps.value = buildPreviewStepsFromVisual(readonlyFlowCompileResult.value.steps)
+  uni.showToast({ title: '已应用到预览', icon: 'success' })
+}
+
+function clearReadonlyFlowVisualPreviewOverride() {
+  visualPreviewOverrideSteps.value = null
+  uni.showToast({ title: '已清除预览覆盖', icon: 'none' })
+}
+
+function formatVisualMapperIssues(lines: Array<{ message: string }>, max = 6): string {
+  if (!Array.isArray(lines) || lines.length <= 0) return ''
+  const head = lines.slice(0, max).map((item, index) => `${index + 1}. ${item.message}`)
+  if (lines.length > max) head.push(`... 另有 ${lines.length - max} 条`)
+  return head.join('\n')
+}
+
+function formatTextBlockForModal(text: string, maxLines = 14): string {
+  const lines = String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (lines.length <= maxLines) return lines.join('\n')
+  return `${lines.slice(0, maxLines).join('\n')}\n... 另有 ${lines.length - maxLines} 行`
+}
+
+function applyReadonlyFlowVisualToDraft() {
+  if (!readonlyFlowCompileResult.value.ok) {
+    uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
+    return
+  }
+
+  const firstGroup = demoBase.value?.content?.groups?.[0]
+  const mapperResult = buildListeningChoiceModuleFromLinearSteps(readonlyFlowCompileResult.value.steps, {
+    baseModule: listeningChoiceDraft.value,
+    defaultCountdownSeconds: Math.max(0, toInt(firstGroup?.prepareSeconds || 0)),
+    defaultCountdownLabel: '准备'
+  })
+
+  if (!mapperResult.ok) {
+    uni.showModal({
+      title: '映射到流程草稿失败',
+      content: formatVisualMapperIssues(mapperResult.errors) || '请检查流程图配置后重试。',
+      showCancel: false
+    })
+    return
+  }
+
+  const nextDraft = clone(toLegacyStandardModule({
+    ...mapperResult.module,
+    id: draftModuleId.value,
+    version: draftModuleVersion.value
+  }))
+  const diffSummary = buildModuleDiffSummary({
+    previousModule: listeningChoiceDraft.value,
+    nextModule: nextDraft
+  })
+  const diffText = formatTextBlockForModal(formatModuleDiffSummary(diffSummary), 12)
+
+  const applyDraft = () => {
+    listeningChoiceDraft.value = nextDraft
+
+    const validation = validateListeningChoiceStandardModule({
+      ...listeningChoiceDraft.value,
+      id: draftModuleId.value,
+      version: draftModuleVersion.value
+    })
+
+    if (!validation.ok) {
+      const validationText = formatVisualMapperIssues(validation.errors)
+      uni.showModal({
+        title: '流程草稿仍有错误',
+        content: validationText || '请继续调整流程配置。',
+        showCancel: false
+      })
+      return
+    }
+
+    visualPreviewOverrideSteps.value = null
+    const warningCount = mapperResult.warnings.length + validation.warnings.length
+    if (warningCount > 0) {
+      uni.showToast({ title: `已应用到流程草稿（${warningCount} 条提醒）`, icon: 'none' })
+      return
+    }
+    uni.showToast({ title: '已应用到流程草稿', icon: 'success' })
+  }
+
+  const mapperWarnings = formatVisualMapperIssues(mapperResult.warnings)
+  const warningBlock = mapperWarnings ? `\n\n映射提醒：\n${mapperWarnings}` : ''
+  const content = `将把可视流程回写到当前草稿。\n\n差异摘要：\n${diffText}${warningBlock}\n\n是否继续应用？`
+
+  uni.showModal({
+    title: '应用到流程草稿',
+    content,
+    confirmText: '继续应用',
+    cancelText: '取消',
+    success: (res) => {
+      if (!res.confirm) return
+      applyDraft()
+    }
+  })
+}
 
 const previewAnswers = ref<Record<string, string | string[]>>({})
 const showAnswer = ref(false)
@@ -1440,6 +2234,115 @@ const currentStepIndex = ref(0)
 const configStepIndex = ref(0)
 
 const previewTotalSteps = computed(() => Number(demoQuestion.value.flow?.steps?.length || 0))
+type ListeningChoiceFlowStep = ListeningChoiceQuestion['flow']['steps'][number]
+const flowCenterDebugSessionId = 'flow_center:listening_choice'
+const flowCenterTraceEvents = computed<RuntimeDebugEvent[]>(() => {
+  return runtimeDebug.getSession(flowCenterDebugSessionId)?.events || []
+})
+const flowCenterCurrentStep = computed<ListeningChoiceFlowStep | null>(() => {
+  const steps = demoQuestion.value.flow?.steps || []
+  if (steps.length <= 0) return null
+  const idx = Math.max(0, Math.min(currentStepIndex.value, steps.length - 1))
+  return steps[idx] || null
+})
+const flowCenterCurrentStepKind = computed(() => String(flowCenterCurrentStep.value?.kind || '-'))
+const flowCenterCurrentStepText = computed(() => {
+  if (previewTotalSteps.value <= 0) return '-'
+  return `${currentStepIndex.value + 1}/${previewTotalSteps.value}（${flowCenterCurrentStepKind.value}）`
+})
+const flowCenterAutoNextCode = computed(() => String(flowCenterCurrentStep.value?.autoNext || ''))
+const flowCenterAutoNextReasonText = computed(() => formatAutoNextReason(flowCenterAutoNextCode.value))
+const flowCenterHitRuleText = computed(() => {
+  if (!simulatedProfile.value) return '未命中路由规则'
+  const note = simulatedProfile.value.note || '未命名'
+  return `${simulatedProfile.value.id}（${note}）`
+})
+const flowCenterHitModuleVersionText = computed(() => {
+  const ref = simulatedProfile.value?.module
+  if (!ref) return '未命中流程模块'
+  return formatModuleDisplayRef(ref)
+})
+const flowCenterRouteSignature = computed(() => {
+  const region = normalizeNullableText(routeSimRegion.value) || '-'
+  const scene = normalizeNullableText(routeSimScene.value) || '-'
+  const grade = normalizeNullableText(routeSimGrade.value) || '-'
+  const profileId = simulatedProfile.value?.id || '-'
+  const moduleRef = flowCenterHitModuleVersionText.value
+  const score = String(simulatedBestCandidate.value?.totalScore || 0)
+  return [region, scene, grade, profileId, moduleRef, score].join('|')
+})
+const flowCenterStepSignature = computed(() => {
+  return [
+    String(currentStepIndex.value),
+    flowCenterCurrentStepKind.value,
+    flowCenterAutoNextCode.value,
+    String(previewTotalSteps.value)
+  ].join('|')
+})
+
+function syncFlowCenterDebugMeta() {
+  runtimeDebug.ensureSession(flowCenterDebugSessionId, {
+    mode: 'flow_center',
+    questionId: String(demoQuestion.value?.id || ''),
+    questionType: String(demoQuestion.value?.type || 'listening_choice'),
+    sourceKind: 'route_sim',
+    profileId: simulatedProfile.value?.id || '',
+    moduleId: String(simulatedProfile.value?.module?.id || ''),
+    moduleDisplayRef: flowCenterHitModuleVersionText.value,
+    moduleVersionText: simulatedProfile.value?.module ? `v${Math.max(1, toInt(simulatedProfile.value.module.version || 1))}` : '-',
+    moduleNote: String(simulatedModule.value?.note || ''),
+    currentStep: flowCenterCurrentStepText.value,
+    currentStepKind: flowCenterCurrentStepKind.value,
+    autoNext: flowCenterAutoNextCode.value || '-',
+    autoNextReason: flowCenterAutoNextReasonText.value,
+    ctx: {
+      region: normalizeNullableText(routeSimRegion.value),
+      scene: normalizeNullableText(routeSimScene.value),
+      grade: normalizeNullableText(routeSimGrade.value)
+    }
+  })
+}
+
+onMounted(() => {
+  syncFlowCenterDebugMeta()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', onFlowVisualKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onFlowVisualKeydown)
+  }
+})
+
+watch(flowCenterRouteSignature, (next, prev) => {
+  syncFlowCenterDebugMeta()
+  if (!next || next === prev) return
+  runtimeDebug.record(flowCenterDebugSessionId, {
+    type: 'route',
+    message: `命中规则：${flowCenterHitRuleText.value} -> ${flowCenterHitModuleVersionText.value}`,
+    payload: {
+      profileId: simulatedProfile.value?.id || '',
+      moduleVersion: simulatedProfile.value?.module?.version || 0,
+      totalScore: simulatedBestCandidate.value?.totalScore || 0
+    }
+  })
+}, { immediate: true })
+
+watch(flowCenterStepSignature, (next, prev) => {
+  syncFlowCenterDebugMeta()
+  if (!next || next === prev) return
+  runtimeDebug.record(flowCenterDebugSessionId, {
+    type: 'step',
+    message: `当前 step：${flowCenterCurrentStepText.value}，autoNext 原因：${flowCenterAutoNextReasonText.value}`,
+    payload: {
+      stepIndex: currentStepIndex.value,
+      stepKind: flowCenterCurrentStepKind.value,
+      autoNext: flowCenterAutoNextCode.value
+    }
+  })
+}, { immediate: true })
 
 watch(previewTotalSteps, (n) => {
   if (!Number.isFinite(n) || n <= 0) {
@@ -1582,6 +2485,10 @@ function archiveCurrentStandard() {
 
 function migrateFlowProfilesToCurrentVersion() {
   moduleLifecycle.migrateFlowProfilesToCurrentVersion()
+}
+
+function archiveHistoricalStandards() {
+  moduleLifecycle.archiveHistoricalStandards()
 }
 
 function resetStandard() {
@@ -1953,6 +2860,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   background: rgba(254, 242, 242, 0.88);
 }
 
+.panel--guide {
+  border-color: rgba(59, 130, 246, 0.24);
+  background: rgba(239, 246, 255, 0.72);
+}
+
 .panel__header {
   padding: 12px 14px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
@@ -1973,6 +2885,12 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.panel__header-actions .btn.is-active {
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #0b63c6;
+  background: rgba(219, 234, 254, 0.86);
 }
 
 .panel__title {
@@ -2070,6 +2988,64 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 .diagram-hint__text {
   font-size: 12px;
   color: rgba(15, 23, 42, 0.60);
+}
+
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding__stage {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.onboarding__desc {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+.onboarding__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboarding__item {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.68);
+  line-height: 1.55;
+}
+
+.onboarding__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.onboarding__preset {
+  border: 1px dashed rgba(59, 130, 246, 0.28);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.onboarding__preset-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.74);
+}
+
+.onboarding__preset-actions {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .quick-add-row {
@@ -2588,6 +3564,250 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(15, 23, 42, 0.54);
 }
 
+.flow-diagnostics {
+  margin-top: 10px;
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  border-radius: 10px;
+  background: rgba(240, 249, 255, 0.72);
+  padding: 8px 10px;
+}
+
+.flow-diagnostics__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.flow-diagnostics__head-main {
+  min-width: 0;
+}
+
+.flow-diagnostics__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.flow-diagnostics__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.86);
+}
+
+.flow-diagnostics__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+}
+
+.flow-diagnostics__grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+
+.flow-diagnostics__line {
+  display: block;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.7);
+  line-height: 1.5;
+}
+
+.flow-diagnostics__trace {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.14);
+}
+
+.flow-diagnostics__trace-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.64);
+}
+
+.flow-diagnostics__trace-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-diagnostics__trace-item {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 5px 7px;
+}
+
+.flow-diagnostics__trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-diagnostics__trace-time {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.46);
+}
+
+.flow-diagnostics__trace-type {
+  font-size: 11px;
+  color: rgba(2, 132, 199, 0.9);
+  font-weight: 700;
+}
+
+.flow-diagnostics__trace-text {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.66);
+  line-height: 1.5;
+}
+
+.flow-visual-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+}
+
+.flow-visual-modal__mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.44);
+}
+
+.flow-visual-modal__panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(980px, 92vw);
+  height: min(700px, 88vh);
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.flow-visual-modal__header {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.flow-visual-modal__title-wrap {
+  min-width: 0;
+}
+
+.flow-visual-modal__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.flow-visual-modal__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.flow-visual-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-visual-modal__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+}
+
+.flow-visual-stencil-pane {
+  border-right: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.86);
+  overflow: auto;
+}
+
+.flow-visual-canvas-dropzone {
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(241, 245, 249, 0.94));
+}
+
+.flow-visual-canvas-wrap {
+  min-height: 0;
+  padding: 14px;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.flow-visual-detail {
+  border-left: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.88);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-detail__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.flow-visual-detail__line {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.66);
+  line-height: 1.45;
+}
+
+.flow-visual-compile {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-compile__status {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flow-visual-compile__status.is-ok {
+  color: rgba(5, 150, 105, 0.9);
+}
+
+.flow-visual-compile__status.is-error {
+  color: rgba(220, 38, 38, 0.9);
+}
+
+.flow-visual-compile__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .library-list {
   display: flex;
   flex-direction: column;
@@ -2652,6 +3872,20 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   .col--preview {
     max-width: none;
     min-width: 0;
+  }
+
+  .flow-visual-modal__body {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-visual-stencil-pane {
+    border-right: 0;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  }
+
+  .flow-visual-detail {
+    border-left: 0;
+    border-top: 1px solid rgba(15, 23, 42, 0.1);
   }
 
 }

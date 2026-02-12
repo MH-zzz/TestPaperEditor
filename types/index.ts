@@ -1,5 +1,6 @@
 export * from './question'
 export * from './flow-engine'
+export * from './flow-visual'
 
 // 编辑器模式
 export type EditorMode = 'edit' | 'preview'

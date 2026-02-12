@@ -122,10 +122,15 @@ test('flow editor key files should not regress to any or ts-ignore', async () =>
     'components/views/flow-modules/useModuleLifecycle.ts',
     'components/views/flow-modules/usePerGroupStepEditor.ts',
     'components/views/flow-modules/useRouteSimulator.ts',
+    'components/views/flow-modules/useReadonlyFlowGraph.ts',
+    'components/views/flow-modules/useEditableFlowGraph.ts',
     'domain/flow-module/usecases/validateModuleCommitCrossChecks.ts',
+    'domain/flow-visual/usecases/compileGraphToSteps.ts',
+    'domain/flow-visual/usecases/buildListeningChoiceModuleFromLinearSteps.ts',
     'stores/flowProfiles.ts',
     'domain/flow-module/usecases/buildModuleDiffSummary.ts',
-    'types/flow-engine.ts'
+    'types/flow-engine.ts',
+    'types/flow-visual.ts'
   ]
 
   for (const file of files) {

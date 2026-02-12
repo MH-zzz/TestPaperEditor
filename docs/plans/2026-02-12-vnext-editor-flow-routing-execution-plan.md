@@ -102,15 +102,63 @@
    - `components/views/flow-modules/useModuleLifecycle.ts` 支持校验失败回调（页面可接管定位交互）
 7. 持久化策略统一继续完成：
    - `stores/settings.ts`、`stores/tag.ts` 已切换到 `createPersistenceScheduler`，移除 deep watch 自动落盘
+8. 版本治理能力补齐：
+   - `components/views/flow-modules/useModuleLifecycle.ts` 新增“批量归档旧版本”与归档前影响面预览
+   - 命中启用路由时增加二次确认，避免误归档带来路由回退风险
+   - `components/views/FlowModulesManager.vue` 已接入批量归档入口并展示可归档数量
+9. 编辑上手优化已落地：
+   - `components/views/FlowModulesManager.vue` 新增“题目编辑 / 流程编辑 / 路由编辑”三段式引导
+   - 引导面板内置快捷动作（读取/写回上下文、保存/发布流程、迁移路由）
+   - 增加路由预置模板（全国通用、地区+场景示例）便于新编辑快速起步
+10. `seeded-shuffle` 回归说明已补齐：
+   - 新增 `docs/plans/2026-02-12-seeded-shuffle-test-coverage.md`
+   - 明确单测入口、全量入口、断言覆盖点与当前未覆盖范围
+11. 调试可视化（Flow Center）已补齐：
+   - `components/views/FlowModulesManager.vue` 新增“引擎诊断面板”（命中规则、模块版本、当前 step、autoNext 原因、trace）
+   - 路由命中与步骤切换已写入 `runtimeDebug` 会话并支持 `trace` 导出/清空
+   - `tests/flow-profile-routing.test.mjs`、`tests/runtime-trace.test.mjs` 已增加对应断言
+12. Visual 阶段一已启动（只读可视化）：
+   - 新增 `types/flow-visual.ts`，冻结只读画布核心结构（node/edge/canvas）
+   - 新增 `components/views/flow-modules/useReadonlyFlowGraph.ts`，实现 `steps -> graph` 与自动纵向布局
+   - `components/views/FlowModulesManager.vue` 已接入“查看流程图”弹窗与节点详情面板
+   - 已补 `components/editor/flow-visual/` 目录基础组件（`BaseFlowNode` / `StepFlowNode` / `ReadonlyFlowCanvas`）
+13. npm 构建链路已补齐：
+   - 新增 `package.json`（`dev:h5/build:h5/preview:h5/test` 脚本）
+   - 新增 `vite.config.mjs`（`@dcloudio/vite-plugin-uni`）
+   - 新增 `jsconfig.json`（`/` 别名路径映射）
+14. Visual 阶段二已启动（编译与校验核心）：
+   - 新增 `domain/flow-visual/usecases/compileGraphToSteps.ts`，提供 `validateFlowVisualGraph` 与 `compileFlowVisualGraphToLinearSteps`
+   - 已覆盖线性模式核心校验：空图、缺失端点、分支、多入口/多出口、环路、孤点/非连通
+   - `FlowModulesManager` 的只读流程图弹窗已展示“线性编译结果”（可编译/不可编译 + 错误摘要）
+   - 新增 `tests/flow-visual-compiler.test.mjs` 作为阶段二基础回归
+   - `tests/store-guardrails.test.mjs` 已纳入 `flow-visual` 关键文件防回退检查
+15. Visual 阶段二 UI 骨架已落地（线性编辑最小闭环）：
+   - 新增 `components/views/flow-modules/useEditableFlowGraph.ts`（可编辑 graph 状态、线性编译结果、节点增删改与上下移动）
+   - 新增 `components/editor/flow-visual/StencilPanel.vue`（左侧元件库）
+   - 新增 `components/editor/flow-visual/PropertyPanel.vue`（右侧属性面板，已切到 schema 驱动字段渲染）
+   - `components/views/FlowModulesManager.vue` 已接入“元件库 + 画布 + 属性面板 + 编译结果”三栏可视编辑布局
+   - 画布已接入 H5 拖拽追加（`dragstart/drop`）与点击添加双通道
+   - 元件库拖拽到节点时支持 before/after 定点插入
+   - 画布内节点已支持拖拽重排（拖到目标节点 before/after 插入）
+   - 已支持 Delete/Backspace 快捷删除选中节点（输入态不拦截）
+   - 已支持重排视觉反馈（drop 目标定位提示 + 节点位移动画）
+   - 已支持“应用到预览 / 清除预览覆盖”，可将编译后的可视步骤链临时回写到预览运行链路
+   - 已支持“应用到流程草稿”，通过 `buildListeningChoiceModuleFromLinearSteps` 回写 `listeningChoiceDraft` 并复用模块校验提醒
+   - 应用到流程草稿前已接入差异摘要确认（`buildModuleDiffSummary` / `formatModuleDiffSummary`）
 
 **当前回归状态**
 
-1. `node --test`：`110 passed / 0 failed`
+1. 上次全量回归：`node --test` 为 `115 passed / 0 failed`
+2. 本次新增：`tests/flow-visual-compiler.test.mjs`（阶段二编译器回归入口）
+3. 本次局部回归：`node --test tests/flow-profile-routing.test.mjs tests/store-guardrails.test.mjs tests/flow-visual-compiler.test.mjs` 为 `50 passed / 0 failed`
+4. 新增映射回归：`node --test tests/flow-visual-module-mapper.test.mjs`（`4 passed / 0 failed`）
+5. 本次阶段二局部总回归：`node --test tests/flow-visual-module-mapper.test.mjs tests/flow-profile-routing.test.mjs tests/store-guardrails.test.mjs tests/flow-visual-compiler.test.mjs`（`54 passed / 0 failed`）
 
 **下一拍建议（仍按 P0 优先）**
 
-1. 把交叉校验错误从“文本列表”升级到“字段定位 + 一键跳转”（编辑器内联提示）。
-2. 为 `validateModuleCommitCrossChecks` 增加纯用例测试文件（覆盖缺题组、缺 prepareSeconds、路由引用不存在/归档等分支）。
+1. 收口 `#6`：把只读图节点视觉语义（媒体/控制/交互）进一步分层，并补“查看弹窗入口”一致性。
+2. 推进 `#11` Visual 阶段二 UI：元件库（Stencil）+ 属性面板（Inspector）+ 拖拽入画布。
+3. 将 `compileFlowVisualGraphToLinearSteps` 挂到保存闸门，形成“可视编辑 -> 编译 -> 保存/发布阻断”闭环。
 
 ### 0.6 1-11 状态总览（2026-02-12）
 
@@ -120,13 +168,13 @@
 | 2 | 核心类型债清理（`flowProfiles`/`buildModuleDiffSummary`/`flow-engine`） | ✅ 完成 | 指定核心文件已去 `any/@ts-ignore` 并通过回归 |
 | 3 | 保存前强校验闭环（模板×流程×路由） | ✅ 完成 | 交叉校验 usecase + 保存/发布阻断 + 字段定位面板已接入 |
 | 4 | Guardrail 扩展（禁回退 any/绕闸门） | ✅ 完成 | guardrail 测试已覆盖关键文件与提交闸门链路 |
-| 5 | 调试可视化增强（命中规则/step/autoNext/trace） | 🟡 部分完成 | 已有 RuntimeDebug/trace；Flow Center 专用诊断面板仍待补强 |
-| 6 | Visual 阶段一（只读可视化） | ⬜ 未开始 | 尚未落地 `flow-visual` 目录与 `steps -> graph` 只读画布 |
-| 7 | 版本治理工具（批量迁移+批量归档+影响面） | 🟡 部分完成 | 已有“迁移到当前版本”与单版本归档；批量归档/全量影响面预览待补 |
-| 8 | 编辑上手优化（三段式引导+模板） | ⬜ 未开始 | 尚未实现引导模式与预置模板入口 |
+| 5 | 调试可视化增强（命中规则/step/autoNext/trace） | ✅ 完成 | Flow Center 已接入专用诊断面板，支持 trace 导出/清空与关键状态可视化 |
+| 6 | Visual 阶段一（只读可视化） | 🟡 部分完成 | 已落地 `types/flow-visual.ts` + `steps -> graph` 只读弹窗与节点详情，节点体系化组件待补 |
+| 7 | 版本治理工具（批量迁移+批量归档+影响面） | ✅ 完成 | 已支持“迁移到当前版本 + 批量归档旧版本 + 归档前影响面预览 + 启用路由二次确认” |
+| 8 | 编辑上手优化（三段式引导+模板） | ✅ 完成 | 引导面板、快捷动作、路由预置模板已接入流程中心 |
 | 9 | 持久化策略统一（`flowLibrary/settings/tag/standardFlows`） | ✅ 完成 | `flowLibrary/standardFlows/settings/tag` 已统一到调度写入策略 |
-| 10 | `seeded-shuffle` 纳入回归并补覆盖说明 | 🟡 部分完成 | 测试文件已执行；覆盖说明文档仍待补充 |
-| 11 | Visual 阶段二（线性编辑） | ⬜ 未开始 | 依赖阶段一，暂未进入实现 |
+| 10 | `seeded-shuffle` 纳入回归并补覆盖说明 | ✅ 完成 | 已补覆盖说明文档并明确回归入口：`docs/plans/2026-02-12-seeded-shuffle-test-coverage.md` |
+| 11 | Visual 阶段二（线性编辑） | 🟡 已启动 | 编译与拓扑校验核心已落地；元件库、属性面板、H5 拖拽入画布已接入；schema 动态表单待接入 |
 
 ## 1. 6 周执行总览（按周）
 

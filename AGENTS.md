@@ -14,7 +14,14 @@
 - `static/` stores images and other static assets.
 
 ## Build, Test, and Development Commands
-This repo does not include `package.json` or npm scripts. Development is intended via **HBuilderX**:
+Development supports both npm CLI and **HBuilderX**:
+- Install dependencies: `npm install`
+- Run H5 (CLI): `npm run dev:h5`
+- Build H5 (CLI): `npm run build:h5`
+- Preview H5 build: `npm run preview:h5`
+- Run all regression tests: `npm run test`
+
+HBuilderX remains available:
 - Run H5: HBuilderX → Run → Run to Browser.
 - Run App: HBuilderX → Run → Run to Device/Emulator.
 - Build: HBuilderX build tooling.

@@ -27,22 +27,24 @@
 #### **任务清单 (Checklist):**
 
 1.  **基建搭建 (Foundation)**
-    *   [ ] 安装依赖: `npm install @vue-flow/core @vue-flow/background @vue-flow/controls`
-    *   [ ] 创建目录结构: `components/editor/flow-visual/`
-    *   [ ] 定义 `FlowNodeDefinition` 接口 (types/flow-visual.ts)。
+    *   [x] 安装依赖链路已就绪: `package.json` 已声明 `@vue-flow/*`、`dagre`、`vite`、`@dcloudio/vite-plugin-uni`
+    *   [x] 创建目录结构: `components/editor/flow-visual/`
+    *   [x] 定义 `FlowNodeDefinition` 接口 (types/flow-visual.ts)。
 
 2.  **节点组件开发 (Node Components)**
-    *   [ ] 创建基础壳组件 `BaseNode.vue` (处理选中样式、输入输出端口)。
-    *   [ ] 创建 `StepNode.vue` (通用业务节点，根据 type 显示不同图标和文字)。
-    *   [ ] 实现节点样式：区分不同类型的颜色 (媒体=蓝色, 控制=黄色, 交互=绿色)。
+    *   [x] 创建基础壳组件 `BaseNode.vue` (处理选中样式、输入输出端口)。
+    *   [x] 创建 `StepNode.vue` (通用业务节点，根据 type 显示不同图标和文字)。
+    *   [x] 实现节点样式：区分不同类型的颜色 (媒体=蓝色, 控制=黄色, 交互=绿色)。
 
 3.  **逆向转换器 (Reverse Adapter)**
-    *   [ ] 编写 `useStepsToGraph.ts`: 将 `FlowModule.steps` 数组转换为 `VueFlow.nodes/edges`。
-    *   [ ] 实现**自动布局算法 (Auto Layout)**: 使用 `dagre` 库或简单的计算逻辑，自动计算每个节点的 (x, y) 坐标，确保生成的图从上到下排列整齐，不重叠。
+    *   [x] 编写 `useStepsToGraph.ts`: 将 `FlowModule.steps` 数组转换为 `VueFlow.nodes/edges`。
+    *   [x] 实现**自动布局算法 (Auto Layout)**: 使用 `dagre` 库或简单的计算逻辑，自动计算每个节点的 (x, y) 坐标，确保生成的图从上到下排列整齐，不重叠。
 
 4.  **集成展示**
-    *   [ ] 在 `FlowModulesManager.vue` 增加“查看流程图”按钮。
-    *   [ ] 点击弹出模态框，显示只读的画布。
+    *   [x] 在 `FlowModulesManager.vue` 增加“查看流程图”按钮。
+    *   [x] 点击弹出模态框，显示只读的画布。
+
+> 注：仓库已补齐 npm 构建链路（`npm run dev:h5/build:h5/test`）。阶段一当前为轻量只读实现，下一步可切换到 `@vue-flow/*` + `dagre` 版本。
 
 ---
 
@@ -52,26 +54,35 @@
 #### **任务清单 (Checklist):**
 
 1.  **元件库实现 (Stencil Library)**
-    *   [ ] 建立 `registry.ts` (元件注册表)。
-    *   [ ] 定义核心元件 Schema (Intro, PlayAudio, Countdown, AnswerChoice)。
-    *   [ ] 实现左侧 `StencilPanel.vue` (工具栏)，展示可拖拽的元件图标。
-    *   [ ] 实现拖拽 API (`onDragStart`, `onDrop`)，将元件从左侧拖入画布。
+    *   [x] 建立轻量元件注册（`useEditableFlowGraph.ts` 内置 `STENCIL_ITEMS`）。
+    *   [x] 定义核心元件（Intro, PlayAudio, Countdown, AnswerChoice, PromptTone, ContextInfo）。
+    *   [x] 实现左侧 `StencilPanel.vue`（工具栏），支持追加到线性链路尾部。
+    *   [x] 实现拖拽 API（H5）：`onDragStart` + 画布 `onDrop`，并保留“点击添加”兜底。
+    *   [x] 元件拖入节点时支持按 before/after 位置插入（不再仅尾部追加）。
 
 2.  **属性面板 (Inspector Panel)**
-    *   [ ] 实现右侧 `PropertyPanel.vue`。
-    *   [ ] **核心逻辑:** 监听画布选中事件 (`onNodeDragStop/Click`)，读取当前节点的 Schema。
-    *   [ ] **动态表单:** 基于 Schema 自动渲染表单控件 (Input, Select, Switch)。
-    *   [ ] 实现数据双向绑定：修改表单 -> 更新图节点数据。
+    *   [x] 实现右侧 `PropertyPanel.vue`。
+    *   [x] **核心逻辑:** 基于选中节点读取并编辑 `stepKind/autoNext/groupId`。
+    *   [x] **动态表单（MVP）:** 基于字段 schema 渲染 select/text 控件（按 stepKind 输出字段集）。
+    *   [x] 实现数据双向绑定：修改面板字段 -> 更新节点数据并触发重新编译。
+    *   [x] 已支持“应用到预览 / 清除预览覆盖”，可把编译结果回写到预览执行链路（仅本地会话）。
 
 3.  **正向编译器 (Forward Compiler)**
-    *   [ ] 编写 `useGraphToSteps.ts`: 扫描画布上的节点和连线。
-    *   [ ] **拓扑排序:** 确定节点的执行顺序。
-    *   [ ] **线性化:** 将图转回 `FlowModule.steps` 数组。
-    *   [ ] **校验:** 如果发现有孤立节点（未连线），禁止保存并提示。
+    *   [x] 编写 `domain/flow-visual/usecases/compileGraphToSteps.ts`: 扫描节点与连线，输出线性 steps。
+    *   [x] **拓扑排序（线性模式）:** 基于唯一入口链路确定执行顺序。
+    *   [x] **线性化:** 将 graph 转回可执行 `steps` 数组（含 `kind/autoNext/groupId`）。
+    *   [x] **校验:** 已支持空图、缺失端点、分支、多入口/多出口、环路、孤点/非连通阻断，并返回结构化错误码。
+    *   [x] 编译器回归：新增 `tests/flow-visual-compiler.test.mjs` 覆盖线性成功与核心失败分支。
+    *   [x] 只读弹窗已接入编译反馈展示（“线性编译结果”状态与错误摘要）。
+    *   [x] 已新增 `buildListeningChoiceModuleFromLinearSteps`，支持将线性 steps 映射回流程草稿模块（含核心步骤自动补齐）。
+    *   [x] 已接入“应用到流程草稿”按钮，映射后可直接驱动现有流程保存/发布链路。
+    *   [x] 应用到草稿前展示差异摘要（复用 `buildModuleDiffSummary` 口径）。
 
 4.  **交互增强**
     *   [ ] 限制连线规则：只允许从上一个节点的 Bottom 连到下一个节点的 Top (强制单向流)。
-    *   [ ] 实现 Delete 键删除节点。
+    *   [x] 已支持节点拖拽到目标节点进行线性重排（支持 before/after 插入）。
+    *   [x] 已支持 Delete/Backspace 删除当前选中节点（编辑输入态自动忽略）。
+    *   [x] 已增加重排反馈动画（节点位移动画 + drop 目标 before/after 指示条）。
 
 ---
 
@@ -146,8 +157,9 @@ export interface VisualGraphData {
 
 ## 6. 立即执行建议
 
-建议先从 **阶段一 (只读可视化)** 开始。
-这不需要动核心业务逻辑，风险极低，但能立刻让团队看到效果，验证 `Vue Flow` 在 uni-app H5 环境下的兼容性。
+阶段一已可用，阶段二已进入“编译器与校验核心”实现。
+下一拍建议聚焦到可编辑 UI 本体：
 
-**你现在的首要任务：**
-先解决之前提到的 P0 代码质量问题 (Emit/Store)，为这个编辑器打下干净的地基。等地基好了，我们就可以开始搭建这个华丽的“可视化大楼”了。
+1. 落地 `StencilPanel.vue`（元件库）与拖拽入画布。
+2. 落地 `PropertyPanel.vue`（Inspector）并与节点 data 双向绑定。
+3. 在保存入口接入 `compileFlowVisualGraphToLinearSteps`，将校验错误直接回填到 UI 阻断面板。

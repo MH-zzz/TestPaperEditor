@@ -48,3 +48,12 @@ test('editor and learning workspaces should write route/step traces to shared ru
   assert.ok(learningSrc.includes('runtimeDebug.toggleDrawer(learningDebugSessionId)'))
   assert.ok(learningSrc.includes('<RuntimeDebugDrawer :session-id="learningDebugSessionId"'))
 })
+
+test('flow center should also expose route/step trace diagnostics for flow editing', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  assert.ok(src.includes("import { runtimeDebug, type RuntimeDebugEvent } from '/stores/runtimeDebug'"))
+  assert.ok(src.includes('flowCenterDebugSessionId'))
+  assert.ok(src.includes('runtimeDebug.record(flowCenterDebugSessionId'))
+  assert.ok(src.includes('导出 trace'))
+  assert.ok(src.includes('clearFlowCenterDiagnosticsTrace'))
+})
