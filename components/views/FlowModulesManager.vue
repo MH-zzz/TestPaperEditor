@@ -841,8 +841,8 @@
       <view class="flow-visual-modal__panel">
         <view class="flow-visual-modal__header">
           <view class="flow-visual-modal__title-wrap">
-            <text class="flow-visual-modal__title">只读流程图</text>
-            <text class="flow-visual-modal__desc">由当前流程步骤自动生成，可用于结构检查与节点详情查看</text>
+            <text class="flow-visual-modal__title">线性流程可视编辑</text>
+            <text class="flow-visual-modal__desc">拖拽重排、编辑属性并实时编译校验，再回写到预览或流程草稿</text>
           </view>
           <view class="flow-visual-modal__actions">
             <button
@@ -918,6 +918,7 @@
               :fields="readonlyFlowVisualPropertyFields"
               @patch="patchReadonlyFlowVisualNode"
               @remove="removeReadonlyFlowVisualNode"
+              @duplicate="duplicateReadonlyFlowVisualNode"
               @move-up="moveReadonlyFlowVisualNodeUp"
               @move-down="moveReadonlyFlowVisualNodeDown"
               @reset="resetReadonlyFlowVisualFromQuestion"
@@ -926,6 +927,20 @@
             <view class="flow-visual-compile">
               <text class="flow-visual-detail__title">线性编译结果</text>
               <text class="flow-visual-detail__line">预览覆盖：{{ hasVisualPreviewOverride ? '已启用' : '未启用' }}</text>
+              <view class="flow-visual-constraint">
+                <text class="flow-visual-constraint__title">线性约束</text>
+                <view class="flow-visual-constraint__list">
+                  <view
+                    v-for="check in readonlyFlowLinearChecks"
+                    :key="check.key"
+                    class="flow-visual-constraint__item"
+                    :class="{ 'is-ok': check.ok, 'is-error': !check.ok }"
+                  >
+                    <text class="flow-visual-constraint__label">{{ check.label }}</text>
+                    <text class="flow-visual-constraint__detail">{{ check.detail }}</text>
+                  </view>
+                </view>
+              </view>
               <template v-if="readonlyFlowCompileResult.ok">
                 <text class="flow-visual-compile__status is-ok">状态：可编译（{{ readonlyFlowCompileResult.steps.length }} steps）</text>
                 <view class="flow-visual-compile__list">
@@ -939,11 +954,19 @@
               <template v-else>
                 <text class="flow-visual-compile__status is-error">状态：不可编译（{{ readonlyFlowCompileResult.errors.length }} errors）</text>
                 <view class="flow-visual-compile__list">
-                  <text
+                  <view
                     v-for="item in readonlyFlowCompileResult.errors.slice(0, 5)"
                     :key="`${item.code}:${item.path}`"
-                    class="flow-visual-detail__line"
-                  >{{ item.code }} · {{ item.message }}</text>
+                    class="flow-visual-compile__issue"
+                    :class="{ 'is-locatable': readFlowVisualIssueNodeId(item.path) }"
+                    @click="locateReadonlyFlowVisualIssue(item.path)"
+                  >
+                    <text class="flow-visual-detail__line">{{ item.code }} · {{ item.message }}</text>
+                    <text
+                      v-if="readFlowVisualIssueNodeId(item.path)"
+                      class="flow-visual-compile__issue-action"
+                    >点击定位</text>
+                  </view>
                 </view>
               </template>
             </view>
@@ -1404,7 +1427,7 @@ type FlowProfileFixPreviewItem = FlowProfileFixSuggestion & {
   previewFields: FlowProfileFixFieldDiff[]
 }
 
-type CommitValidationIssueScope = 'template' | 'routing' | 'unknown'
+type CommitValidationIssueScope = 'template' | 'routing' | 'visual' | 'unknown'
 
 type CommitValidationIssue = {
   key: string
@@ -1414,6 +1437,7 @@ type CommitValidationIssue = {
   scope: CommitValidationIssueScope
   locationLabel: string
   targetProfileId?: string
+  targetVisualNodeId?: string
 }
 
 const commitValidationIssues = ref<CommitValidationIssue[]>([])
@@ -1426,10 +1450,16 @@ let routePanelFocusTimer: ReturnType<typeof setTimeout> | null = null
 function resolveCommitValidationScope(path: string): CommitValidationIssueScope {
   if (path.startsWith('content.')) return 'template'
   if (path.startsWith('flowProfiles')) return 'routing'
+  if (path.startsWith('flowVisual.')) return 'visual'
   return 'unknown'
 }
 
-function resolveCommitValidationLocationLabel(path: string, scope: CommitValidationIssueScope, profileId?: string): string {
+function resolveCommitValidationLocationLabel(
+  path: string,
+  scope: CommitValidationIssueScope,
+  profileId?: string,
+  visualNodeId?: string
+): string {
   if (scope === 'template') {
     const groupMatch = path.match(/content\.groups\[(\d+)\]/)
     if (groupMatch) {
@@ -1442,6 +1472,10 @@ function resolveCommitValidationLocationLabel(path: string, scope: CommitValidat
   if (scope === 'routing') {
     if (profileId) return `流程路由 > ${profileId}`
     return '流程路由'
+  }
+  if (scope === 'visual') {
+    if (visualNodeId) return `可视流程 > 节点 ${visualNodeId}`
+    return '可视流程'
   }
   return '未知区域'
 }
@@ -1456,7 +1490,9 @@ function normalizeCommitValidationIssue(
   const scope = resolveCommitValidationScope(path)
   const profileMatch = path.match(/flowProfiles\[\d+\]\(([^)]+)\)/)
   const targetProfileId = profileMatch?.[1] ? String(profileMatch[1]) : undefined
-  const locationLabel = resolveCommitValidationLocationLabel(path, scope, targetProfileId)
+  const visualNodeMatch = path.match(/flowVisual\.graph\.nodes\(([^)]+)\)/)
+  const targetVisualNodeId = visualNodeMatch?.[1] ? String(visualNodeMatch[1]) : undefined
+  const locationLabel = resolveCommitValidationLocationLabel(path, scope, targetProfileId, targetVisualNodeId)
   return {
     key: `${code}:${path}:${index}`,
     code,
@@ -1464,7 +1500,8 @@ function normalizeCommitValidationIssue(
     message,
     scope,
     locationLabel,
-    targetProfileId
+    targetProfileId,
+    targetVisualNodeId
   }
 }
 
@@ -1503,6 +1540,17 @@ function jumpToCommitValidationIssue(issue: CommitValidationIssue) {
   if (issue.scope === 'routing') {
     templateFocusPath.value = ''
     setRoutePanelFocus(issue.targetProfileId)
+    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
+    return
+  }
+  if (issue.scope === 'visual') {
+    templateFocusPath.value = ''
+    routePanelFocusActive.value = false
+    routePanelFocusProfileId.value = ''
+    readonlyFlowVisualVisible.value = true
+    if (issue.targetVisualNodeId) {
+      flowVisualEditor.selectNode(issue.targetVisualNodeId)
+    }
     uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
     return
   }
@@ -1677,19 +1725,10 @@ function patchFlowProfile(id: string, patch: Record<string, unknown>) {
   return true
 }
 
-function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload): ModuleCommitValidationResult {
-  const crossValidation = validateListeningChoiceModuleCommitCrossChecks({
-    mode: payload.mode,
-    template: demoBase.value,
-    nextModule: payload.module,
-    flowProfiles: flowProfileRules.value || [],
-    moduleCatalog: flowModules.listListeningChoice()
-  })
-  if (crossValidation.ok) {
-    clearCommitValidationIssues()
-    return { ok: true, errors: [] }
-  }
-  const issues = (crossValidation.errors || []).map((item, index) => normalizeCommitValidationIssue({
+function buildCommitValidationFailureResult(
+  rawIssues: Array<{ code?: string; path?: string; message?: string }>
+): ModuleCommitValidationResult {
+  const issues = (rawIssues || []).map((item, index) => normalizeCommitValidationIssue({
     code: item.code,
     path: item.path,
     message: item.message
@@ -1701,6 +1740,44 @@ function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPa
     errors: issues.map((item) => `${item.path}: ${item.message}`),
     issues: issues.map((item) => ({ code: item.code, path: item.path, message: item.message }))
   }
+}
+
+function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload): ModuleCommitValidationResult {
+  if (flowVisualEditor.dirty.value) {
+    if (!readonlyFlowCompileResult.value.ok) {
+      return buildCommitValidationFailureResult(
+        (readonlyFlowCompileResult.value.errors || []).map((item) => ({
+          code: `flow_visual_${item.code}`,
+          path: `flowVisual.${item.path}`,
+          message: `可视流程未通过线性编译：${item.message}`
+        }))
+      )
+    }
+    return buildCommitValidationFailureResult([
+      {
+        code: 'flow_visual_unapplied_changes',
+        path: 'flowVisual.graph',
+        message: '可视流程存在未应用变更，请先“应用到流程草稿”或“重置图”后再保存/发布。'
+      }
+    ])
+  }
+
+  const crossValidation = validateListeningChoiceModuleCommitCrossChecks({
+    mode: payload.mode,
+    template: demoBase.value,
+    nextModule: payload.module,
+    flowProfiles: flowProfileRules.value || [],
+    moduleCatalog: flowModules.listListeningChoice()
+  })
+  if (crossValidation.ok) {
+    clearCommitValidationIssues()
+    return { ok: true, errors: [] }
+  }
+  return buildCommitValidationFailureResult((crossValidation.errors || []).map((item) => ({
+    code: item.code,
+    path: item.path,
+    message: item.message
+  })))
 }
 
 const moduleLifecycle = useModuleLifecycle({
@@ -1995,6 +2072,7 @@ const readonlyFlowVisualVisible = ref(false)
 const readonlyFlowGraph = flowVisualEditor.graph
 const readonlyFlowCompileResult = flowVisualEditor.compileResult
 const readonlyFlowCompiledStepPreview = flowVisualEditor.compiledStepPreview
+const readonlyFlowLinearChecks = flowVisualEditor.linearConstraintChecks
 const canReadonlyFlowVisualUndo = flowVisualEditor.canUndo
 const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
 const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
@@ -2059,6 +2137,31 @@ function removeReadonlyFlowVisualNode() {
   flowVisualEditor.removeSelectedNode()
 }
 
+function duplicateReadonlyFlowVisualNode() {
+  flowVisualEditor.duplicateSelectedNode()
+}
+
+function selectReadonlyFlowVisualPrevNode() {
+  flowVisualEditor.selectPrevNode()
+}
+
+function selectReadonlyFlowVisualNextNode() {
+  flowVisualEditor.selectNextNode()
+}
+
+function readFlowVisualIssueNodeId(issuePath: string): string {
+  const text = String(issuePath || '')
+  const match = text.match(/graph\.nodes\(([^)]+)\)/)
+  if (!match) return ''
+  return String(match[1] || '')
+}
+
+function locateReadonlyFlowVisualIssue(issuePath: string) {
+  const nodeId = readFlowVisualIssueNodeId(issuePath)
+  if (!nodeId) return
+  flowVisualEditor.selectNode(nodeId)
+}
+
 function isTextEditingElement(target: EventTarget | null): boolean {
   if (!target || typeof target !== 'object') return false
   const el = target as HTMLElement
@@ -2092,6 +2195,22 @@ function onFlowVisualKeydown(event: KeyboardEvent) {
       undoReadonlyFlowVisual()
       return
     }
+    if (lower === 'd') {
+      if (!readonlyFlowVisualActiveNode.value) return
+      event.preventDefault()
+      duplicateReadonlyFlowVisualNode()
+      return
+    }
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    selectReadonlyFlowVisualPrevNode()
+    return
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    selectReadonlyFlowVisualNextNode()
+    return
   }
   const key = String(event.key || '')
   if (key !== 'Delete' && key !== 'Backspace') return
@@ -3789,6 +3908,55 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   gap: 6px;
 }
 
+.flow-visual-constraint {
+  margin-top: 2px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 6px;
+}
+
+.flow-visual-constraint__title {
+  display: block;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+}
+
+.flow-visual-constraint__list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow-visual-constraint__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.flow-visual-constraint__item.is-ok {
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.flow-visual-constraint__item.is-error {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.flow-visual-constraint__label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.8);
+}
+
+.flow-visual-constraint__detail {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
 .flow-visual-compile__status {
   font-size: 12px;
   font-weight: 700;
@@ -3806,6 +3974,28 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.flow-visual-compile__issue {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.flow-visual-compile__issue.is-locatable {
+  cursor: pointer;
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.flow-visual-compile__issue-action {
+  font-size: 11px;
+  color: rgba(37, 99, 235, 0.9);
+  flex-shrink: 0;
 }
 
 .library-list {

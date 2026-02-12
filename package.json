@@ -16,7 +16,8 @@
     "test:runtime": "node --test tests/runtime-trace.test.mjs",
     "test:guard": "node --test tests/store-guardrails.test.mjs",
     "test:visual-compiler": "node --test tests/flow-visual-compiler.test.mjs",
-    "test:visual-module": "node --test tests/flow-visual-module-mapper.test.mjs"
+    "test:visual-module": "node --test tests/flow-visual-module-mapper.test.mjs",
+    "test:visual-history": "node --test tests/flow-visual-history.test.mjs"
   },
   "dependencies": {
     "@vue-flow/background": "^1.3.2",

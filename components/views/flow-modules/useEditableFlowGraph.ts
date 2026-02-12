@@ -53,6 +53,14 @@ export type FlowPropertyField = {
   hint?: string
 }
 
+export type FlowLinearConstraintCheck = {
+  key: 'single_entry' | 'single_exit' | 'no_branch' | 'no_cycle' | 'fully_connected'
+  label: string
+  ok: boolean
+  detail: string
+  errorCode: string
+}
+
 const STENCIL_ITEMS: FlowStencilItem[] = [
   { kind: 'intro', label: '介绍页', color: '#2563eb', category: 'control', categoryLabel: '控制', description: '展示题型介绍与说明', defaultAutoNext: 'tapNext' },
   { kind: 'countdown', label: '倒计时', color: '#f59e0b', category: 'control', categoryLabel: '控制', description: '等待倒计时结束自动推进', defaultAutoNext: 'countdownEnded' },
@@ -215,6 +223,88 @@ function buildEdges(nodes: FlowVisualNode<EditableFlowNodePayload>[]): FlowVisua
 function buildCanvasHeight(nodeCount: number): number {
   if (nodeCount <= 0) return 180
   return NODE_START_Y + nodeCount * (NODE_HEIGHT + NODE_GAP_Y) - NODE_GAP_Y + 46
+}
+
+type GraphConstraintStats = {
+  entryCount: number
+  exitCount: number
+  branchNodeCount: number
+  hasCycle: boolean
+  disconnectedNodeCount: number
+}
+
+function buildGraphConstraintStats(graph: FlowVisualGraph): GraphConstraintStats {
+  const nodes = graph.nodes || []
+  const edges = graph.edges || []
+  const inMap = new Map<string, number>()
+  const outMap = new Map<string, string[]>()
+  const inDegree = new Map<string, number>()
+
+  for (const node of nodes) {
+    inMap.set(node.id, 0)
+    outMap.set(node.id, [])
+    inDegree.set(node.id, 0)
+  }
+
+  for (const edge of edges) {
+    const source = String(edge.source || '')
+    const target = String(edge.target || '')
+    if (!inMap.has(source) || !inMap.has(target)) continue
+    outMap.get(source)?.push(target)
+    inMap.set(target, (inMap.get(target) || 0) + 1)
+    inDegree.set(target, (inDegree.get(target) || 0) + 1)
+  }
+
+  const entryIds = nodes
+    .map((node) => String(node.id || ''))
+    .filter((id) => (inMap.get(id) || 0) === 0)
+  const exitCount = nodes.filter((node) => (outMap.get(node.id)?.length || 0) === 0).length
+  const branchNodeCount = nodes.filter((node) => {
+    const incoming = inMap.get(node.id) || 0
+    const outgoing = outMap.get(node.id)?.length || 0
+    return incoming > 1 || outgoing > 1
+  }).length
+
+  const topoQueue: string[] = []
+  for (const [id, deg] of inDegree.entries()) {
+    if (deg === 0) topoQueue.push(id)
+  }
+  let visitedByTopo = 0
+  while (topoQueue.length > 0) {
+    const current = topoQueue.shift() as string
+    visitedByTopo += 1
+    for (const next of outMap.get(current) || []) {
+      const deg = (inDegree.get(next) || 0) - 1
+      inDegree.set(next, deg)
+      if (deg === 0) topoQueue.push(next)
+    }
+  }
+  const hasCycle = nodes.length > 0 && visitedByTopo !== nodes.length
+
+  let disconnectedNodeCount = 0
+  if (entryIds.length === 1) {
+    const reachable = new Set<string>()
+    const queue: string[] = [entryIds[0]]
+    while (queue.length > 0) {
+      const current = queue.shift() as string
+      if (reachable.has(current)) continue
+      reachable.add(current)
+      for (const next of outMap.get(current) || []) {
+        if (!reachable.has(next)) queue.push(next)
+      }
+    }
+    disconnectedNodeCount = Math.max(0, nodes.length - reachable.size)
+  } else if (nodes.length > 1) {
+    disconnectedNodeCount = nodes.length
+  }
+
+  return {
+    entryCount: entryIds.length,
+    exitCount,
+    branchNodeCount,
+    hasCycle,
+    disconnectedNodeCount
+  }
 }
 
 function createStencilNode(kind: string, index: number): FlowVisualNode<EditableFlowNodePayload> {
@@ -414,6 +504,40 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     ensureSelectedNode()
   }
 
+  function duplicateSelectedNode() {
+    const nodeId = selectedNodeId.value
+    if (!nodeId) return
+    const currentIndex = nodes.value.findIndex((item) => item.id === nodeId)
+    if (currentIndex < 0) return
+    const current = nodes.value[currentIndex]
+    if (!current) return
+
+    pushHistorySnapshot()
+    const duplicate = createStencilNode(current.data.stepKind, currentIndex + 1)
+    const next = [...nodes.value]
+    next.splice(currentIndex + 1, 0, {
+      ...duplicate,
+      data: {
+        ...duplicate.data,
+        autoNext: current.data.autoNext,
+        groupId: current.data.groupId
+      }
+    })
+    nodes.value = relayoutNodes(next)
+    selectedNodeId.value = next[currentIndex + 1]?.id || ''
+    markRecentlyMoved(selectedNodeId.value)
+    dirty.value = true
+  }
+
+  function selectAdjacentNode(step: -1 | 1) {
+    if ((nodes.value || []).length <= 0) return
+    const currentId = selectedNodeId.value
+    const currentIndex = nodes.value.findIndex((item) => item.id === currentId)
+    const fallbackIndex = currentIndex >= 0 ? currentIndex : 0
+    const nextIndex = Math.max(0, Math.min(nodes.value.length - 1, fallbackIndex + step))
+    selectedNodeId.value = nodes.value[nextIndex]?.id || selectedNodeId.value
+  }
+
   function moveSelectedNode(step: -1 | 1) {
     const nodeId = selectedNodeId.value
     if (!nodeId) return
@@ -502,6 +626,48 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
 
   const compileResult = computed(() => compileFlowVisualGraphToLinearSteps(graph.value))
   const compiledStepPreview = computed(() => compileResult.value.steps.slice(0, 6))
+  const linearConstraintChecks = computed<FlowLinearConstraintCheck[]>(() => {
+    const stats = buildGraphConstraintStats(graph.value)
+    return [
+      {
+        key: 'single_entry',
+        label: '单入口',
+        ok: stats.entryCount === 1,
+        detail: `入口节点 ${stats.entryCount}`,
+        errorCode: 'entry_count_invalid'
+      },
+      {
+        key: 'single_exit',
+        label: '单出口',
+        ok: stats.exitCount === 1,
+        detail: `出口节点 ${stats.exitCount}`,
+        errorCode: 'exit_count_invalid'
+      },
+      {
+        key: 'no_branch',
+        label: '无分支',
+        ok: stats.branchNodeCount === 0,
+        detail: `分支节点 ${stats.branchNodeCount}`,
+        errorCode: 'branch_not_supported'
+      },
+      {
+        key: 'no_cycle',
+        label: '无环路',
+        ok: !stats.hasCycle,
+        detail: stats.hasCycle ? '检测到环路' : '未检测到环路',
+        errorCode: 'cycle_detected'
+      },
+      {
+        key: 'fully_connected',
+        label: '全连通',
+        ok: stats.disconnectedNodeCount === 0,
+        detail: stats.disconnectedNodeCount > 0
+          ? `未连通节点 ${stats.disconnectedNodeCount}`
+          : '全部节点可达',
+        errorCode: 'graph_disconnected'
+      }
+    ]
+  })
   const propertyFieldsForSelectedNode = computed<FlowPropertyField[]>(() => {
     const node = selectedNode.value
     if (!node) return []
@@ -515,6 +681,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     selectedNode,
     compileResult,
     compiledStepPreview,
+    linearConstraintChecks,
     propertyFieldsForSelectedNode,
     canUndo,
     canRedo,
@@ -525,6 +692,9 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     insertNodeNearTarget,
     patchSelectedNode,
     removeSelectedNode,
+    duplicateSelectedNode,
+    selectPrevNode: () => selectAdjacentNode(-1),
+    selectNextNode: () => selectAdjacentNode(1),
     moveSelectedNodeUp: () => moveSelectedNode(-1),
     moveSelectedNodeDown: () => moveSelectedNode(1),
     reorderNodes,

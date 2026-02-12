@@ -146,6 +146,9 @@ test('flow module commit should be guarded by pre-commit cross validation hook',
 
   assert.ok(managerSrc.includes('validateBeforeCommit: validateModuleCommitBeforeSavePublish'))
   assert.ok(managerSrc.includes('onCommitValidationFailed: handleModuleCommitValidationFailed'))
+  assert.ok(managerSrc.includes('flowVisualEditor.dirty.value'))
+  assert.ok(managerSrc.includes('flow_visual_unapplied_changes'))
+  assert.ok(managerSrc.includes('readonlyFlowCompileResult.value.ok'))
   assert.ok(lifecycleSrc.includes('checkModuleCommitGuard'))
   assert.ok(lifecycleSrc.includes('const handled = onCommitValidationFailed ? onCommitValidationFailed(result) : false'))
   assert.ok(lifecycleSrc.includes("title: '流程引用校验失败'"))

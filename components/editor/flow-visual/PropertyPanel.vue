@@ -1,7 +1,7 @@
 <template>
   <view class="flow-property">
     <text class="flow-property__title">属性面板</text>
-    <text class="flow-property__desc">基于步骤 schema 渲染字段，修改后实时回写图节点（Delete 删除，Ctrl/Cmd+Z 撤销）</text>
+    <text class="flow-property__desc">基于步骤 schema 渲染字段，修改后实时回写图节点（Delete 删除，Ctrl/Cmd+Z 撤销，Ctrl/Cmd+D 复制，↑↓ 切节点）</text>
 
     <template v-if="node">
       <view class="flow-property__block">
@@ -49,6 +49,7 @@
       <view class="flow-property__actions">
         <button class="btn btn-outline btn-xs" @click="emit('move-up')">上移</button>
         <button class="btn btn-outline btn-xs" @click="emit('move-down')">下移</button>
+        <button class="btn btn-outline btn-xs" @click="emit('duplicate')">复制节点</button>
         <button class="btn btn-outline btn-xs" @click="emit('reset')">重置图</button>
         <button class="btn btn-outline btn-xs danger" @click="emit('remove')">删除节点</button>
       </view>
@@ -70,6 +71,7 @@ import type {
 const emit = defineEmits<{
   (e: 'patch', patch: FlowVisualNodePatch): void
   (e: 'remove'): void
+  (e: 'duplicate'): void
   (e: 'move-up'): void
   (e: 'move-down'): void
   (e: 'reset'): void
