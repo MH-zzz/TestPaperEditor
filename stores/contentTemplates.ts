@@ -21,44 +21,48 @@ function emptyRichText(): RichTextContent {
   return { type: 'richtext', content: [] }
 }
 
-function normalizeRichText(input: any): RichTextContent {
-  if (!input || typeof input !== 'object') return emptyRichText()
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function normalizeRichText(input: unknown): RichTextContent {
+  if (!isObjectRecord(input)) return emptyRichText()
   if (input.type !== 'richtext') return emptyRichText()
   if (!Array.isArray(input.content)) return emptyRichText()
   return input as RichTextContent
 }
 
-function nonEmptyString(v: any): string | undefined {
+function nonEmptyString(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s ? s : undefined
 }
 
-function normalizeOptionStyle(v: any): OptionStyle {
+function normalizeOptionStyle(v: unknown): OptionStyle {
   return v === '1234' ? '1234' : 'ABCD'
 }
 
-function normalizeNonNegativeInt(v: any, fallback: number): number {
+function normalizeNonNegativeInt(v: unknown, fallback: number): number {
   const n = Math.floor(Number(v))
   if (Number.isFinite(n) && n >= 0) return n
   return fallback
 }
 
-function normalizePositiveInt(v: any, fallback: number): number {
+function normalizePositiveInt(v: unknown, fallback: number): number {
   const n = Math.floor(Number(v))
   if (Number.isFinite(n) && n > 0) return n
   return Math.max(1, fallback)
 }
 
-function normalizeOptions(input: any): QuestionOption[] {
+function normalizeOptions(input: unknown): QuestionOption[] {
   if (!Array.isArray(input)) return [
     { key: 'A', content: emptyRichText() },
     { key: 'B', content: emptyRichText() },
     { key: 'C', content: emptyRichText() }
   ]
   const out = input
-    .filter((o: any) => o && typeof o === 'object')
-    .map((o: any, idx: number) => ({
+    .filter((o): o is Record<string, unknown> => isObjectRecord(o))
+    .map((o, idx: number) => ({
       key: nonEmptyString(o.key) || String.fromCharCode(65 + idx),
       content: normalizeRichText(o.content)
     }))
@@ -70,14 +74,14 @@ function normalizeOptions(input: any): QuestionOption[] {
   ]
 }
 
-function normalizeSubQuestions(input: any): SubQuestion[] {
+function normalizeSubQuestions(input: unknown): SubQuestion[] {
   if (!Array.isArray(input)) return []
   const out = input
-    .filter((q: any) => q && typeof q === 'object')
-    .map((q: any, idx: number) => {
+    .filter((q): q is Record<string, unknown> => isObjectRecord(q))
+    .map((q, idx: number) => {
       const options = normalizeOptions(q.options)
       const keys = options.map(o => o.key)
-      const answer = Array.isArray(q.answer) ? q.answer.filter((k: any) => keys.includes(String(k))) : []
+      const answer = Array.isArray(q.answer) ? q.answer.filter((k) => keys.includes(String(k))) : []
       return {
         id: nonEmptyString(q.id) || `tpl_q_${idx + 1}`,
         order: Number.isFinite(Number(q.order)) ? Number(q.order) : idx + 1,
@@ -90,28 +94,32 @@ function normalizeSubQuestions(input: any): SubQuestion[] {
   return out
 }
 
-function normalizeGroups(input: any): ListeningChoiceGroup[] {
+function normalizeGroups(input: unknown): ListeningChoiceGroup[] {
   if (!Array.isArray(input)) return []
   const out = input
-    .filter((g: any) => g && typeof g === 'object')
-    .map((g: any, idx: number) => ({
-      id: nonEmptyString(g.id) || `tpl_g_${idx + 1}`,
-      title: nonEmptyString(g.title),
-      prompt: g.prompt ? normalizeRichText(g.prompt) : undefined,
-      prepareSeconds: normalizeNonNegativeInt(g.prepareSeconds, 3),
-      answerSeconds: normalizeNonNegativeInt(g.answerSeconds, 0),
-      descriptionAudio: g.descriptionAudio && typeof g.descriptionAudio === 'object' ? {
-        url: typeof g.descriptionAudio.url === 'string' ? g.descriptionAudio.url : '',
-        playCount: normalizePositiveInt(g.descriptionAudio.playCount, 1),
-        note: typeof g.descriptionAudio.note === 'string' ? g.descriptionAudio.note : undefined
-      } : { url: '', playCount: 1, note: '题组描述音频（可为空）' },
-      audio: g.audio && typeof g.audio === 'object' ? {
-        url: typeof g.audio.url === 'string' ? g.audio.url : '',
-        playCount: normalizePositiveInt(g.audio.playCount, 2),
-        note: typeof g.audio.note === 'string' ? g.audio.note : undefined
-      } : { url: '', playCount: 2, note: '题组音频（占位）' },
-      subQuestions: normalizeSubQuestions(g.subQuestions)
-    }))
+    .filter((g): g is Record<string, unknown> => isObjectRecord(g))
+    .map((g, idx: number) => {
+      const descriptionAudio = isObjectRecord(g.descriptionAudio) ? g.descriptionAudio : null
+      const audio = isObjectRecord(g.audio) ? g.audio : null
+      return {
+        id: nonEmptyString(g.id) || `tpl_g_${idx + 1}`,
+        title: nonEmptyString(g.title),
+        prompt: g.prompt ? normalizeRichText(g.prompt) : undefined,
+        prepareSeconds: normalizeNonNegativeInt(g.prepareSeconds, 3),
+        answerSeconds: normalizeNonNegativeInt(g.answerSeconds, 0),
+        descriptionAudio: descriptionAudio ? {
+          url: typeof descriptionAudio.url === 'string' ? descriptionAudio.url : '',
+          playCount: normalizePositiveInt(descriptionAudio.playCount, 1),
+          note: typeof descriptionAudio.note === 'string' ? descriptionAudio.note : undefined
+        } : { url: '', playCount: 1, note: '题组描述音频（可为空）' },
+        audio: audio ? {
+          url: typeof audio.url === 'string' ? audio.url : '',
+          playCount: normalizePositiveInt(audio.playCount, 2),
+          note: typeof audio.note === 'string' ? audio.note : undefined
+        } : { url: '', playCount: 2, note: '题组音频（占位）' },
+        subQuestions: normalizeSubQuestions(g.subQuestions)
+      }
+    })
   return out
 }
 
@@ -166,11 +174,13 @@ export const DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE: ListeningChoiceContentTe
   }
 }
 
-export function normalizeListeningChoiceContentTemplate(input: any): ListeningChoiceContentTemplateV1 {
+export function normalizeListeningChoiceContentTemplate(input: unknown): ListeningChoiceContentTemplateV1 {
   try {
-    const src = input && typeof input === 'object' ? input : {}
-    const contentSrc = src.content && typeof src.content === 'object' ? src.content : {}
-    const introSrc = contentSrc.intro && typeof contentSrc.intro === 'object' ? contentSrc.intro : {}
+    const src = isObjectRecord(input) ? input : {}
+    const contentSrc = isObjectRecord(src.content) ? src.content : {}
+    const introSrc = isObjectRecord(contentSrc.intro) ? contentSrc.intro : {}
+    const introAudio = isObjectRecord(introSrc.audio) ? introSrc.audio : null
+    const introCountdown = isObjectRecord(introSrc.countdown) ? introSrc.countdown : null
 
     const groups = normalizeGroups(contentSrc.groups)
     return {
@@ -181,15 +191,15 @@ export function normalizeListeningChoiceContentTemplate(input: any): ListeningCh
           title: nonEmptyString(introSrc.title) || DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE.content.intro.title,
           title_description: typeof introSrc.title_description === 'string' ? introSrc.title_description : (DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE.content.intro.title_description || ''),
           text: normalizeRichText(introSrc.text),
-          audio: introSrc.audio && typeof introSrc.audio === 'object' ? {
-            url: typeof introSrc.audio.url === 'string' ? introSrc.audio.url : '',
-            playCount: normalizePositiveInt(introSrc.audio.playCount, 1),
-            note: typeof introSrc.audio.note === 'string' ? introSrc.audio.note : undefined
+          audio: introAudio ? {
+            url: typeof introAudio.url === 'string' ? introAudio.url : '',
+            playCount: normalizePositiveInt(introAudio.playCount, 1),
+            note: typeof introAudio.note === 'string' ? introAudio.note : undefined
           } : DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE.content.intro.audio,
-          countdown: introSrc.countdown && typeof introSrc.countdown === 'object' ? {
-            seconds: Math.max(0, Math.floor(Number(introSrc.countdown.seconds || 0))),
-            label: typeof introSrc.countdown.label === 'string' ? introSrc.countdown.label : '准备',
-            endBeepUrl: typeof introSrc.countdown.endBeepUrl === 'string' ? introSrc.countdown.endBeepUrl : '/static/beep.mp3'
+          countdown: introCountdown ? {
+            seconds: Math.max(0, Math.floor(Number(introCountdown.seconds || 0))),
+            label: typeof introCountdown.label === 'string' ? introCountdown.label : '准备',
+            endBeepUrl: typeof introCountdown.endBeepUrl === 'string' ? introCountdown.endBeepUrl : '/static/beep.mp3'
           } : DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE.content.intro.countdown
         },
         groups: groups.length ? groups : DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE.content.groups
@@ -234,7 +244,7 @@ class ContentTemplatesStore {
     }
   }
 
-  setListeningChoice(template: any) {
+  setListeningChoice(template: unknown) {
     this.state.listeningChoice = normalizeListeningChoiceContentTemplate(template)
     this.persistence.schedule()
   }

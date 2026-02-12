@@ -64,7 +64,7 @@ test('flow profile domain usecase should provide scoring, diagnostics and submit
 
 test('flow profile store should support diagnostic-gated submit helpers', async () => {
   const src = await readFile('stores/flowProfiles.ts')
-  assert.ok(src.includes('upsertWithDiagnostics(profileInput: any)'))
+  assert.ok(src.includes('upsertWithDiagnostics(profileInput: unknown)'))
   assert.ok(src.includes('removeWithDiagnostics(id: string)'))
   assert.ok(src.includes('validateBeforeSubmit(questionType: QuestionType)'))
   assert.ok(src.includes('canSubmitFlowProfiles('))
@@ -82,19 +82,24 @@ test('flow center should provide a routing hit simulator', async () => {
 
 test('flow center simulator should support loading context from current question metadata', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
   assert.ok(src.includes('读取当前题目上下文'))
   assert.ok(src.includes('loadRouteSimFromCurrentQuestion'))
-  assert.ok(src.includes('readQuestionFlowContext(data)'))
+  assert.ok(src.includes("from './flow-modules/useRouteSimulator'"))
+  assert.ok(src.includes('routeSimulator.loadRouteSimFromCurrentQuestion()'))
+  assert.ok(sim.includes('readQuestionFlowContext(data)'))
 })
 
 test('flow center simulator should support writing context back to current question metadata', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
   assert.ok(src.includes('写回当前题目上下文'))
   assert.ok(src.includes('syncRouteSimToCurrentQuestion'))
   assert.ok(src.includes("import { questionDraft } from '/stores/questionDraft'"))
-  assert.ok(src.includes('patchQuestionFlowContext'))
-  assert.ok(src.includes('persistCurrentQuestion(next)'))
-  assert.ok(src.includes('questionDraft.updateDraft(next as any, { persistDraft: true })'))
+  assert.ok(src.includes('routeSimulator.syncRouteSimToCurrentQuestion()'))
+  assert.ok(sim.includes('patchQuestionFlowContext'))
+  assert.ok(sim.includes('persistCurrentQuestion(next)'))
+  assert.ok(src.includes('questionDraft.updateDraft(next, { persistDraft: true })'))
 })
 
 test('editor workspace should allow editing flow context and trigger listening-choice flow resolve', async () => {
@@ -130,10 +135,12 @@ test('flow center should include weak-coverage diagnostics and submission status
 
 test('flow center simulator should show scoring breakdown for matched rule', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
   assert.ok(src.includes('匹配分解'))
   assert.ok(src.includes('总分'))
   assert.ok(src.includes('simulatedRankedCandidates'))
-  assert.ok(src.includes('scoreProfilesUsecase'))
+  assert.ok(src.includes('useRouteSimulator'))
+  assert.ok(sim.includes('scoreProfiles('))
 })
 
 test('flow center should provide auto-fix suggestions for routing diagnostics', async () => {
@@ -175,48 +182,53 @@ test('flow center should block route submissions when diagnostics fail', async (
 
 test('flow center should validate listening-choice module before save', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes('validateListeningChoiceStandardModule'))
-  assert.ok(src.includes("title: '题型流程校验失败'"))
-  assert.ok(src.includes("title: '题型流程校验提醒'"))
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
+  assert.ok(lifecycleSrc.includes('validateListeningChoiceStandardModule'))
+  assert.ok(lifecycleSrc.includes("title: '题型流程校验失败'"))
+  assert.ok(lifecycleSrc.includes("title: '题型流程校验提醒'"))
   assert.ok(src.includes('saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number)'))
-  assert.ok(src.includes("title: '确认保存题型流程'"))
-  assert.ok(src.includes('命中路由规则'))
-  assert.ok(src.includes('受影响路由规则'))
+  assert.ok(src.includes('moduleLifecycle.saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)'))
+  assert.ok(lifecycleSrc.includes("title: '确认保存题型流程'"))
+  assert.ok(lifecycleSrc.includes('命中路由规则'))
+  assert.ok(lifecycleSrc.includes('受影响路由规则'))
 })
 
 test('flow center should support save-as-next-version and archive-current-version', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(src.includes('另存新版本'))
   assert.ok(src.includes('发布当前版本'))
   assert.ok(src.includes('归档当前版本'))
   assert.ok(src.includes('saveStandardAsNextVersion'))
   assert.ok(src.includes('publishCurrentStandard'))
   assert.ok(src.includes('archiveCurrentStandard'))
-  assert.ok(src.includes("title: '归档当前版本'"))
-  assert.ok(src.includes('flowModules.archiveListeningChoice'))
+  assert.ok(lifecycleSrc.includes("title: '归档当前版本'"))
+  assert.ok(lifecycleSrc.includes('flowModules.archiveListeningChoice'))
 })
 
 test('flow center should enforce module status state-machine rules in UI and save logic', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(src.includes('module-state'))
   assert.ok(src.includes('currentModuleStatus'))
   assert.ok(src.includes('canSaveCurrentStandard'))
-  assert.ok(src.includes("title: '归档版本只读'"))
-  assert.ok(src.includes("title: '发布版本不可直接覆盖'"))
-  assert.ok(src.includes("status: 'draft'"))
-  assert.ok(src.includes("flowModules.setListeningChoiceStatus(ref, 'published')"))
+  assert.ok(lifecycleSrc.includes("title: '归档版本只读'"))
+  assert.ok(lifecycleSrc.includes("title: '发布版本不可直接覆盖'"))
+  assert.ok(lifecycleSrc.includes("status: 'draft'"))
+  assert.ok(lifecycleSrc.includes("flowModules.setListeningChoiceStatus(ref, 'published')"))
 })
 
 test('flow center should allow editing module display name and note for save/publish', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(src.includes('流程名称'))
   assert.ok(src.includes('流程备注'))
   assert.ok(src.includes('draftModuleName'))
   assert.ok(src.includes('draftModuleNote'))
-  assert.ok(src.includes('const moduleName = normalizeModuleName(draftModuleName.value'))
-  assert.ok(src.includes('const moduleNote = normalizeModuleNote(draftModuleNote.value)'))
-  assert.ok(src.includes('name: moduleName'))
-  assert.ok(src.includes('note: moduleNote'))
+  assert.ok(lifecycleSrc.includes('const moduleName = normalizeModuleName(draftModuleName.value'))
+  assert.ok(lifecycleSrc.includes('const moduleNote = normalizeModuleNote(draftModuleNote.value)'))
+  assert.ok(lifecycleSrc.includes('name: moduleName'))
+  assert.ok(lifecycleSrc.includes('note: moduleNote'))
 })
 
 test('flow center should show module names in routing cards and published-version chips', async () => {
@@ -235,11 +247,46 @@ test('listening-choice binding should skip archived module refs and fallback', a
 
 test('flow center should support bulk migrating profile rules to current module version', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(src.includes('迁移到当前版本'))
   assert.ok(src.includes('flowProfilesMigratableToCurrentVersion'))
   assert.ok(src.includes('migrateFlowProfilesToCurrentVersion'))
-  assert.ok(src.includes("title: '批量迁移路由版本'"))
-  assert.ok(src.includes('formatFlowProfileVersionSummary'))
+  assert.ok(lifecycleSrc.includes("title: '批量迁移路由版本'"))
+  assert.ok(lifecycleSrc.includes('formatFlowProfileVersionSummary'))
+})
+
+test('flow center should run template/module/profile cross-checks before module commit', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
+  const validatorSrc = await readFile('domain/flow-module/usecases/validateModuleCommitCrossChecks.ts')
+  assert.ok(src.includes('validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload)'))
+  assert.ok(src.includes('validateListeningChoiceModuleCommitCrossChecks'))
+  assert.ok(src.includes('validateBeforeCommit: validateModuleCommitBeforeSavePublish'))
+  assert.ok(lifecycleSrc.includes('checkModuleCommitGuard'))
+  assert.ok(lifecycleSrc.includes("title: '流程引用校验失败'"))
+  assert.ok(validatorSrc.includes('template_groups_empty'))
+  assert.ok(validatorSrc.includes('group_prepare_seconds_missing'))
+  assert.ok(validatorSrc.includes('route_missing_module_ref'))
+  assert.ok(validatorSrc.includes('route_archived_module_ref'))
+})
+
+test('flow center should provide field-level blocking issues with one-click jump for commit validation', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
+  const editorSrc = await readFile('components/editor/ListeningChoiceEditor.vue')
+
+  assert.ok(src.includes('保存/发布阻断项'))
+  assert.ok(src.includes('jumpToCommitValidationIssue'))
+  assert.ok(src.includes('jumpToFirstCommitValidationIssue'))
+  assert.ok(src.includes(':focus-path="templateFocusPath"'))
+  assert.ok(src.includes("onCommitValidationFailed: handleModuleCommitValidationFailed"))
+  assert.ok(src.includes("class=\"panel\" :class=\"{ 'panel--focus': routePanelFocusActive }\""))
+  assert.ok(src.includes(":class=\"{ 'is-focus': routePanelFocusProfileId === profile.id }\""))
+  assert.ok(lifecycleSrc.includes('onCommitValidationFailed?: (result: ModuleCommitValidationResult) => boolean'))
+  assert.ok(lifecycleSrc.includes('const handled = onCommitValidationFailed ? onCommitValidationFailed(result) : false'))
+  assert.ok(editorSrc.includes('focusPath?: string'))
+  assert.ok(editorSrc.includes('card--focused'))
+  assert.ok(editorSrc.includes('sub-card--focused'))
 })
 
 test('flow engine should provide generic flow protocol and reducer abstractions for multi-question types', async () => {

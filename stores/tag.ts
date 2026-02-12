@@ -1,6 +1,7 @@
-import { reactive, watch } from 'vue'
+import { reactive } from 'vue'
 import type { TagNode, TagTree, TagIndex } from '/types/tag'
 import { ensureNodeIds, buildTagIndex, addChildNode, updateNodeTitle, removeNodeById } from './tagTree'
+import { createPersistenceScheduler } from './persistence'
 
 // JSON imports (bundled at build time, no runtime require)
 import knowledgeRoots from '../题型知识点标签.json'
@@ -180,17 +181,20 @@ class TagStore {
     tree: [] as TagTree,
     index: { byId: {}, pathById: {}, rootById: {} } as TagIndex
   })
+  private readonly persistence = createPersistenceScheduler(() => this.save(), 300)
 
   constructor() {
     this.load()
-    watch(() => this.state.tree, () => {
-      this.save()
-      this.rebuildIndex()
-    }, { deep: true })
   }
 
   rebuildIndex() {
     this.state.index = buildTagIndex(this.state.tree)
+  }
+
+  private setTree(nextTree: TagTree, options: { persist?: boolean } = {}) {
+    this.state.tree = nextTree
+    this.rebuildIndex()
+    if (options.persist !== false) this.persistence.schedule()
   }
 
   load() {
@@ -201,7 +205,7 @@ class TagStore {
         const cleaned = parsed.filter(node => (node.title || '').trim() !== '括号图')
         const pruned = pruneRootNodes(cleaned)
         if (pruned.tree.length === 0) {
-          this.state.tree = buildInitialTree()
+          this.setTree(buildInitialTree(), { persist: false })
           this.save()
         } else {
           const ensured = ensureRequiredCategories(pruned.tree)
@@ -216,18 +220,16 @@ class TagStore {
             changed = true
           }
 
-          this.state.tree = nextTree
+          this.setTree(nextTree, { persist: false })
           if (changed) this.save()
         }
       } else {
-        this.state.tree = buildInitialTree()
+        this.setTree(buildInitialTree(), { persist: false })
         this.save()
       }
-      this.rebuildIndex()
     } catch (e) {
       console.error('Failed to load tag tree', e)
-      this.state.tree = buildInitialTree()
-      this.rebuildIndex()
+      this.setTree(buildInitialTree(), { persist: false })
     }
   }
 
@@ -263,15 +265,15 @@ class TagStore {
     const parentPath = parentId ? (this.state.index.pathById[parentId] || '') : ''
     const pathParts = parentPath ? parentPath.split('/') : []
     const [normalized] = ensureNodeIds([node], pathParts)
-    this.state.tree = addChildNode(this.state.tree, parentId, normalized)
+    this.setTree(addChildNode(this.state.tree, parentId, normalized))
   }
 
   rename(id: string, title: string) {
-    this.state.tree = updateNodeTitle(this.state.tree, id, title.trim())
+    this.setTree(updateNodeTitle(this.state.tree, id, title.trim()))
   }
 
   remove(id: string) {
-    this.state.tree = removeNodeById(this.state.tree, id)
+    this.setTree(removeNodeById(this.state.tree, id))
   }
 }
 

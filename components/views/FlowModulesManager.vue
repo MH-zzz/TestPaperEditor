@@ -83,6 +83,7 @@
                   v-model="demoBase"
                   :preview-step-index="currentStepIndex"
                   template-mode
+                  :focus-path="templateFocusPath"
                 />
               </view>
             </view>
@@ -363,7 +364,37 @@
               </view>
             </view>
 
-            <view class="panel">
+            <view v-if="commitValidationIssues.length > 0" class="panel panel--blocking">
+              <view class="panel__header panel__header--blocking">
+                <view class="panel__header-left">
+                  <text class="panel__title">保存/发布阻断项</text>
+                  <text class="panel__desc">修复以下问题后，才能保存或发布流程版本</text>
+                </view>
+                <view class="panel__header-actions">
+                  <button class="btn btn-outline btn-xs" @click="jumpToFirstCommitValidationIssue">定位首个问题</button>
+                  <button class="btn btn-outline btn-xs" @click="clearCommitValidationIssues">清空</button>
+                </view>
+              </view>
+              <view class="panel__body">
+                <view class="blocking-list">
+                  <view
+                    v-for="item in commitValidationIssues"
+                    :key="item.key"
+                    class="blocking-item"
+                    :class="{ active: activeCommitValidationIssueKey === item.key }"
+                  >
+                    <text class="blocking-item__loc">{{ item.locationLabel }}</text>
+                    <text class="blocking-item__msg">{{ item.message }}</text>
+                    <text class="blocking-item__path">{{ item.path }}</text>
+                    <view class="blocking-item__actions">
+                      <button class="btn btn-outline btn-xs" @click="jumpToCommitValidationIssue(item)">定位</button>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+
+            <view class="panel" :class="{ 'panel--focus': routePanelFocusActive }">
               <view class="panel__header">
                 <view class="panel__header-left">
                   <text class="panel__title">题型流程路由</text>
@@ -383,7 +414,12 @@
                 <view v-if="flowProfileRules.length === 0" class="empty-tip">暂无路由规则</view>
 
                 <view v-else class="profile-list">
-                  <view v-for="profile in flowProfileRules" :key="profile.id" class="profile-card">
+                  <view
+                    v-for="profile in flowProfileRules"
+                    :key="profile.id"
+                    class="profile-card"
+                    :class="{ 'is-focus': routePanelFocusProfileId === profile.id }"
+                  >
                     <view class="profile-card__head">
                       <text class="profile-card__id">{{ profile.id }}</text>
                       <text class="profile-card__module">{{ formatModuleDisplayRef(profile.module) }}</text>
@@ -708,7 +744,14 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { FlowModuleStatus, FlowProfileV1, ListeningChoiceQuestion, SubQuestion } from '/types'
+import type {
+  FlowModuleRef,
+  FlowProfileV1,
+  ListeningChoiceFlowModuleV1,
+  ListeningChoiceQuestion,
+  Question,
+  SubQuestion
+} from '/types'
 import ListeningChoiceEditor from '/components/editor/ListeningChoiceEditor.vue'
 import ListeningChoiceFlowDiagram from '/components/editor/ListeningChoiceFlowDiagram.vue'
 import FlowStepQuickAdd from '/components/editor/FlowStepQuickAdd.vue'
@@ -720,60 +763,51 @@ import { flowProfiles } from '/stores/flowProfiles'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'
 import {
-  type FlowModulePublishLogRecord,
-  loadFlowModulePublishLogs as loadFlowModulePublishLogsFromRepository,
-  saveFlowModulePublishLogs as saveFlowModulePublishLogsToRepository
-} from '/infra/repository/flowModuleRepository'
-import {
-  patchListeningChoiceQuestionFlow,
-  patchQuestionFlowContext,
-  readQuestionFlowContext
+  patchListeningChoiceQuestionFlow
 } from './flow-modules/currentQuestionBridge'
 import { generateId } from '/templates'
-import { buildModuleDiffSummary, formatModuleDiffSummary } from '/domain/flow-module/usecases/buildModuleDiffSummary'
 import {
   buildFlowProfileFixSuggestions as buildFlowProfileFixSuggestionsUsecase,
   canSubmitFlowProfiles,
   diagnoseFlowProfileRules as diagnoseFlowProfileRulesUsecase,
-  scoreProfiles as scoreProfilesUsecase,
-  type FlowProfileScoreDetail as FlowProfileScoreDetailUsecase,
   type FlowProfileDiagnostics as FlowProfileDiagnosticsUsecase,
   type FlowProfileFixSuggestion as FlowProfileFixSuggestionUsecase,
   type FlowProfileSubmitValidation
 } from '/domain/flow-profile/usecases/scoreProfiles'
+import { validateListeningChoiceModuleCommitCrossChecks } from '/domain/flow-module/usecases/validateModuleCommitCrossChecks'
 import {
   DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
   LISTENING_CHOICE_STANDARD_FLOW_ID,
-  type ListeningChoiceStandardPerGroupStepDef,
+  type ListeningChoiceStandardFlowModuleV1,
   materializeListeningChoiceStandardSteps,
-  materializeListeningChoiceTemplateSteps,
-  validateListeningChoiceStandardModule
+  materializeListeningChoiceTemplateSteps
 } from '../../flows/listeningChoiceFlowModules'
+import {
+  usePerGroupStepEditor,
+  type QuickAddPerGroupKind
+} from './flow-modules/usePerGroupStepEditor'
+import { useRouteSimulator } from './flow-modules/useRouteSimulator'
+import {
+  useModuleLifecycle,
+  type ModuleCommitValidationPayload,
+  type ModuleCommitValidationResult
+} from './flow-modules/useModuleLifecycle'
 
 type Page = 'home' | 'listening_choice'
-type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'answerChoice'
-type AudioSource = 'description' | 'content'
-type QuickAddPerGroupKind = 'playAudioDescription' | 'playAudioContent' | 'countdown' | 'promptTone' | 'answerChoice'
 const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'
-
-type FlowModulePublishLog = FlowModulePublishLogRecord
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))
 }
 
-function getCurrentQuestionSnapshot() {
+function getCurrentQuestionSnapshot(): Question | null {
   const current = questionDraft.state.currentQuestion
   if (!current || typeof current !== 'object') return null
   return clone(current)
 }
 
-function persistCurrentQuestion(next: ListeningChoiceQuestion | Record<string, any>) {
-  questionDraft.updateDraft(next as any, { persistDraft: true })
-}
-
-function nowIso() {
-  return new Date().toISOString()
+function persistCurrentQuestion(next: Question) {
+  questionDraft.updateDraft(next, { persistDraft: true })
 }
 
 function makeStableIdFactory(prefix = 'demo_step') {
@@ -781,22 +815,22 @@ function makeStableIdFactory(prefix = 'demo_step') {
   return () => `${prefix}_${++i}`
 }
 
-function toInt(v: any): number {
+function toInt(v: unknown): number {
   const n = parseInt(String(v || '0'), 10)
   return Number.isFinite(n) ? n : 0
 }
 
-function normalizeText(v: any): string | undefined {
+function normalizeText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
-function normalizeModuleName(name: any, fallback = DEFAULT_LISTENING_CHOICE_MODULE_NAME): string {
+function normalizeModuleName(name: unknown, fallback = DEFAULT_LISTENING_CHOICE_MODULE_NAME): string {
   return normalizeText(name) || fallback
 }
 
-function normalizeModuleNote(note: any): string {
+function normalizeModuleNote(note: unknown): string {
   return normalizeText(note) || ''
 }
 
@@ -804,69 +838,22 @@ function moduleNameFallbackById(id: string): string {
   return id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
 }
 
-function formatModuleDisplayRef(refLike: any): string {
+type ModuleDisplayRefLike = Partial<FlowModuleRef & { name?: string | null }> | null | undefined
+
+function formatModuleDisplayRef(refLike: ModuleDisplayRefLike): string {
   const id = String(refLike?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   const version = Math.max(1, toInt(refLike?.version || 1))
-  const hit = flowModules.getListeningChoiceByRef({ id, version } as any)
+  const hit = flowModules.getListeningChoiceByRef({ id, version })
   const name = normalizeModuleName(refLike?.name || hit?.name, moduleNameFallbackById(id))
   return `${name} @ v${version}`
 }
 
-function normalizeModuleStatus(v: any): FlowModuleStatus {
-  if (v === 'draft' || v === 'published' || v === 'archived') return v
-  return 'draft'
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function kindLabel(kind: string): string {
-  const map: Record<string, string> = {
-    intro: '介绍页',
-    countdown: '倒计时',
-    playAudio: '播放音频',
-    promptTone: '提示音',
-    answerChoice: '开始答题',
-    groupPrompt: '题组提示',
-    finish: '完成页'
-  }
-  return map[kind] || kind
-}
-
-function perGroupKindLabel(kind: PerGroupKind, audioSource?: AudioSource): string {
-  if (kind === 'playAudio') return audioSource === 'description' ? '播放描述音频' : '播放正文音频'
-  if (kind === 'countdown') return '倒计时'
-  if (kind === 'promptTone') return '提示音'
-  return '开始答题'
-}
-
-function createPerGroupStep(kind: QuickAddPerGroupKind): ListeningChoiceStandardPerGroupStepDef {
-  if (kind === 'playAudioDescription') {
-    return { kind: 'playAudio', showTitle: true, audioSource: 'description' }
-  }
-  if (kind === 'playAudioContent') {
-    return { kind: 'playAudio', showTitle: true, audioSource: 'content' }
-  }
-  if (kind === 'countdown') {
-    return { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' }
-  }
-  if (kind === 'promptTone') {
-    return { kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' }
-  }
-  return { kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
-}
-
-function calcPerGroupOffset(): number {
-  const steps: any[] = demoQuestion.value.flow?.steps || []
-  let offset = 0
-  if (steps[0]?.kind === 'intro') offset += 1
-  if (steps[1]?.kind === 'countdown' && steps[0]?.kind === 'intro') offset += 1
-  return offset
-}
-
-function flowIndexByPerGroupIndex(perGroupIndex: number): number {
-  return calcPerGroupOffset() + Math.max(0, perGroupIndex)
-}
-
-function toLegacyStandardModule(moduleInput: any) {
-  const m = moduleInput && typeof moduleInput === 'object' ? moduleInput : {}
+function toLegacyStandardModule(moduleInput: unknown): ListeningChoiceStandardFlowModuleV1 {
+  const m = isObjectRecord(moduleInput) ? moduleInput : {}
   return {
     version: 1,
     id: String(m.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
@@ -878,10 +865,10 @@ function toLegacyStandardModule(moduleInput: any) {
     introCountdownSeconds: m.introCountdownSeconds,
     introCountdownLabel: m.introCountdownLabel,
     perGroupSteps: Array.isArray(m.perGroupSteps) ? m.perGroupSteps : []
-  } as any
+  }
 }
 
-function getDefaultModule() {
+function getDefaultModule(): ListeningChoiceFlowModuleV1 {
   const module = flowModules.getListeningChoiceDefault()
   if (module) return module
   return {
@@ -892,7 +879,7 @@ function getDefaultModule() {
     note: '',
     status: 'published',
     ...DEFAULT_LISTENING_CHOICE_STANDARD_MODULE
-  } as any
+  }
 }
 
 function buildQuestionFromTemplate(): ListeningChoiceQuestion {
@@ -922,8 +909,8 @@ const defaultModule = getDefaultModule()
 const draftModuleId = ref(String(defaultModule.id || LISTENING_CHOICE_STANDARD_FLOW_ID))
 const draftModuleVersion = ref(Number(defaultModule.version || 1))
 const draftModuleName = ref(normalizeModuleName(defaultModule.name, DEFAULT_LISTENING_CHOICE_MODULE_NAME))
-const draftModuleNote = ref(normalizeModuleNote((defaultModule as any)?.note))
-const listeningChoiceDraft = ref(clone(toLegacyStandardModule(defaultModule)))
+const draftModuleNote = ref(normalizeModuleNote(defaultModule?.note))
+const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toLegacyStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
   const id = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
   const fallbackName = id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
@@ -931,28 +918,6 @@ const draftModuleDisplayRef = computed(() => {
   const version = Math.max(1, toInt(draftModuleVersion.value || 1))
   return `${name} @ v${version}`
 })
-const currentModuleRef = computed(() => ({
-  id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-  version: Math.max(1, toInt(draftModuleVersion.value || 1))
-}))
-const currentModule = computed(() => flowModules.getListeningChoiceByRef(currentModuleRef.value as any))
-const currentModuleExists = computed(() => Boolean(currentModule.value))
-const currentModuleStatus = computed<FlowModuleStatus>(() => normalizeModuleStatus(currentModule.value?.status))
-const currentModuleStatusLabel = computed(() => {
-  if (!currentModuleExists.value) return '新建草稿'
-  if (currentModuleStatus.value === 'draft') return '草稿'
-  if (currentModuleStatus.value === 'published') return '已发布'
-  return '已归档'
-})
-const currentModuleStatusHint = computed(() => {
-  if (!currentModuleExists.value) return '当前版本尚未创建，保存后将作为草稿；草稿发布后才能作为稳定版本使用。'
-  if (currentModuleStatus.value === 'draft') return '草稿可持续编辑；发布后进入已发布状态。'
-  if (currentModuleStatus.value === 'published') return '已发布版本不可直接覆盖；如需修改，请“另存新版本”后编辑草稿。'
-  return '已归档版本只读且不会再命中新题；如需调整，请“另存新版本”。'
-})
-const canSaveCurrentStandard = computed(() => !currentModuleExists.value || currentModuleStatus.value === 'draft')
-const canPublishCurrentStandard = computed(() => currentModuleExists.value && currentModuleStatus.value === 'draft')
-const canArchiveCurrentStandard = computed(() => currentModuleExists.value && currentModuleStatus.value !== 'archived')
 const demoBase = computed<ListeningChoiceQuestion>({
   get() {
     return buildQuestionFromTemplate()
@@ -971,43 +936,25 @@ const libraryModules = computed(() => {
 })
 
 const listeningChoiceLibraryCount = computed(() => libraryModules.value.length)
-const flowProfileRules = computed<FlowProfileV1[]>(() => flowProfiles.listByQuestionType('listening_choice') as any)
+const flowProfileRules = computed<FlowProfileV1[]>(() => flowProfiles.listByQuestionType('listening_choice'))
 const flowModuleRefOptions = computed(() => {
-  return (flowModules.listListeningChoice() || []).filter((m: any) => m?.status === 'published')
+  return (flowModules.listListeningChoice() || []).filter((m) => m?.status === 'published')
 })
-const flowProfilesMigratableToCurrentVersion = computed<FlowProfileV1[]>(() => {
-  const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-  return (flowProfileRules.value || []).filter((profile) => {
-    const moduleId = String(profile?.module?.id || '')
-    const moduleVersion = Number(profile?.module?.version || 0)
-    return moduleId === targetId && moduleVersion > 0 && moduleVersion !== targetVersion
-  })
+const routeSimulator = useRouteSimulator({
+  flowProfileRules,
+  getCurrentQuestionSnapshot,
+  persistCurrentQuestion
 })
-const routeSimRegion = ref('')
-const routeSimScene = ref('')
-const routeSimGrade = ref('')
-const routeSimScoreResult = computed(() => {
-  return scoreProfilesUsecase(flowProfileRules.value || [], {
-    region: normalizeNullableText(routeSimRegion.value),
-    scene: normalizeNullableText(routeSimScene.value),
-    grade: normalizeNullableText(routeSimGrade.value)
-  }, { topN: 5 })
-})
-const simulatedRankedCandidates = computed<FlowRuleScoreDetail[]>(() => {
-  return routeSimScoreResult.value.rankedCandidates || []
-})
-const simulatedBestCandidate = computed<FlowRuleScoreDetail | null>(() => {
-  return routeSimScoreResult.value.bestCandidate || null
-})
-const simulatedProfile = computed<FlowProfileV1 | null>(() => {
-  return simulatedBestCandidate.value?.profile || null
-})
-const simulatedModule = computed(() => {
-  const profile = simulatedProfile.value
-  if (!profile?.module) return null
-  return flowModules.getListeningChoiceByRef(profile.module as any)
-})
+const {
+  routeSimRegion,
+  routeSimScene,
+  routeSimGrade,
+  routeSimScoreResult,
+  simulatedRankedCandidates,
+  simulatedBestCandidate,
+  simulatedProfile,
+  simulatedModule
+} = routeSimulator
 const flowProfileDiagnostics = computed<FlowProfileDiagnosticsUsecase>(() => diagnoseFlowProfileRules(flowProfileRules.value || []))
 const flowProfileFixSuggestions = computed(() => {
   return buildFlowProfileFixSuggestions(flowProfileDiagnostics.value, flowProfileRules.value || [])
@@ -1016,50 +963,15 @@ const flowProfileSubmitValidation = computed<FlowProfileSubmitValidation>(() => 
   return canSubmitFlowProfiles(flowProfileRules.value || [])
 })
 const pendingFlowProfileFixSuggestions = ref<FlowProfileFixPreviewItem[]>([])
-const flowModulePublishLogs = ref<FlowModulePublishLog[]>([])
-loadFlowModulePublishLogs()
 
 function loadRouteSimFromCurrentQuestion() {
-  try {
-    const data = getCurrentQuestionSnapshot()
-    if (!data) {
-      uni.showToast({ title: '当前没有题目', icon: 'none' })
-      return
-    }
-
-    const ctx = readQuestionFlowContext(data)
-    routeSimRegion.value = ctx.region
-    routeSimScene.value = ctx.scene
-    routeSimGrade.value = ctx.grade
-    uni.showToast({ title: '已读取当前题目上下文', icon: 'success' })
-  } catch (e) {
-    console.error('Failed to load route simulator context from current question', e)
-    uni.showToast({ title: '读取失败', icon: 'none' })
-  }
+  routeSimulator.loadRouteSimFromCurrentQuestion()
 }
 
 function syncRouteSimToCurrentQuestion() {
-  try {
-    const data = getCurrentQuestionSnapshot()
-    if (!data) {
-      uni.showToast({ title: '当前没有题目', icon: 'none' })
-      return
-    }
-
-    const next = patchQuestionFlowContext(data as any, {
-      region: routeSimRegion.value,
-      scene: routeSimScene.value,
-      grade: routeSimGrade.value
-    })
-    persistCurrentQuestion(next)
-    uni.showToast({ title: '已写回当前题目上下文', icon: 'success' })
-  } catch (e) {
-    console.error('Failed to sync route simulator context to current question', e)
-    uni.showToast({ title: '写回失败', icon: 'none' })
-  }
+  routeSimulator.syncRouteSimToCurrentQuestion()
 }
 
-type FlowRuleScoreDetail = FlowProfileScoreDetailUsecase
 type FlowProfileFixSuggestion = FlowProfileFixSuggestionUsecase
 
 type FlowProfileFixFieldDiff = {
@@ -1071,6 +983,132 @@ type FlowProfileFixFieldDiff = {
 type FlowProfileFixPreviewItem = FlowProfileFixSuggestion & {
   previewText: string
   previewFields: FlowProfileFixFieldDiff[]
+}
+
+type CommitValidationIssueScope = 'template' | 'routing' | 'unknown'
+
+type CommitValidationIssue = {
+  key: string
+  code: string
+  path: string
+  message: string
+  scope: CommitValidationIssueScope
+  locationLabel: string
+  targetProfileId?: string
+}
+
+const commitValidationIssues = ref<CommitValidationIssue[]>([])
+const activeCommitValidationIssueKey = ref('')
+const templateFocusPath = ref('')
+const routePanelFocusActive = ref(false)
+const routePanelFocusProfileId = ref('')
+let routePanelFocusTimer: ReturnType<typeof setTimeout> | null = null
+
+function resolveCommitValidationScope(path: string): CommitValidationIssueScope {
+  if (path.startsWith('content.')) return 'template'
+  if (path.startsWith('flowProfiles')) return 'routing'
+  return 'unknown'
+}
+
+function resolveCommitValidationLocationLabel(path: string, scope: CommitValidationIssueScope, profileId?: string): string {
+  if (scope === 'template') {
+    const groupMatch = path.match(/content\.groups\[(\d+)\]/)
+    if (groupMatch) {
+      const gIndex = Number(groupMatch[1] || 0)
+      return `题目模板 > 题组 ${gIndex + 1}`
+    }
+    if (path.startsWith('content.intro')) return '题目模板 > 题目说明'
+    return '题目模板'
+  }
+  if (scope === 'routing') {
+    if (profileId) return `流程路由 > ${profileId}`
+    return '流程路由'
+  }
+  return '未知区域'
+}
+
+function normalizeCommitValidationIssue(
+  issue: { code?: string; path?: string; message?: string },
+  index: number
+): CommitValidationIssue {
+  const code = String(issue?.code || 'unknown_issue')
+  const path = String(issue?.path || '')
+  const message = String(issue?.message || '流程提交前校验未通过')
+  const scope = resolveCommitValidationScope(path)
+  const profileMatch = path.match(/flowProfiles\[\d+\]\(([^)]+)\)/)
+  const targetProfileId = profileMatch?.[1] ? String(profileMatch[1]) : undefined
+  const locationLabel = resolveCommitValidationLocationLabel(path, scope, targetProfileId)
+  return {
+    key: `${code}:${path}:${index}`,
+    code,
+    path,
+    message,
+    scope,
+    locationLabel,
+    targetProfileId
+  }
+}
+
+function setRoutePanelFocus(profileId?: string) {
+  routePanelFocusActive.value = true
+  routePanelFocusProfileId.value = profileId || ''
+  if (routePanelFocusTimer) clearTimeout(routePanelFocusTimer)
+  routePanelFocusTimer = setTimeout(() => {
+    routePanelFocusActive.value = false
+    routePanelFocusProfileId.value = ''
+    routePanelFocusTimer = null
+  }, 1800)
+}
+
+function clearCommitValidationIssues() {
+  commitValidationIssues.value = []
+  activeCommitValidationIssueKey.value = ''
+  templateFocusPath.value = ''
+  routePanelFocusActive.value = false
+  routePanelFocusProfileId.value = ''
+  if (routePanelFocusTimer) {
+    clearTimeout(routePanelFocusTimer)
+    routePanelFocusTimer = null
+  }
+}
+
+function jumpToCommitValidationIssue(issue: CommitValidationIssue) {
+  activeCommitValidationIssueKey.value = issue.key
+  if (issue.scope === 'template') {
+    templateFocusPath.value = issue.path
+    routePanelFocusActive.value = false
+    routePanelFocusProfileId.value = ''
+    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
+    return
+  }
+  if (issue.scope === 'routing') {
+    templateFocusPath.value = ''
+    setRoutePanelFocus(issue.targetProfileId)
+    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '该问题暂不支持自动定位', icon: 'none' })
+}
+
+function jumpToFirstCommitValidationIssue() {
+  const first = commitValidationIssues.value[0]
+  if (!first) {
+    uni.showToast({ title: '当前无阻断项', icon: 'none' })
+    return
+  }
+  jumpToCommitValidationIssue(first)
+}
+
+function handleModuleCommitValidationFailed(result: ModuleCommitValidationResult): boolean {
+  if (!Array.isArray(commitValidationIssues.value) || commitValidationIssues.value.length <= 0) {
+    const normalized = (Array.isArray(result.issues) ? result.issues : [])
+      .map(normalizeCommitValidationIssue)
+    commitValidationIssues.value = normalized
+  }
+  if (commitValidationIssues.value.length > 0) {
+    jumpToCommitValidationIssue(commitValidationIssues.value[0])
+  }
+  return true
 }
 
 function diagnoseFlowProfileRules(profiles: FlowProfileV1[]): FlowProfileDiagnosticsUsecase {
@@ -1088,7 +1126,7 @@ function toFlowProfileFixPreviewItem(suggestion: FlowProfileFixSuggestion): Flow
   const current = flowProfiles.getById(suggestion.targetId)
   const previewFields = Object.entries(suggestion.patch || {})
     .map(([k, nextValue]) => {
-      const prevValue = current ? (current as any)[k] : undefined
+      const prevValue = current ? (current as unknown as Record<string, unknown>)[k] : undefined
       return {
         key: k,
         before: String(prevValue ?? '(空)'),
@@ -1156,7 +1194,7 @@ function applyAllFlowProfileFixSuggestions() {
   openFlowProfileFixPreview(flowProfileFixSuggestions.value || [])
 }
 
-function normalizeNullableText(v: any): string | undefined {
+function normalizeNullableText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
@@ -1202,10 +1240,12 @@ function showFlowProfileSubmitBlocked(validation: FlowProfileSubmitValidation) {
   })
 }
 
-function patchFlowProfile(id: string, patch: Record<string, any>) {
+function patchFlowProfile(id: string, patch: Record<string, unknown>) {
   const current = flowProfiles.getById(id)
   if (!current) return false
-  const nextModule = patch.module ? { ...(current.module || {}), ...patch.module } : current.module
+  const patchRecord = patch as Record<string, unknown>
+  const patchModule = isObjectRecord(patchRecord.module) ? patchRecord.module : undefined
+  const nextModule = patchModule ? { ...(current.module || {}), ...patchModule } : current.module
   const result = flowProfiles.upsertWithDiagnostics({
     ...current,
     ...patch,
@@ -1217,6 +1257,54 @@ function patchFlowProfile(id: string, patch: Record<string, any>) {
   }
   return true
 }
+
+function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload): ModuleCommitValidationResult {
+  const crossValidation = validateListeningChoiceModuleCommitCrossChecks({
+    mode: payload.mode,
+    template: demoBase.value,
+    nextModule: payload.module,
+    flowProfiles: flowProfileRules.value || [],
+    moduleCatalog: flowModules.listListeningChoice()
+  })
+  if (crossValidation.ok) {
+    clearCommitValidationIssues()
+    return { ok: true, errors: [] }
+  }
+  const issues = (crossValidation.errors || []).map((item, index) => normalizeCommitValidationIssue({
+    code: item.code,
+    path: item.path,
+    message: item.message
+  }, index))
+  commitValidationIssues.value = issues
+  activeCommitValidationIssueKey.value = issues[0]?.key || ''
+  return {
+    ok: false,
+    errors: issues.map((item) => `${item.path}: ${item.message}`),
+    issues: issues.map((item) => ({ code: item.code, path: item.path, message: item.message }))
+  }
+}
+
+const moduleLifecycle = useModuleLifecycle({
+  draftModuleId,
+  draftModuleVersion,
+  draftModuleName,
+  draftModuleNote,
+  draftModuleDisplayRef,
+  listeningChoiceDraft,
+  flowProfileRules,
+  patchFlowProfile,
+  validateBeforeCommit: validateModuleCommitBeforeSavePublish,
+  onCommitValidationFailed: handleModuleCommitValidationFailed
+})
+const {
+  currentModuleStatus,
+  currentModuleStatusLabel,
+  currentModuleStatusHint,
+  canSaveCurrentStandard,
+  canPublishCurrentStandard,
+  canArchiveCurrentStandard,
+  flowProfilesMigratableToCurrentVersion
+} = moduleLifecycle
 
 function addFlowProfileRule() {
   const ts = Date.now()
@@ -1278,7 +1366,7 @@ function updateFlowProfileText(id: string, key: 'note' | 'region' | 'scene' | 'g
   patchFlowProfile(id, { [key]: normalizeNullableText(value) })
 }
 
-function updateFlowProfilePriority(id: string, value: any) {
+function updateFlowProfilePriority(id: string, value: unknown) {
   const priority = toInt(value)
   patchFlowProfile(id, { priority })
 }
@@ -1294,7 +1382,7 @@ function updateFlowProfileModuleId(id: string, value: string) {
   patchFlowProfile(id, { module: { id: nextId } })
 }
 
-function updateFlowProfileModuleVersion(id: string, value: any) {
+function updateFlowProfileModuleVersion(id: string, value: unknown) {
   const nextVersion = Math.max(1, toInt(value || 1))
   patchFlowProfile(id, { module: { version: nextVersion } })
 }
@@ -1330,7 +1418,7 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
     generateId: makeStableIdFactory(),
     overrides: {},
     module
-  }) as any
+  }) as ListeningChoiceQuestion['flow']['steps']
   return {
     ...base,
     flow: {
@@ -1363,84 +1451,85 @@ watch(previewTotalSteps, (n) => {
   if (configStepIndex.value > n - 1) configStepIndex.value = n - 1
 })
 
-const introShowTitle = computed(() => listeningChoiceDraft.value?.introShowTitle !== false)
-const introShowTitleDescription = computed(() => listeningChoiceDraft.value?.introShowTitleDescription !== false)
-const introShowDescription = computed(() => listeningChoiceDraft.value?.introShowDescription !== false)
-const introCountdownEnabled = computed(() => listeningChoiceDraft.value?.introCountdownEnabled !== false)
-const introCountdownShowTitle = computed(() => listeningChoiceDraft.value?.introCountdownShowTitle !== false)
-const introCountdownSeconds = computed(() => Math.max(0, toInt((listeningChoiceDraft.value as any)?.introCountdownSeconds ?? 3)))
-const introCountdownLabel = computed(() => String((listeningChoiceDraft.value as any)?.introCountdownLabel || '准备'))
-const flowQuickAddItems = computed(() => {
-  const items: Array<{ key: string; label: string }> = []
-  if (!introCountdownEnabled.value) {
-    items.push({ key: 'introCountdown', label: '介绍倒计时' })
-  }
-  items.push({ key: 'playAudioDescription', label: '描述音频' })
-  items.push({ key: 'playAudioContent', label: '正文音频' })
-  items.push({ key: 'countdown', label: '倒计时' })
-  items.push({ key: 'promptTone', label: '提示音' })
-  items.push({ key: 'answerChoice', label: '开始答题' })
-  return items
+const perGroupEditor = usePerGroupStepEditor({
+  demoQuestion,
+  listeningChoiceDraft,
+  currentStepIndex,
+  configStepIndex
 })
+const {
+  introShowTitle,
+  introShowTitleDescription,
+  introShowDescription,
+  introCountdownEnabled,
+  introCountdownShowTitle,
+  introCountdownSeconds,
+  introCountdownLabel,
+  flowQuickAddItems,
+  selectedConfig,
+  selectedStepLabel,
+  reorderableFlowIndices,
+  toggleIntroBool,
+  patchIntroCountdown,
+  getPerGroupRaw,
+  getPerGroupAudioSource,
+  getPerGroupBool,
+  patchPerGroupStep,
+  setPerGroupAudioSource,
+  togglePerGroupBool
+} = perGroupEditor
 
-type SelectedConfig =
-  | { type: 'intro' }
-  | { type: 'intro_countdown' }
-  | { type: 'per_group'; index: number; kind: 'playAudio' | 'countdown' | 'promptTone' | 'answerChoice' }
-  | { type: 'other' }
-
-function resolveConfigByFlowIndex(idx: number): SelectedConfig | null {
-  const steps: any[] = demoQuestion.value.flow?.steps || []
-  if (idx < 0) return null
-  const step: any = steps[idx]
-  if (!step) return null
-
-  if (step.kind === 'intro') return { type: 'intro' }
-
-  const prev: any = steps[idx - 1]
-  if (step.kind === 'countdown' && prev?.kind === 'intro') return { type: 'intro_countdown' }
-
-  const perGroupIndex = idx - calcPerGroupOffset()
-  const def: any = listeningChoiceDraft.value?.perGroupSteps?.[perGroupIndex]
-  const kind = String(def?.kind || '')
-  if (kind === 'playAudio' || kind === 'countdown' || kind === 'promptTone' || kind === 'answerChoice') {
-    return { type: 'per_group', index: perGroupIndex, kind: kind as any }
-  }
-
-  return { type: 'other' }
+function enableIntroCountdown() {
+  perGroupEditor.enableIntroCountdown()
 }
 
-const selectedConfig = computed<SelectedConfig | null>(() => {
-  return resolveConfigByFlowIndex(configStepIndex.value)
-})
+function disableIntroCountdown() {
+  perGroupEditor.disableIntroCountdown()
+}
 
-const reorderableFlowIndices = computed<number[]>(() => {
-  const steps: any[] = demoQuestion.value.flow?.steps || []
-  const indices: number[] = []
-  for (let i = 0; i < steps.length; i += 1) {
-    const cfg = resolveConfigByFlowIndex(i)
-    if (cfg?.type === 'per_group') indices.push(i)
+function quickAddPerGroupStep(kind: QuickAddPerGroupKind) {
+  perGroupEditor.quickAddPerGroupStep(kind)
+}
+
+function removePerGroupStep(index: number) {
+  perGroupEditor.removePerGroupStep(index)
+}
+
+function reorderPerGroupStepByFlowIndex(fromFlowIndex: number, toFlowIndex: number) {
+  perGroupEditor.reorderPerGroupStepByFlowIndex(fromFlowIndex, toFlowIndex)
+}
+
+function onFlowQuickAdd(kind: string) {
+  if (kind === 'introCountdown') {
+    enableIntroCountdown()
+    return
   }
-  return indices
-})
-
-const selectedStepLabel = computed(() => {
-  const step: any = (demoQuestion.value.flow?.steps || [])[configStepIndex.value]
-  if (!step) return '请选择步骤'
-  const config = selectedConfig.value
-  if (config?.type === 'intro') return '介绍页配置'
-  if (config?.type === 'intro_countdown') return '介绍页倒计时配置'
-  if (config?.type === 'per_group') {
-    const perStep: any = listeningChoiceDraft.value?.perGroupSteps?.[config.index]
-    return `每题组流程 · ${perGroupKindLabel(config.kind, getAudioSource(perStep))}`
+  if (kind === 'playAudioDescription') {
+    quickAddPerGroupStep('playAudioDescription')
+    return
   }
-  return kindLabel(String(step.kind || ''))
-})
+  if (kind === 'playAudioContent') {
+    quickAddPerGroupStep('playAudioContent')
+    return
+  }
+  if (kind === 'countdown') {
+    quickAddPerGroupStep('countdown')
+    return
+  }
+  if (kind === 'promptTone') {
+    quickAddPerGroupStep('promptTone')
+    return
+  }
+  if (kind === 'answerChoice') {
+    quickAddPerGroupStep('answerChoice')
+  }
+}
 
-function syncDraftModuleMeta(module: any) {
-  const id = String(module?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  draftModuleName.value = normalizeModuleName(module?.name, moduleNameFallbackById(id))
-  draftModuleNote.value = normalizeModuleNote(module?.note)
+function syncDraftModuleMeta(module: unknown) {
+  const mod = isObjectRecord(module) ? module : {}
+  const id = String(mod.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+  draftModuleName.value = normalizeModuleName(mod.name, moduleNameFallbackById(id))
+  draftModuleNote.value = normalizeModuleNote(mod.note)
 }
 
 function goHome() {
@@ -1471,614 +1560,32 @@ function toastWip(name: string) {
   uni.showToast({ title: `${name}：开发中`, icon: 'none' })
 }
 
-function formatFlowModuleValidationIssues(items: Array<{ message: string }>, max = 5) {
-  if (!Array.isArray(items) || items.length === 0) return ''
-  const head = items.slice(0, max).map((item, idx) => `${idx + 1}. ${item.message}`)
-  const more = items.length > max ? `\n... 另有 ${items.length - max} 条` : ''
-  return `${head.join('\n')}${more}`
-}
-
-function getFlowModuleSaveImpact(target?: { id?: string; version?: number }) {
-  const refId = String(target?.id || draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  const refVersion = Math.max(1, toInt(target?.version || draftModuleVersion.value || 1))
-  const matchedRules = (flowProfileRules.value || []).filter((p) => {
-    return String(p?.module?.id || '') === refId && Number(p?.module?.version || 0) === refVersion
-  })
-  const enabledRules = matchedRules.filter(p => p?.enabled !== false)
-  const exists = Boolean(flowModules.getListeningChoiceByRef({ id: refId, version: refVersion }))
-  return {
-    id: refId,
-    version: refVersion,
-    exists,
-    matchedRuleCount: matchedRules.length,
-    enabledRuleCount: enabledRules.length,
-    matchedRules
-  }
-}
-
-function formatFlowProfileImpactLines(rules: FlowProfileV1[], max = 6) {
-  if (!Array.isArray(rules) || rules.length === 0) return '无'
-  const lines = rules.slice(0, max).map((p) => {
-    const status = p.enabled === false ? '停用' : '启用'
-    const note = String(p.note || '').trim()
-    const suffix = note ? `（${note}）` : ''
-    return `- ${p.id}${suffix} [${status}]`
-  })
-  if (rules.length > max) lines.push(`- ... 另有 ${rules.length - max} 条`)
-  return lines.join('\n')
-}
-
-function formatFlowProfileVersionSummary(rules: FlowProfileV1[]) {
-  const map: Record<string, number> = {}
-  ;(rules || []).forEach((p) => {
-    const v = `v${Math.max(1, toInt(p?.module?.version || 1))}`
-    map[v] = (map[v] || 0) + 1
-  })
-  return Object.entries(map)
-    .sort((a, b) => Number(b[0].slice(1)) - Number(a[0].slice(1)))
-    .map(([v, count]) => `${v} x ${count}`)
-    .join('，')
-}
-
-function loadFlowModulePublishLogs() {
-  try {
-    const list = loadFlowModulePublishLogsFromRepository()
-    flowModulePublishLogs.value = list
-      .map((item: any) => ({
-        id: String(item?.id || ''),
-        createdAt: String(item?.createdAt || ''),
-        moduleId: String(item?.moduleId || ''),
-        moduleVersion: Math.max(1, toInt(item?.moduleVersion || 1)),
-        moduleDisplayRef: String(item?.moduleDisplayRef || ''),
-        summaryLines: Array.isArray(item?.summaryLines) ? item.summaryLines.map((x: any) => String(x || '')) : []
-      }))
-      .filter((item: FlowModulePublishLog) => item.id)
-      .slice(0, 60)
-  } catch (e) {
-    console.error('Failed to load flow module publish logs', e)
-    flowModulePublishLogs.value = []
-  }
-}
-
-function persistFlowModulePublishLogs() {
-  try {
-    saveFlowModulePublishLogsToRepository(flowModulePublishLogs.value)
-  } catch (e) {
-    console.error('Failed to save flow module publish logs', e)
-  }
-}
-
-function appendFlowModulePublishLog(log: Omit<FlowModulePublishLog, 'id' | 'createdAt'>) {
-  const item: FlowModulePublishLog = {
-    id: `flow_publish_${Date.now()}`,
-    createdAt: nowIso(),
-    moduleId: String(log.moduleId || ''),
-    moduleVersion: Math.max(1, toInt(log.moduleVersion || 1)),
-    moduleDisplayRef: String(log.moduleDisplayRef || ''),
-    summaryLines: Array.isArray(log.summaryLines) ? log.summaryLines.map((x) => String(x || '')) : []
-  }
-  flowModulePublishLogs.value = [item, ...(flowModulePublishLogs.value || [])].slice(0, 60)
-  persistFlowModulePublishLogs()
-}
-
 function showPublishLogs() {
-  const logs = flowModulePublishLogs.value || []
-  if (logs.length <= 0) {
-    uni.showToast({ title: '暂无发布日志', icon: 'none' })
-    return
-  }
-
-  const lines = logs.slice(0, 8).flatMap((item, index) => {
-    const head = `${index + 1}. ${item.createdAt} · ${item.moduleDisplayRef || `${item.moduleId} @ v${item.moduleVersion}`}`
-    const body = (item.summaryLines || []).slice(0, 4).map(line => `   ${line}`)
-    return [head, ...body]
-  })
-  if (logs.length > 8) lines.push(`... 另有 ${logs.length - 8} 条`)
-
-  uni.showModal({
-    title: '发布日志',
-    content: lines.join('\n'),
-    showCancel: false
-  })
+  moduleLifecycle.showPublishLogs()
 }
 
 function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number) {
-  const effectiveVersion = Math.max(1, toInt(targetVersion || draftModuleVersion.value || 1))
-  const targetRef = {
-    id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-    version: effectiveVersion
-  }
-  const existing = flowModules.getListeningChoiceByRef(targetRef)
-
-  if (existing?.status === 'archived') {
-    uni.showModal({
-      title: '归档版本只读',
-      content: '当前版本已归档，不能直接保存。请使用“另存新版本”创建草稿后再编辑。',
-      showCancel: false
-    })
-    return
-  }
-
-  if (existing?.status === 'published') {
-    uni.showModal({
-      title: '发布版本不可直接覆盖',
-      content: '当前版本已发布。为保证可回溯，请使用“另存新版本”创建草稿版本进行修改。',
-      showCancel: false
-    })
-    return
-  }
-
-  const moduleFallbackName = moduleNameFallbackById(targetRef.id)
-  const moduleName = normalizeModuleName(draftModuleName.value, moduleFallbackName)
-  const moduleNote = normalizeModuleNote(draftModuleNote.value)
-  const draftPayload = {
-    kind: 'listening_choice',
-    id: targetRef.id,
-    version: effectiveVersion,
-    name: moduleName,
-    note: moduleNote,
-    status: 'draft',
-    ...listeningChoiceDraft.value
-  }
-  const validation = validateListeningChoiceStandardModule(draftPayload)
-  if (validation.errors.length > 0) {
-    uni.showModal({
-      title: '题型流程校验失败',
-      content: formatFlowModuleValidationIssues(validation.errors),
-      showCancel: false
-    })
-    return
-  }
-
-  if (!skipWarningCheck && validation.warnings.length > 0) {
-    uni.showModal({
-      title: '题型流程校验提醒',
-      content: `${formatFlowModuleValidationIssues(validation.warnings)}\n\n是否仍然保存？`,
-      confirmText: '仍然保存',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        saveStandard(true, skipImpactCheck, targetVersion)
-      }
-    })
-    return
-  }
-
-  if (!skipImpactCheck) {
-    const impact = getFlowModuleSaveImpact({ id: draftPayload.id, version: effectiveVersion })
-    const actionLabel = impact.exists ? '覆盖草稿版本' : '创建草稿版本'
-    const diffSummary = buildModuleDiffSummary({
-      previousModule: existing || null,
-      nextModule: draftPayload as any,
-      impactRules: impact.matchedRules as any
-    })
-    const contentLines = [
-      `本次将${actionLabel}：${moduleName}（${draftPayload.id} @ v${effectiveVersion}）`,
-      `变更摘要：\n${formatModuleDiffSummary(diffSummary)}`,
-      '是否继续保存？'
-    ]
-    if (moduleNote) contentLines.splice(1, 0, `流程备注：${moduleNote}`)
-    const content = contentLines.join('\n')
-    uni.showModal({
-      title: '确认保存题型流程',
-      content,
-      confirmText: '确认保存',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        saveStandard(true, true, targetVersion)
-      }
-    })
-    return
-  }
-
-  flowModules.upsertListeningChoice({
-    ...draftPayload
-  })
-  const module = flowModules.getListeningChoiceByRef({
-    id: draftModuleId.value,
-    version: effectiveVersion
-  })
-  draftModuleVersion.value = effectiveVersion
-  syncDraftModuleMeta(module || draftPayload)
-  listeningChoiceDraft.value = clone(toLegacyStandardModule(module || getDefaultModule()))
-  uni.showToast({ title: `已保存草稿 v${effectiveVersion}`, icon: 'success' })
+  moduleLifecycle.saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
 }
 
 function saveStandardAsNextVersion() {
-  const moduleId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  const currentVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-  const maxVersion = flowModules.getListeningChoiceMaxVersion(moduleId)
-  const nextVersion = Math.max(currentVersion + 1, maxVersion + 1, 1)
-  saveStandard(false, false, nextVersion)
+  moduleLifecycle.saveStandardAsNextVersion()
 }
 
 function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false) {
-  const ref = {
-    id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-    version: Math.max(1, toInt(draftModuleVersion.value || 1))
-  }
-  const hit = flowModules.getListeningChoiceByRef(ref)
-  if (hit?.status === 'archived') {
-    uni.showToast({ title: '归档版本不可发布', icon: 'none' })
-    return
-  }
-  if (hit?.status === 'published') {
-    uni.showToast({ title: '当前版本已发布', icon: 'none' })
-    return
-  }
-
-  const moduleFallbackName = moduleNameFallbackById(ref.id)
-  const moduleName = normalizeModuleName(draftModuleName.value, moduleFallbackName)
-  const moduleNote = normalizeModuleNote(draftModuleNote.value)
-  const publishPayload = {
-    kind: 'listening_choice',
-    id: ref.id,
-    version: ref.version,
-    name: moduleName,
-    note: moduleNote,
-    status: 'draft',
-    ...listeningChoiceDraft.value
-  }
-  const validation = validateListeningChoiceStandardModule(publishPayload)
-  if (validation.errors.length > 0) {
-    uni.showModal({
-      title: '题型流程校验失败',
-      content: formatFlowModuleValidationIssues(validation.errors),
-      showCancel: false
-    })
-    return
-  }
-
-  if (!skipWarningCheck && validation.warnings.length > 0) {
-    uni.showModal({
-      title: '题型流程校验提醒',
-      content: `${formatFlowModuleValidationIssues(validation.warnings)}\n\n是否仍然发布？`,
-      confirmText: '仍然发布',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        publishCurrentStandard(true, skipImpactCheck)
-      }
-    })
-    return
-  }
-
-  if (!skipImpactCheck) {
-    const impact = getFlowModuleSaveImpact(ref)
-    const previousPublished = flowModules.getListeningChoiceLatestPublished(ref.id)
-    const diffSummary = buildModuleDiffSummary({
-      previousModule: previousPublished || null,
-      nextModule: publishPayload as any,
-      impactRules: impact.matchedRules as any
-    })
-    const contentLines = [
-      `将发布版本：${moduleName}（${ref.id} @ v${ref.version}）`,
-      `对比基线：${previousPublished ? formatModuleDisplayRef(previousPublished) : '无已发布基线'}`,
-      `变更摘要：\n${formatModuleDiffSummary(diffSummary)}`,
-      '发布后该版本可用于路由规则。是否继续？'
-    ]
-    if (moduleNote) contentLines.splice(1, 0, `流程备注：${moduleNote}`)
-    const content = contentLines.join('\n')
-    uni.showModal({
-      title: '确认发布题型流程',
-      content,
-      confirmText: '确认发布',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        publishCurrentStandard(true, true)
-      }
-    })
-    return
-  }
-
-  const publishImpact = getFlowModuleSaveImpact(ref)
-  const previousPublished = flowModules.getListeningChoiceLatestPublished(ref.id)
-  const publishDiffSummary = buildModuleDiffSummary({
-    previousModule: previousPublished || null,
-    nextModule: publishPayload as any,
-    impactRules: publishImpact.matchedRules as any
-  })
-
-  flowModules.upsertListeningChoice(publishPayload)
-  const ok = flowModules.setListeningChoiceStatus(ref, 'published')
-  if (!ok) {
-    uni.showToast({ title: '发布失败', icon: 'none' })
-    return
-  }
-  const latest = flowModules.getListeningChoiceByRef(ref)
-  syncDraftModuleMeta(latest || publishPayload)
-  if (latest) listeningChoiceDraft.value = clone(toLegacyStandardModule(latest))
-  appendFlowModulePublishLog({
-    moduleId: ref.id,
-    moduleVersion: ref.version,
-    moduleDisplayRef: `${moduleName} @ v${ref.version}`,
-    summaryLines: publishDiffSummary.summaryLines
-  })
-  uni.showToast({ title: `已发布 v${ref.version}`, icon: 'success' })
+  moduleLifecycle.publishCurrentStandard(skipWarningCheck, skipImpactCheck)
 }
 
 function archiveCurrentStandard() {
-  const ref = {
-    id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-    version: Math.max(1, toInt(draftModuleVersion.value || 1))
-  }
-  const hit = flowModules.getListeningChoiceByRef(ref)
-  if (!hit) {
-    uni.showToast({ title: '当前版本不存在', icon: 'none' })
-    return
-  }
-  if (hit.status === 'archived') {
-    uni.showToast({ title: '当前版本已归档', icon: 'none' })
-    return
-  }
-  if (!flowModules.canTransitionListeningChoiceStatus(ref as any, 'archived')) {
-    uni.showToast({ title: '当前状态不允许归档', icon: 'none' })
-    return
-  }
-
-  const impact = getFlowModuleSaveImpact(ref)
-  const moduleName = normalizeModuleName(hit?.name, moduleNameFallbackById(ref.id))
-  const content = [
-    `将归档：${moduleName}（${ref.id} @ v${ref.version}）`,
-    `命中路由规则：${impact.matchedRuleCount} 条（启用 ${impact.enabledRuleCount} 条）`,
-    `受影响路由规则：\n${formatFlowProfileImpactLines(impact.matchedRules as any)}`,
-    '归档后新题不会命中该版本。是否继续？'
-  ].join('\n')
-
-  uni.showModal({
-    title: '归档当前版本',
-    content,
-    confirmText: '确认归档',
-    cancelText: '取消',
-    success: (res) => {
-      if (!res.confirm) return
-      const ok = flowModules.archiveListeningChoice(ref)
-      if (!ok) {
-        uni.showToast({ title: '归档失败', icon: 'none' })
-        return
-      }
-      const fallback = flowModules.getListeningChoiceLatestPublished(ref.id) || getDefaultModule()
-      if (fallback) {
-        draftModuleId.value = String(fallback.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
-        draftModuleVersion.value = Number(fallback.version || 1)
-        syncDraftModuleMeta(fallback)
-        listeningChoiceDraft.value = clone(toLegacyStandardModule(fallback))
-      }
-      uni.showToast({ title: '已归档当前版本', icon: 'success' })
-    }
-  })
+  moduleLifecycle.archiveCurrentStandard()
 }
 
 function migrateFlowProfilesToCurrentVersion() {
-  const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-  const candidates = flowProfilesMigratableToCurrentVersion.value || []
-
-  if (candidates.length <= 0) {
-    uni.showToast({ title: '没有可迁移路由', icon: 'none' })
-    return
-  }
-
-  const content = [
-    `将把以下路由迁移到：${draftModuleDisplayRef.value}（${targetId}）`,
-    `待迁移规则：${candidates.length} 条`,
-    `当前版本分布：${formatFlowProfileVersionSummary(candidates)}`,
-    `规则列表：\n${formatFlowProfileImpactLines(candidates as any, 10)}`,
-    '是否继续？'
-  ].join('\n')
-
-  uni.showModal({
-    title: '批量迁移路由版本',
-    content,
-    confirmText: '批量迁移',
-    cancelText: '取消',
-    success: (res) => {
-      if (!res.confirm) return
-      candidates.forEach((profile) => {
-        patchFlowProfile(profile.id, {
-          module: {
-            id: targetId,
-            version: targetVersion
-          }
-        })
-      })
-      uni.showToast({ title: `已迁移 ${candidates.length} 条路由`, icon: 'success' })
-    }
-  })
+  moduleLifecycle.migrateFlowProfilesToCurrentVersion()
 }
 
 function resetStandard() {
-  uni.showModal({
-    title: '恢复默认题型流程',
-    content: '将恢复系统默认流程，并影响所有标准题目。是否继续？',
-    confirmText: '恢复',
-    cancelText: '取消',
-    success: (res) => {
-      if (!res.confirm) return
-      flowModules.resetListeningChoiceToDefault()
-      const module = getDefaultModule()
-      draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
-      draftModuleVersion.value = Number(module.version || 1)
-      syncDraftModuleMeta(module)
-      listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
-      uni.showToast({ title: '已恢复默认', icon: 'success' })
-    }
-  })
-}
-
-function toggleIntroBool(key: 'introShowTitle' | 'introShowTitleDescription' | 'introShowDescription' | 'introCountdownShowTitle') {
-  listeningChoiceDraft.value = {
-    ...listeningChoiceDraft.value,
-    [key]: !(listeningChoiceDraft.value as any)?.[key]
-  } as any
-}
-
-function patchIntroCountdown(patch: Record<string, any>) {
-  listeningChoiceDraft.value = {
-    ...listeningChoiceDraft.value,
-    ...patch
-  } as any
-}
-
-function enableIntroCountdown() {
-  patchIntroCountdown({
-    introCountdownEnabled: true,
-    introCountdownSeconds: Math.max(1, introCountdownSeconds.value || 3),
-    introCountdownLabel: introCountdownLabel.value || '准备'
-  })
-  currentStepIndex.value = 1
-  configStepIndex.value = 1
-}
-
-function disableIntroCountdown() {
-  patchIntroCountdown({
-    introCountdownEnabled: false
-  })
-  if (configStepIndex.value <= 1) configStepIndex.value = 0
-  if (currentStepIndex.value <= 1) currentStepIndex.value = 0
-}
-
-function getPerGroupRaw(index: number, key: string) {
-  const step: any = listeningChoiceDraft.value?.perGroupSteps?.[index] || {}
-  return step[key]
-}
-
-function getAudioSource(step: any): AudioSource {
-  return step?.audioSource === 'description' ? 'description' : 'content'
-}
-
-function getPerGroupAudioSource(index: number): AudioSource {
-  const step: any = listeningChoiceDraft.value?.perGroupSteps?.[index]
-  return getAudioSource(step)
-}
-
-function getPerGroupBool(index: number, key: string, defaultValue: boolean) {
-  const v = getPerGroupRaw(index, key)
-  if (typeof v === 'boolean') return v
-  return defaultValue
-}
-
-function patchPerGroupStep(index: number, patch: Record<string, any>) {
-  const list: any[] = [...(listeningChoiceDraft.value?.perGroupSteps || [])]
-  if (!list[index]) return
-  list[index] = { ...list[index], ...patch }
-  listeningChoiceDraft.value = { ...listeningChoiceDraft.value, perGroupSteps: list } as any
-}
-
-function setPerGroupAudioSource(index: number, audioSource: AudioSource) {
-  patchPerGroupStep(index, { audioSource })
-}
-
-function togglePerGroupBool(index: number, key: string, defaultValue: boolean) {
-  const current = getPerGroupBool(index, key, defaultValue)
-  patchPerGroupStep(index, { [key]: !current })
-}
-
-function onFlowQuickAdd(kind: string) {
-  if (kind === 'introCountdown') {
-    enableIntroCountdown()
-    return
-  }
-  if (kind === 'playAudioDescription') {
-    quickAddPerGroupStep('playAudioDescription')
-    return
-  }
-  if (kind === 'playAudioContent') {
-    quickAddPerGroupStep('playAudioContent')
-    return
-  }
-  if (kind === 'countdown') {
-    quickAddPerGroupStep('countdown')
-    return
-  }
-  if (kind === 'promptTone') {
-    quickAddPerGroupStep('promptTone')
-    return
-  }
-  if (kind === 'answerChoice') {
-    quickAddPerGroupStep('answerChoice')
-  }
-}
-
-function insertPerGroupStep(index: number, kind: QuickAddPerGroupKind, position: 'before' | 'after' = 'after') {
-  const list: ListeningChoiceStandardPerGroupStepDef[] = [...(listeningChoiceDraft.value?.perGroupSteps || [])] as any
-  const at = position === 'before' ? index : index + 1
-  const safeAt = Math.max(0, Math.min(at, list.length))
-  list.splice(safeAt, 0, createPerGroupStep(kind))
-  listeningChoiceDraft.value = { ...listeningChoiceDraft.value, perGroupSteps: list } as any
-
-  const flowIndex = flowIndexByPerGroupIndex(safeAt)
-  currentStepIndex.value = flowIndex
-  configStepIndex.value = flowIndex
-}
-
-function quickAddPerGroupStep(kind: QuickAddPerGroupKind) {
-  const list: ListeningChoiceStandardPerGroupStepDef[] = [...(listeningChoiceDraft.value?.perGroupSteps || [])] as any
-  if (!list.length) {
-    listeningChoiceDraft.value = {
-      ...listeningChoiceDraft.value,
-      perGroupSteps: [createPerGroupStep(kind)]
-    } as any
-    const flowIndex = flowIndexByPerGroupIndex(0)
-    currentStepIndex.value = flowIndex
-    configStepIndex.value = flowIndex
-    return
-  }
-
-  const cfg = selectedConfig.value
-  const anchor = cfg?.type === 'per_group' ? cfg.index : list.length - 1
-  insertPerGroupStep(anchor, kind, 'after')
-}
-
-function removePerGroupStep(index: number) {
-  const list: ListeningChoiceStandardPerGroupStepDef[] = [...(listeningChoiceDraft.value?.perGroupSteps || [])] as any
-  if (!list[index]) return
-
-  if (list.length <= 1) {
-    uni.showToast({ title: '每题组流程至少保留一个步骤', icon: 'none' })
-    return
-  }
-
-  const removing = list[index]
-  if (removing.kind === 'answerChoice') {
-    const answerCount = list.filter(s => s?.kind === 'answerChoice').length
-    if (answerCount <= 1) {
-      uni.showToast({ title: '至少保留一个答题步骤', icon: 'none' })
-      return
-    }
-  }
-
-  list.splice(index, 1)
-  listeningChoiceDraft.value = { ...listeningChoiceDraft.value, perGroupSteps: list } as any
-
-  const nextIndex = Math.min(index, list.length - 1)
-  const flowIndex = flowIndexByPerGroupIndex(nextIndex)
-  currentStepIndex.value = flowIndex
-  configStepIndex.value = flowIndex
-}
-
-function reorderPerGroupStepByFlowIndex(fromFlowIndex: number, toFlowIndex: number) {
-  const fromCfg = resolveConfigByFlowIndex(fromFlowIndex)
-  const toCfg = resolveConfigByFlowIndex(toFlowIndex)
-  if (fromCfg?.type !== 'per_group' || toCfg?.type !== 'per_group') {
-    uni.showToast({ title: '仅支持拖动每题组步骤', icon: 'none' })
-    return
-  }
-  if (fromCfg.index === toCfg.index) return
-
-  const list: ListeningChoiceStandardPerGroupStepDef[] = [...(listeningChoiceDraft.value?.perGroupSteps || [])] as any
-  if (!list[fromCfg.index] || !list[toCfg.index]) return
-
-  const [moving] = list.splice(fromCfg.index, 1)
-  const safeTarget = Math.max(0, Math.min(toCfg.index, list.length))
-  list.splice(safeTarget, 0, moving)
-  listeningChoiceDraft.value = { ...listeningChoiceDraft.value, perGroupSteps: list } as any
-
-  const flowIndex = flowIndexByPerGroupIndex(safeTarget)
-  currentStepIndex.value = flowIndex
-  configStepIndex.value = flowIndex
+  moduleLifecycle.resetStandard()
 }
 
 function applyStandardToCurrentQuestion() {
@@ -2156,9 +1663,12 @@ function applyLibraryToCurrentQuestion(moduleId: string) {
   }
 }
 
-function summarizeSteps(steps: any[]): string {
+function summarizeSteps(steps: Array<{ kind?: unknown }> | unknown[]): string {
   if (!Array.isArray(steps) || steps.length === 0) return '无步骤'
-  const kinds = steps.map(s => String(s?.kind || '')).filter(Boolean)
+  const kinds = steps.map((s) => {
+    if (!isObjectRecord(s)) return ''
+    return String(s.kind || '')
+  }).filter(Boolean)
   const shown = kinds.slice(0, 10).join(' → ')
   const more = kinds.length > 10 ? ` ...(+${kinds.length - 10})` : ''
   return shown + more
@@ -2433,6 +1943,16 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   margin-bottom: 12px;
 }
 
+.panel--focus {
+  border-color: rgba(239, 68, 68, 0.38);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.10);
+}
+
+.panel--blocking {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(254, 242, 242, 0.88);
+}
+
 .panel__header {
   padding: 12px 14px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
@@ -2441,6 +1961,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   justify-content: space-between;
   gap: 10px;
   background: rgba(248, 250, 252, 0.86);
+}
+
+.panel__header--blocking {
+  border-bottom-color: rgba(239, 68, 68, 0.22);
+  background: rgba(254, 226, 226, 0.72);
 }
 
 .panel__header-actions {
@@ -2722,6 +2247,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.profile-card.is-focus {
+  border-color: rgba(239, 68, 68, 0.42);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12);
+}
+
 .profile-card__head {
   display: flex;
   align-items: center;
@@ -2786,6 +2316,52 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.blocking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blocking-item {
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 10px;
+}
+
+.blocking-item.active {
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12);
+}
+
+.blocking-item__loc {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.blocking-item__msg {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.72);
+  line-height: 1.45;
+}
+
+.blocking-item__path {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.5);
+}
+
+.blocking-item__actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .route-check {

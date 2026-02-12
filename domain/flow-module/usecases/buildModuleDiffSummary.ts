@@ -11,7 +11,7 @@ type ListeningChoiceModuleLike = {
   introCountdownShowTitle?: boolean
   introCountdownSeconds?: number
   introCountdownLabel?: string
-  perGroupSteps?: Array<Record<string, any>>
+  perGroupSteps?: Array<Record<string, unknown>>
 }
 
 export type FlowModuleDiffSummary = {
@@ -27,17 +27,17 @@ export type BuildModuleDiffSummaryOptions = {
   impactRules?: FlowProfileV1[]
 }
 
-function normalizeText(v: any): string {
+function normalizeText(v: unknown): string {
   return String(v ?? '').trim()
 }
 
-function normalizeInt(v: any, fallback = 0): number {
+function normalizeInt(v: unknown, fallback = 0): number {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.floor(n)
 }
 
-function normalizeBoolean(v: any): boolean {
+function normalizeBoolean(v: unknown): boolean {
   return v === true
 }
 
@@ -52,7 +52,7 @@ function toStepKinds(module?: ListeningChoiceModuleLike | null): string[] {
   return out
 }
 
-function asStableJson(v: any): string {
+function asStableJson(v: unknown): string {
   if (v === undefined) return ''
   if (v === null) return 'null'
   if (typeof v !== 'object') return String(v)
@@ -86,7 +86,7 @@ function toParamMap(module?: ListeningChoiceModuleLike | null): Record<string, s
       .filter((key) => key !== 'kind')
       .sort()
       .forEach((key) => {
-        map[`${stepKey}.${key}`] = asStableJson((step as any)[key])
+        map[`${stepKey}.${key}`] = asStableJson(step[key])
       })
   })
 

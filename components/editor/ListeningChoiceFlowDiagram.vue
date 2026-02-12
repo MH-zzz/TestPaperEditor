@@ -63,7 +63,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ListeningChoiceFlowStep, ListeningChoiceQuestion } from '/types'
+import type {
+  FlowAnswerChoiceStep,
+  FlowCountdownStep,
+  FlowFinishStep,
+  FlowPlayAudioStep,
+  ListeningChoiceFlowStep,
+  ListeningChoiceQuestion
+} from '/types'
 
 const props = defineProps<{
   question: ListeningChoiceQuestion
@@ -106,7 +113,15 @@ function clearDragState() {
   dragOverIndex.value = -1
 }
 
-function onDragStart(index: number, e: any) {
+interface DragStartEventLike {
+  dataTransfer?: {
+    effectAllowed?: string
+    dropEffect?: string
+    setData?: (format: string, data: string) => void
+  } | null
+}
+
+function onDragStart(index: number, e?: DragStartEventLike) {
   if (!canReorder(index)) return
   draggingIndex.value = index
   dragOverIndex.value = index
@@ -155,7 +170,7 @@ function kindLabel(kind: string): string {
   return map[kind] || kind
 }
 
-function audioSource(step: any): 'description' | 'content' {
+function audioSource(step: FlowPlayAudioStep): 'description' | 'content' {
   return step?.audioSource === 'description' ? 'description' : 'content'
 }
 
@@ -167,16 +182,28 @@ function groupDisplayName(groupId: string | undefined) {
   return g?.title || `题组 ${idx + 1}`
 }
 
+function getStepGroupCandidate(step: ListeningChoiceFlowStep | undefined): string | undefined {
+  if (!step) return undefined
+  if (
+    step.kind === 'groupPrompt' ||
+    step.kind === 'playAudio' ||
+    step.kind === 'promptTone' ||
+    step.kind === 'answerChoice'
+  ) {
+    return typeof step.groupId === 'string' ? step.groupId : undefined
+  }
+  return undefined
+}
+
 function stepGroupId(step: ListeningChoiceFlowStep, sIndex: number): string | undefined {
-  const anyStep: any = step as any
-  if (anyStep.groupId) return String(anyStep.groupId)
+  const directGroupId = getStepGroupCandidate(step)
+  if (directGroupId) return directGroupId
 
   if (step.kind === 'countdown') {
     const steps = props.steps || []
-    const prev: any = steps[sIndex - 1]
-    const next: any = steps[sIndex + 1]
-    const from = (s: any) => (s && (s.kind === 'playAudio' || s.kind === 'promptTone' || s.kind === 'answerChoice' || s.kind === 'groupPrompt') ? s.groupId : undefined)
-    return from(prev) || from(next)
+    const prev = steps[sIndex - 1]
+    const next = steps[sIndex + 1]
+    return getStepGroupCandidate(prev) || getStepGroupCandidate(next)
   }
 
   return undefined
@@ -185,8 +212,8 @@ function stepGroupId(step: ListeningChoiceFlowStep, sIndex: number): string | un
 const nodes = computed(() => {
   const steps = props.steps || []
   return steps.map((step, idx) => {
-    const prev: any = steps[idx - 1]
-    const source = step.kind === 'playAudio' ? audioSource(step as any) : 'content'
+    const prev = steps[idx - 1]
+    const source = step.kind === 'playAudio' ? audioSource(step) : 'content'
     const base = step.kind === 'playAudio'
       ? (source === 'description' ? '播放描述音频' : '播放正文音频')
       : kindLabel(step.kind)
@@ -202,19 +229,21 @@ const nodes = computed(() => {
 
     let desc = ''
     if (step.kind === 'countdown') {
-      const seconds = Number((step as any).seconds || 0)
-      const label = String((step as any).label || '').trim()
+      const countdownStep: FlowCountdownStep = step
+      const seconds = Number(countdownStep.seconds || 0)
+      const label = String(countdownStep.label || '').trim()
       desc = `${label || kindLabel('countdown')} ${seconds}s`
     } else if (step.kind === 'answerChoice') {
-      const gid = String((step as any).groupId || '')
+      const answerStep: FlowAnswerChoiceStep = step
+      const gid = String(answerStep.groupId || '')
       const g = props.question.content.groups.find(x => x.id === gid)
-      const answerSeconds = Math.max(0, Number((g as any)?.answerSeconds || 0))
+      const answerSeconds = Math.max(0, Number(g?.answerSeconds || 0))
       desc = answerSeconds > 0 ? `答题 ${answerSeconds}s` : '进入作答'
     } else if (step.kind === 'intro') {
       const cnt = Number(props.question.content?.intro?.audio?.playCount || 1)
       desc = cnt > 1 ? `说明音频 x${cnt}` : '说明音频'
     } else if (step.kind === 'playAudio') {
-      const gid = String((step as any).groupId || '')
+      const gid = String(step.groupId || '')
       const g = props.question.content.groups.find(x => x.id === gid)
       const cnt = source === 'description'
         ? Number(g?.descriptionAudio?.playCount || 1)
@@ -224,13 +253,14 @@ const nodes = computed(() => {
     } else if (step.kind === 'promptTone') {
       desc = '提示音'
     } else if (step.kind === 'finish') {
-      const text = String((step as any).text || '').trim()
+      const finishStep: FlowFinishStep = step
+      const text = String(finishStep.text || '').trim()
       desc = text ? '已配置文案' : ''
     }
 
     return {
-      id: String((step as any).id || `${idx}`),
-      kind: String((step as any).kind || ''),
+      id: String(step.id || `${idx}`),
+      kind: String(step.kind || ''),
       title,
       desc
     }

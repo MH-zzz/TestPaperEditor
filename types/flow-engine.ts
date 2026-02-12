@@ -23,7 +23,7 @@ export interface FlowStepProtocol {
 
 export interface FlowEffectProtocol {
   kind: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface FlowModuleProtocol {
@@ -39,7 +39,7 @@ export interface QuestionInstanceFlowBindingV1 {
   profileId?: string
   module?: FlowModuleRef
   // Whitelisted per-step override patches, keyed by stable step key.
-  overrides?: Record<string, Record<string, any>>
+  overrides?: Record<string, Record<string, unknown>>
 }
 
 export interface FlowProfileV1 {
@@ -111,5 +111,5 @@ export interface FlowCompileRequest {
   questionType: QuestionType
   moduleRef: FlowModuleRef
   profileId?: string
-  overrides?: Record<string, Record<string, any>>
+  overrides?: Record<string, Record<string, unknown>>
 }

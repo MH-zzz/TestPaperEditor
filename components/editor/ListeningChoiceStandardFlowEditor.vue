@@ -77,7 +77,7 @@
                 <input
                   class="text-input"
                   type="number"
-                  :value="(step as any).seconds"
+                  :value="countdownSeconds(step)"
                   @input="(e) => updateStep(sIndex, { seconds: toInt(e.detail.value) })"
                 />
               </view>
@@ -85,7 +85,7 @@
                 <text class="form-item__label">标签</text>
                 <input
                   class="text-input"
-                  :value="(step as any).label || ''"
+                  :value="countdownLabel(step)"
                   @input="(e) => updateStep(sIndex, { label: e.detail.value })"
                 />
               </view>
@@ -101,7 +101,7 @@
             <text class="form-item__label">提示音 URL</text>
             <input
               class="text-input"
-              :value="(step as any).url || '/static/audio/small_time.mp3'"
+              :value="promptToneUrl(step)"
               @input="(e) => updateStep(sIndex, { url: e.detail.value })"
             />
           </view>
@@ -155,7 +155,7 @@ const emit = defineEmits<{
 const expandedIndex = ref<number | null>(0)
 
 const perGroupSteps = computed<ListeningChoiceStandardPerGroupStepDef[]>(() => {
-  return (props.modelValue?.perGroupSteps || []) as any
+  return props.modelValue?.perGroupSteps || []
 })
 
 const introShowTitle = computed(() => props.modelValue?.introShowTitle !== false)
@@ -182,21 +182,38 @@ function kindLabel(kind: string) {
   return map[kind] || kind
 }
 
-function getAudioSource(step: any): 'description' | 'content' {
+function getAudioSource(step: ListeningChoiceStandardPerGroupStepDef): 'description' | 'content' {
+  if (step.kind !== 'playAudio') return 'content'
   return step?.audioSource === 'description' ? 'description' : 'content'
 }
 
-function stepKindLabel(step: any): string {
+function stepKindLabel(step: ListeningChoiceStandardPerGroupStepDef): string {
   if (step?.kind === 'playAudio') return getAudioSource(step) === 'description' ? '播放描述音频' : '播放正文音频'
   return kindLabel(String(step?.kind || ''))
 }
 
-function stepSummary(step: any): string {
+function stepSummary(step: ListeningChoiceStandardPerGroupStepDef): string {
   if (!step) return ''
   if (step.kind === 'countdown') return `${kindLabel('countdown')} ${Number(step.seconds || 0)}s`
   if (step.kind === 'promptTone') return '提示音'
   if (step.kind === 'answerChoice') return kindLabel('answerChoice')
   return ''
+}
+
+function countdownSeconds(step: ListeningChoiceStandardPerGroupStepDef): number {
+  if (step.kind !== 'countdown') return 0
+  return Math.max(0, toInt(step.seconds))
+}
+
+function countdownLabel(step: ListeningChoiceStandardPerGroupStepDef): string {
+  if (step.kind !== 'countdown') return ''
+  return String(step.label || '')
+}
+
+function promptToneUrl(step: ListeningChoiceStandardPerGroupStepDef): string {
+  if (step.kind !== 'promptTone') return '/static/audio/small_time.mp3'
+  const next = String(step.url || '').trim()
+  return next || '/static/audio/small_time.mp3'
 }
 
 function toggleExpand(index: number) {
@@ -213,7 +230,7 @@ function toggleIntroCountdownShowTitle() {
 
 function removeStep(index: number) {
   const next = perGroupSteps.value.filter((_, i) => i !== index)
-  update({ ...props.modelValue, perGroupSteps: next as any })
+  update({ ...props.modelValue, perGroupSteps: next })
 }
 
 function moveStep(index: number, delta: number) {
@@ -223,50 +240,69 @@ function moveStep(index: number, delta: number) {
   const tmp = list[index]
   list[index] = list[target]
   list[target] = tmp
-  update({ ...props.modelValue, perGroupSteps: list as any })
+  update({ ...props.modelValue, perGroupSteps: list })
 }
 
-function updateStep(index: number, patch: Record<string, any>) {
-  const list: any[] = [...perGroupSteps.value]
-  list[index] = { ...list[index], ...patch }
-  update({ ...props.modelValue, perGroupSteps: list as any })
+function updateStep(index: number, patch: Record<string, unknown>) {
+  const list = [...perGroupSteps.value]
+  const current = list[index]
+  if (!current) return
+  list[index] = { ...current, ...patch } as ListeningChoiceStandardPerGroupStepDef
+  update({ ...props.modelValue, perGroupSteps: list })
 }
 
-function toggleStepBool(index: number, key: string) {
-  const step: any = perGroupSteps.value[index]
-  updateStep(index, { [key]: !step?.[key] })
+function getStepField(step: ListeningChoiceStandardPerGroupStepDef | undefined, key: string): unknown {
+  if (!step) return undefined
+  const record = step as unknown as Record<string, unknown>
+  return record[key]
 }
 
-function getBool(step: any, key: string, defaultValue: boolean) {
-  const v = step ? step[key] : undefined
+function getBool(step: ListeningChoiceStandardPerGroupStepDef | undefined, key: string, defaultValue: boolean) {
+  const v = getStepField(step, key)
   if (typeof v === 'boolean') return v
   return defaultValue
 }
 
 function toggleStepBoolWithDefault(index: number, key: string, defaultValue: boolean) {
-  const step: any = perGroupSteps.value[index]
+  const step = perGroupSteps.value[index]
   const current = getBool(step, key, defaultValue)
   updateStep(index, { [key]: !current })
 }
 
+function createPlayAudioStep(audioSource: 'description' | 'content'): ListeningChoiceStandardPerGroupStepDef {
+  return { kind: 'playAudio', showTitle: true, audioSource, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
+}
+
+function createCountdownStep(): ListeningChoiceStandardPerGroupStepDef {
+  return { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' }
+}
+
+function createPromptToneStep(): ListeningChoiceStandardPerGroupStepDef {
+  return { kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' }
+}
+
+function createAnswerChoiceStep(): ListeningChoiceStandardPerGroupStepDef {
+  return { kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
+}
+
 function addStep(kind: string) {
-  const list: any[] = [...perGroupSteps.value]
+  const list = [...perGroupSteps.value]
   if (kind === 'playAudioDescription') {
-    list.push({ kind: 'playAudio', showTitle: true, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true })
+    list.push(createPlayAudioStep('description'))
   } else if (kind === 'playAudioContent' || kind === 'playAudio') {
-    list.push({ kind: 'playAudio', showTitle: true, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true })
+    list.push(createPlayAudioStep('content'))
   } else if (kind === 'countdown') {
-    list.push({ kind: 'countdown', showTitle: true, seconds: 3, label: '准备' })
+    list.push(createCountdownStep())
   } else if (kind === 'promptTone') {
-    list.push({ kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' })
+    list.push(createPromptToneStep())
   } else if (kind === 'answerChoice') {
-    list.push({ kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true })
+    list.push(createAnswerChoiceStep())
   }
-  update({ ...props.modelValue, perGroupSteps: list as any })
+  update({ ...props.modelValue, perGroupSteps: list })
   expandedIndex.value = list.length - 1
 }
 
-function toInt(v: any): number {
+function toInt(v: unknown): number {
   const n = parseInt(String(v || '0'), 10)
   return Number.isFinite(n) ? n : 0
 }

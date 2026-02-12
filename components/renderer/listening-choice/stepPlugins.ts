@@ -39,7 +39,11 @@ const DEFAULT_PLUGIN: ListeningChoiceStepBehaviorPlugin = {
   contextInfo: false
 }
 
-function normalizeRendererView(view: any): ListeningChoiceStepRenderView {
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function normalizeRendererView(view: unknown): ListeningChoiceStepRenderView {
   const next = String(view || '').trim()
   if (
     next === 'intro' ||
@@ -54,7 +58,7 @@ function normalizeRendererView(view: any): ListeningChoiceStepRenderView {
   return 'unsupported'
 }
 
-function normalizeAudioCarrier(carrier: any): ListeningChoiceStepAudioCarrier {
+function normalizeAudioCarrier(carrier: unknown): ListeningChoiceStepAudioCarrier {
   const next = String(carrier || '').trim()
   if (next === 'intro' || next === 'playAudio' || next === 'promptTone') return next
   return null
@@ -79,11 +83,13 @@ const STEP_BEHAVIOR_PLUGINS: Record<string, ListeningChoiceStepBehaviorPlugin> =
     return acc
   }, {} as Record<string, ListeningChoiceStepBehaviorPlugin>)
 
-function normalizeStepKind(step: any): string {
-  return String(step?.kind || '').trim()
+function normalizeStepKind(step: unknown): string {
+  if (!isObjectRecord(step)) return ''
+  const kind = step.kind
+  return typeof kind === 'string' ? kind.trim() : ''
 }
 
-export function getListeningChoiceStepKind(step: any): ListeningChoiceStepKind {
+export function getListeningChoiceStepKind(step: unknown): ListeningChoiceStepKind {
   const kind = normalizeStepKind(step)
   if (!kind) return 'unknown'
   if (
@@ -100,24 +106,24 @@ export function getListeningChoiceStepKind(step: any): ListeningChoiceStepKind {
   return 'unknown'
 }
 
-export function isListeningChoiceStepKind(step: any, kind: ListeningChoiceStepKind): boolean {
+export function isListeningChoiceStepKind(step: unknown, kind: ListeningChoiceStepKind): boolean {
   return getListeningChoiceStepKind(step) === kind
 }
 
-export function isListeningChoiceStepOneOf(step: any, kinds: ListeningChoiceStepKind[]): boolean {
+export function isListeningChoiceStepOneOf(step: unknown, kinds: ListeningChoiceStepKind[]): boolean {
   const set = new Set(kinds)
   return set.has(getListeningChoiceStepKind(step))
 }
 
-export function isListeningChoiceContextInfoStep(step: any): boolean {
+export function isListeningChoiceContextInfoStep(step: unknown): boolean {
   return getListeningChoiceStepBehavior(step).contextInfo === true
 }
 
-export function isListeningChoiceQuestionCarrierStep(step: any): boolean {
+export function isListeningChoiceQuestionCarrierStep(step: unknown): boolean {
   return isListeningChoiceStepOneOf(step, ['groupPrompt', 'playAudio', 'answerChoice'])
 }
 
-export function getListeningChoiceStepBehavior(step: any): ListeningChoiceStepBehaviorPlugin {
+export function getListeningChoiceStepBehavior(step: unknown): ListeningChoiceStepBehaviorPlugin {
   const kind = normalizeStepKind(step)
   if (!kind) return DEFAULT_PLUGIN
   const cached = STEP_BEHAVIOR_PLUGINS[kind]
@@ -125,14 +131,14 @@ export function getListeningChoiceStepBehavior(step: any): ListeningChoiceStepBe
   return toBehaviorPlugin(getListeningChoiceStepPlugin(kind))
 }
 
-export function shouldReuseListeningChoicePreviousScreen(step: any): boolean {
+export function shouldReuseListeningChoicePreviousScreen(step: unknown): boolean {
   return getListeningChoiceStepBehavior(step).reusePreviousScreen === true
 }
 
-export function resolveListeningChoiceStepAudioCarrier(step: any): ListeningChoiceStepAudioCarrier {
+export function resolveListeningChoiceStepAudioCarrier(step: unknown): ListeningChoiceStepAudioCarrier {
   return getListeningChoiceStepBehavior(step).audioCarrier || null
 }
 
-export function resolveListeningChoiceStepRenderView(step: any): ListeningChoiceStepRenderView {
+export function resolveListeningChoiceStepRenderView(step: unknown): ListeningChoiceStepRenderView {
   return getListeningChoiceStepBehavior(step).renderView || 'unsupported'
 }

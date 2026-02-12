@@ -52,7 +52,9 @@ test('flow-related stores should use scheduler persistence instead of deep watch
     'stores/flowProfiles.ts',
     'stores/contentTemplates.ts',
     'stores/flowLibrary.ts',
-    'stores/standardFlows.ts'
+    'stores/standardFlows.ts',
+    'stores/settings.ts',
+    'stores/tag.ts'
   ]
 
   for (const file of files) {
@@ -112,4 +114,34 @@ test('draft and flow module stores should avoid any-based typing in core state p
     const src = await readFile(file)
     assert.ok(!/\bany\b/.test(src), `${file} should avoid any in core store path`)
   }
+})
+
+test('flow editor key files should not regress to any or ts-ignore', async () => {
+  const files = [
+    'components/views/FlowModulesManager.vue',
+    'components/views/flow-modules/useModuleLifecycle.ts',
+    'components/views/flow-modules/usePerGroupStepEditor.ts',
+    'components/views/flow-modules/useRouteSimulator.ts',
+    'domain/flow-module/usecases/validateModuleCommitCrossChecks.ts',
+    'stores/flowProfiles.ts',
+    'domain/flow-module/usecases/buildModuleDiffSummary.ts',
+    'types/flow-engine.ts'
+  ]
+
+  for (const file of files) {
+    const src = await readFile(file)
+    assert.ok(!/\bany\b/.test(src), `${file} should avoid any in guarded flow-editor path`)
+    assert.ok(!src.includes('@ts-ignore'), `${file} should avoid @ts-ignore in guarded flow-editor path`)
+  }
+})
+
+test('flow module commit should be guarded by pre-commit cross validation hook', async () => {
+  const managerSrc = await readFile('components/views/FlowModulesManager.vue')
+  const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
+
+  assert.ok(managerSrc.includes('validateBeforeCommit: validateModuleCommitBeforeSavePublish'))
+  assert.ok(managerSrc.includes('onCommitValidationFailed: handleModuleCommitValidationFailed'))
+  assert.ok(lifecycleSrc.includes('checkModuleCommitGuard'))
+  assert.ok(lifecycleSrc.includes('const handled = onCommitValidationFailed ? onCommitValidationFailed(result) : false'))
+  assert.ok(lifecycleSrc.includes("title: '流程引用校验失败'"))
 })

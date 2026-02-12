@@ -18,7 +18,11 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-function normalizeQuestionType(v: any): QuestionType {
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeQuestionType(v: unknown): QuestionType {
   const s = String(v || '')
   if (s === 'listening_choice') return 'listening_choice'
   if (s === 'listening_fill') return 'listening_fill'
@@ -29,8 +33,9 @@ function normalizeQuestionType(v: any): QuestionType {
   return 'listening_choice'
 }
 
-function normalizeProfile(input: any): FlowProfileV1 {
-  const src = input && typeof input === 'object' ? input : {}
+function normalizeProfile(input: unknown): FlowProfileV1 {
+  const src = isObjectRecord(input) ? input : {}
+  const module = isObjectRecord(src.module) ? src.module : {}
   const now = nowIso()
   return {
     id: typeof src.id === 'string' && src.id ? src.id : `profile_${Date.now()}`,
@@ -39,8 +44,8 @@ function normalizeProfile(input: any): FlowProfileV1 {
     scene: typeof src.scene === 'string' ? src.scene : undefined,
     grade: typeof src.grade === 'string' ? src.grade : undefined,
     module: {
-      id: typeof src.module?.id === 'string' && src.module.id ? src.module.id : LISTENING_CHOICE_STANDARD_FLOW_ID,
-      version: Number.isFinite(Number(src.module?.version)) ? Math.max(1, Math.floor(Number(src.module.version))) : 1
+      id: typeof module.id === 'string' && module.id ? module.id : LISTENING_CHOICE_STANDARD_FLOW_ID,
+      version: Number.isFinite(Number(module.version)) ? Math.max(1, Math.floor(Number(module.version))) : 1
     },
     priority: Number.isFinite(Number(src.priority)) ? Number(src.priority) : 0,
     enabled: typeof src.enabled === 'boolean' ? src.enabled : true,
@@ -75,7 +80,7 @@ class FlowProfilesStore {
       if (!stored) return
       const parsed = JSON.parse(stored)
       const list = Array.isArray(parsed?.profiles) ? parsed.profiles : []
-      const normalized = list.map((p: any) => normalizeProfile(p))
+      const normalized = list.map((p) => normalizeProfile(p))
       this.state.profiles = normalized.length ? normalized : [DEFAULT_LISTENING_CHOICE_PROFILE]
     } catch (e) {
       console.error('Failed to load flow profiles', e)
@@ -135,7 +140,7 @@ class FlowProfilesStore {
     return { ok: true as const, reason: '', next, target }
   }
 
-  private commitProfiles(next: FlowProfileV1[], _payload: Record<string, any>) {
+  private commitProfiles(next: FlowProfileV1[], _payload: Record<string, unknown>) {
     this.state.profiles = next
     this.persistence.schedule()
   }
@@ -159,8 +164,9 @@ class FlowProfilesStore {
     return canSubmitFlowProfiles(list)
   }
 
-  upsertWithDiagnostics(profileInput: any) {
-    const profile = normalizeProfile({ ...profileInput, updatedAt: nowIso() })
+  upsertWithDiagnostics(profileInput: unknown) {
+    const inputRecord = isObjectRecord(profileInput) ? profileInput : {}
+    const profile = normalizeProfile({ ...inputRecord, updatedAt: nowIso() })
     const next = this.buildNextProfilesWithUpsert(profile)
     const nextQuestionTypeProfiles = next.filter(p => p.questionType === profile.questionType)
     const validation = canSubmitFlowProfiles(nextQuestionTypeProfiles)
@@ -179,7 +185,7 @@ class FlowProfilesStore {
     }
   }
 
-  upsert(profileInput: any) {
+  upsert(profileInput: unknown) {
     return this.upsertWithDiagnostics(profileInput)
   }
 

@@ -58,7 +58,12 @@
 
       <view v-if="modelValue.content.groups.length === 0" class="empty-tip">暂无题组，请先添加</view>
 
-      <view v-for="(g, gIndex) in modelValue.content.groups" :key="g.id" class="card">
+      <view
+        v-for="(g, gIndex) in modelValue.content.groups"
+        :key="g.id"
+        class="card"
+        :class="{ 'card--focused': focusedGroupId === g.id }"
+      >
         <view class="card__header">
           <view class="card__header-left" @click="toggleGroup(g.id)">
             <text class="card__chev">{{ isGroupExpanded(g.id) ? '▾' : '▸' }}</text>
@@ -170,7 +175,12 @@
 
           <view v-if="(g.subQuestions || []).length === 0" class="empty-tip">暂无小题</view>
 
-          <view v-for="(sq, sqIndex) in g.subQuestions" :key="sq.id" class="sub-card">
+          <view
+            v-for="(sq, sqIndex) in g.subQuestions"
+            :key="sq.id"
+            class="sub-card"
+            :class="{ 'sub-card--focused': focusedSubQuestionId === sq.id }"
+          >
             <view class="sub-card__header" @click="toggleSubQuestion(sq.id)">
               <view class="sub-card__header-left">
                 <text class="sub-card__chev">{{ isSubQuestionExpanded(sq.id) ? '▾' : '▸' }}</text>
@@ -267,8 +277,10 @@ const props = withDefaults(defineProps<{
   modelValue: ListeningChoiceQuestion
   previewStepIndex?: number
   templateMode?: boolean
+  focusPath?: string
 }>(), {
-  templateMode: false
+  templateMode: false,
+  focusPath: ''
 })
 
 const emit = defineEmits<{
@@ -279,6 +291,9 @@ const emit = defineEmits<{
 // [] means "all collapsed"
 const expandedGroupIds = ref<string[] | null>(null)
 const expandedSubQuestionIds = ref<string[] | null>(null)
+const focusedGroupId = ref('')
+const focusedSubQuestionId = ref('')
+let clearFocusTimer: ReturnType<typeof setTimeout> | null = null
 
 function update(next: ListeningChoiceQuestion) {
   emit('update:modelValue', next)
@@ -329,6 +344,68 @@ watch(() => props.modelValue.content.groups, () => {
   const existing = new Set(allSubQuestionIds())
   expandedSubQuestionIds.value = expandedSubQuestionIds.value.filter(id => existing.has(id))
 }, { deep: true })
+
+function parseFocusPath(path: string): { groupIndex: number; subQuestionIndex: number } | null {
+  const pure = String(path || '').split('|')[0]
+  const groupMatch = pure.match(/content\.groups\[(\d+)\]/)
+  if (!groupMatch) return null
+  const groupIndex = Number(groupMatch[1] || -1)
+  if (!Number.isFinite(groupIndex) || groupIndex < 0) return null
+  const sqMatch = pure.match(/subQuestions\[(\d+)\]/)
+  const subQuestionIndex = sqMatch ? Number(sqMatch[1] || -1) : -1
+  return {
+    groupIndex,
+    subQuestionIndex: Number.isFinite(subQuestionIndex) ? subQuestionIndex : -1
+  }
+}
+
+function clearFocusHighlightWithDelay(delay = 2200) {
+  if (clearFocusTimer) clearTimeout(clearFocusTimer)
+  clearFocusTimer = setTimeout(() => {
+    focusedGroupId.value = ''
+    focusedSubQuestionId.value = ''
+    clearFocusTimer = null
+  }, delay)
+}
+
+function applyFocusPath(path: string) {
+  const hit = parseFocusPath(path)
+  if (!hit) return
+  const group = props.modelValue.content.groups?.[hit.groupIndex]
+  if (!group) return
+
+  const groupId = String(group.id || '')
+  if (!groupId) return
+  focusedGroupId.value = groupId
+
+  if (expandedGroupIds.value === null) {
+    expandedGroupIds.value = props.modelValue.content.groups.map(g => g.id)
+  }
+  if (!expandedGroupIds.value.includes(groupId)) {
+    expandedGroupIds.value = [...expandedGroupIds.value, groupId]
+  }
+
+  if (hit.subQuestionIndex >= 0) {
+    const sq = group.subQuestions?.[hit.subQuestionIndex]
+    const sqId = sq?.id ? String(sq.id) : ''
+    focusedSubQuestionId.value = sqId
+    if (sqId) {
+      if (expandedSubQuestionIds.value === null) expandedSubQuestionIds.value = allSubQuestionIds()
+      if (!expandedSubQuestionIds.value.includes(sqId)) {
+        expandedSubQuestionIds.value = [...expandedSubQuestionIds.value, sqId]
+      }
+    }
+  } else {
+    focusedSubQuestionId.value = ''
+  }
+
+  clearFocusHighlightWithDelay()
+}
+
+watch(() => props.focusPath, (path) => {
+  if (!path) return
+  applyFocusPath(String(path))
+})
 
 function isGroupExpanded(id: string) {
   // default expanded if we haven't toggled anything yet
@@ -826,6 +903,11 @@ function toInt(v: any): number {
   background: rgba(255, 255, 255, 0.85);
 }
 
+.card--focused {
+  border-color: rgba(239, 68, 68, 0.42);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.10);
+}
+
 .card__header {
   display: flex;
   align-items: center;
@@ -871,6 +953,11 @@ function toInt(v: any): number {
   padding: 12px 12px;
   margin-top: 12px;
   background: rgba(248, 250, 252, 0.8);
+}
+
+.sub-card--focused {
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.10);
 }
 
 .sub-card__header {

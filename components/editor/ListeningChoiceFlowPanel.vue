@@ -64,7 +64,7 @@
                   v-for="g in modelValue.content.groups"
                   :key="g.id"
                   class="pill"
-                  :class="{ active: (step as any).groupId === g.id }"
+                  :class="{ active: getEditableGroupId(step) === g.id }"
                   @click="!readonly && updateStep(sIndex, { groupId: g.id })"
                 >{{ g.title || g.id }}</view>
               </view>
@@ -75,12 +75,12 @@
               <view class="mode-toggle">
                 <view
                   class="mode-btn"
-                  :class="{ active: getPlayAudioSource(step as any) === 'description' }"
+                  :class="{ active: getPlayAudioSource(step) === 'description' }"
                   @click="!readonly && setPlayAudioSource(sIndex, 'description')"
                 >描述音频</view>
                 <view
                   class="mode-btn"
-                  :class="{ active: getPlayAudioSource(step as any) === 'content' }"
+                  :class="{ active: getPlayAudioSource(step) === 'content' }"
                   @click="!readonly && setPlayAudioSource(sIndex, 'content')"
                 >正文音频</view>
               </view>
@@ -93,7 +93,7 @@
                   <input
                     class="text-input"
                     type="number"
-                    :value="(step as any).seconds"
+                    :value="countdownStepSeconds(step)"
                     :disabled="readonly"
                     @input="(e) => updateStep(sIndex, { seconds: toInt(e.detail.value) })"
                   />
@@ -102,7 +102,7 @@
                   <text class="form-item__label">标签</text>
                   <input
                     class="text-input"
-                    :value="(step as any).label || ''"
+                    :value="countdownStepLabel(step)"
                     :disabled="readonly"
                     @input="(e) => updateStep(sIndex, { label: e.detail.value })"
                   />
@@ -118,7 +118,7 @@
               <text class="form-item__label">提示音 URL</text>
               <input
                 class="text-input"
-                :value="(step as any).url || '/static/audio/small_time.mp3'"
+                :value="promptToneStepUrl(step)"
                 :disabled="readonly"
                 @input="(e) => updateStep(sIndex, { url: e.detail.value })"
               />
@@ -170,7 +170,7 @@
                     v-for="g in modelValue.content.groups"
                     :key="g.id"
                     class="pill"
-                    :class="{ active: (step as any).groupId === g.id }"
+                    :class="{ active: getEditableGroupId(step) === g.id }"
                     @click="!readonly && updateStep(sIndex, { groupId: g.id })"
                   >{{ g.title || g.id }}</view>
                 </view>
@@ -183,7 +183,7 @@
                     v-for="q in allQuestions"
                     :key="q.id"
                     class="pill pill--wide"
-                    :class="{ active: ((step as any).questionIds || []).includes(q.id) }"
+                    :class="{ active: answerStepQuestionIds(step).includes(q.id) }"
                     @click="!readonly && toggleQuestionId(sIndex, q.id)"
                   >{{ q.order }}. {{ plain(q.stem) || q.id }}</view>
                 </view>
@@ -194,7 +194,7 @@
               <text class="form-item__label">完成页文字</text>
               <input
                 class="text-input"
-                :value="(step as any).text || ''"
+                :value="finishStepText(step)"
                 :disabled="readonly"
                 @input="(e) => updateStep(sIndex, { text: e.detail.value })"
               />
@@ -208,7 +208,18 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { ListeningChoiceQuestion, ListeningChoiceFlowStep, RichTextContent, SubQuestion } from '/types'
+import type {
+  FlowAnswerChoiceStep,
+  FlowCountdownStep,
+  FlowFinishStep,
+  FlowIntroStep,
+  FlowPlayAudioStep,
+  FlowPromptToneStep,
+  ListeningChoiceFlowStep,
+  ListeningChoiceQuestion,
+  RichTextContent,
+  SubQuestion
+} from '/types'
 import { generateId } from '/templates'
 import FlowStepQuickAdd from './FlowStepQuickAdd.vue'
 import { LISTENING_CHOICE_STANDARD_FLOW_ID, materializeListeningChoiceStandardSteps } from '../../flows/listeningChoiceFlowModules'
@@ -253,6 +264,21 @@ watch(() => props.activeStepIndex, (idx) => {
   if (expandedStepId.value !== step.id) expandedStepId.value = step.id
 })
 
+type StepKind = ListeningChoiceFlowStep['kind']
+type StepOfKind<TKind extends StepKind> = Extract<ListeningChoiceFlowStep, { kind: TKind }>
+type BooleanStepField = 'showTitle' | 'showQuestionTitle' | 'showQuestionTitleDescription' | 'showGroupPrompt'
+
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function isStepKind<TKind extends StepKind>(
+  step: ListeningChoiceFlowStep | null | undefined,
+  kind: TKind
+): step is StepOfKind<TKind> {
+  return step?.kind === kind
+}
+
 function update(next: ListeningChoiceQuestion) {
   emit('update:modelValue', next)
 }
@@ -270,12 +296,19 @@ function kindLabel(kind: string): string {
   return map[kind] || kind
 }
 
-function getPlayAudioSource(step: any): 'description' | 'content' {
-  return step?.audioSource === 'description' ? 'description' : 'content'
+function getPlayAudioSource(step: ListeningChoiceFlowStep | null | undefined): 'description' | 'content' {
+  return isStepKind(step, 'playAudio') && step.audioSource === 'description' ? 'description' : 'content'
 }
 
-function playAudioLabel(step: any): string {
+function playAudioLabel(step: ListeningChoiceFlowStep | null | undefined): string {
   return getPlayAudioSource(step) === 'description' ? '播放描述音频' : '播放正文音频'
+}
+
+function getEditableGroupId(step: ListeningChoiceFlowStep | null | undefined): string | undefined {
+  if (!step) return undefined
+  if (isStepKind(step, 'groupPrompt') || isStepKind(step, 'playAudio')) return step.groupId
+  if (isStepKind(step, 'answerChoice') || isStepKind(step, 'promptTone')) return step.groupId
+  return undefined
 }
 
 function groupDisplayName(groupId: string | undefined) {
@@ -287,13 +320,13 @@ function groupDisplayName(groupId: string | undefined) {
 }
 
 function stepGroupId(step: ListeningChoiceFlowStep, sIndex: number): string | undefined {
-  const anyStep: any = step as any
-  if (anyStep.groupId) return String(anyStep.groupId)
+  const ownGroupId = getEditableGroupId(step)
+  if (ownGroupId) return String(ownGroupId)
 
   if (step.kind === 'countdown') {
-    const prev: any = steps.value[sIndex - 1]
-    const next: any = steps.value[sIndex + 1]
-    const from = (s: any) => (s && (s.kind === 'playAudio' || s.kind === 'promptTone' || s.kind === 'answerChoice' || s.kind === 'groupPrompt') ? s.groupId : undefined)
+    const prev = steps.value[sIndex - 1]
+    const next = steps.value[sIndex + 1]
+    const from = (s: ListeningChoiceFlowStep | undefined) => getEditableGroupId(s)
     return from(prev) || from(next)
   }
 
@@ -308,7 +341,7 @@ function stepTitle(step: ListeningChoiceFlowStep, sIndex: number): string {
 
   const gid = stepGroupId(step, sIndex)
   const groupName = groupDisplayName(gid)
-  const base = step.kind === 'playAudio' ? playAudioLabel(step as any) : kindLabel(step.kind)
+  const base = step.kind === 'playAudio' ? playAudioLabel(step) : kindLabel(step.kind)
   if (groupName) return `${base} · ${groupName}`
 
   return base
@@ -320,14 +353,14 @@ function stepSummary(step: ListeningChoiceFlowStep, sIndex: number): string {
   if (step.kind === 'playAudio') return ''
   if (step.kind === 'promptTone') return '提示音'
   if (step.kind === 'countdown') {
-    const seconds = Number((step as any).seconds || 0)
+    const seconds = Number(step.seconds || 0)
     const label = kindLabel('countdown')
     return seconds > 0 ? `${label} ${seconds}s` : label
   }
   if (step.kind === 'answerChoice') {
     return kindLabel('answerChoice')
   }
-  if (step.kind === 'finish') return (step as any).text ? '已配置文案' : ''
+  if (step.kind === 'finish') return step.text ? '已配置文案' : ''
   return ''
 }
 
@@ -353,33 +386,39 @@ function moveStep(index: number, delta: number) {
   update({ ...props.modelValue, flow: { ...props.modelValue.flow, steps: list } })
 }
 
-function updateStep(index: number, patch: Record<string, any>) {
+function updateStep(index: number, patch: Record<string, unknown>) {
   if (isReadonly.value) return
   const list = [...steps.value]
-  list[index] = { ...list[index], ...patch } as any
+  list[index] = { ...list[index], ...patch } as ListeningChoiceFlowStep
   update({ ...props.modelValue, flow: { ...props.modelValue.flow, steps: list } })
 }
 
-function toggleStepBool(index: number, key: string) {
-  if (isReadonly.value) return
-  const step: any = steps.value[index]
-  updateStep(index, { [key]: !step[key] })
+function readStepField(step: ListeningChoiceFlowStep | undefined, key: string): unknown {
+  if (!step || !isObjectRecord(step)) return undefined
+  return step[key]
 }
 
-function getStepBool(step: any, key: string, defaultValue: boolean) {
-  const v = step ? step[key] : undefined
+function toggleStepBool(index: number, key: BooleanStepField) {
+  if (isReadonly.value) return
+  const step = steps.value[index]
+  const current = readStepField(step, key)
+  updateStep(index, { [key]: !(current === true) })
+}
+
+function getStepBool(step: ListeningChoiceFlowStep | undefined, key: BooleanStepField, defaultValue: boolean) {
+  const v = readStepField(step, key)
   if (typeof v === 'boolean') return v
   return defaultValue
 }
 
-function toggleStepBoolWithDefault(index: number, key: string, defaultValue: boolean) {
+function toggleStepBoolWithDefault(index: number, key: BooleanStepField, defaultValue: boolean) {
   if (isReadonly.value) return
-  const step: any = steps.value[index]
+  const step = steps.value[index]
   const current = getStepBool(step, key, defaultValue)
   updateStep(index, { [key]: !current })
 }
 
-function supportsShowTitle(step: any) {
+function supportsShowTitle(step: ListeningChoiceFlowStep | undefined) {
   if (!step) return false
   return (
     step.kind === 'intro' ||
@@ -390,9 +429,13 @@ function supportsShowTitle(step: any) {
   )
 }
 
-function hasQuestionIds(step: any) {
-  const ids = step.questionIds
-  return Array.isArray(ids) && ids.length > 0
+function answerStepQuestionIds(step: ListeningChoiceFlowStep | undefined): string[] {
+  if (!isStepKind(step, 'answerChoice')) return []
+  return Array.isArray(step.questionIds) ? step.questionIds : []
+}
+
+function hasQuestionIds(step: ListeningChoiceFlowStep | undefined) {
+  return answerStepQuestionIds(step).length > 0
 }
 
 function setAnswerSourceGroup(stepIndex: number) {
@@ -402,7 +445,8 @@ function setAnswerSourceGroup(stepIndex: number) {
 
 function setAnswerSourceQuestions(stepIndex: number) {
   if (isReadonly.value) return
-  const step: any = steps.value[stepIndex]
+  const step = steps.value[stepIndex]
+  if (!isStepKind(step, 'answerChoice')) return
   if (Array.isArray(step.questionIds)) return
   updateStep(stepIndex, { questionIds: [] })
 }
@@ -414,12 +458,17 @@ function setPlayAudioSource(stepIndex: number, source: 'description' | 'content'
 
 function toggleQuestionId(stepIndex: number, id: string) {
   if (isReadonly.value) return
-  const step: any = steps.value[stepIndex]
+  const step = steps.value[stepIndex]
+  if (!isStepKind(step, 'answerChoice')) return
   const list: string[] = Array.isArray(step.questionIds) ? [...step.questionIds] : []
   const idx = list.indexOf(id)
   if (idx >= 0) list.splice(idx, 1)
   else list.push(id)
   updateStep(stepIndex, { questionIds: list })
+}
+
+function createStep<TStep extends ListeningChoiceFlowStep>(step: Omit<TStep, 'id'>): TStep {
+  return { id: generateId(), ...step } as TStep
 }
 
 function addStep(kind: string) {
@@ -428,12 +477,11 @@ function addStep(kind: string) {
   const firstGroupId = props.modelValue.content.groups[0]?.id || ''
 
   if (kind === 'intro') {
-    list.push({ id: generateId(), kind: 'intro', showTitle: true, autoNext: 'audioEnded' } as any)
+    list.push(createStep<FlowIntroStep>({ kind: 'intro', showTitle: true, autoNext: 'audioEnded' }))
   } else if (kind === 'countdown') {
-    list.push({ id: generateId(), kind: 'countdown', showTitle: true, seconds: 3, label: '准备', autoNext: 'countdownEnded' } as any)
+    list.push(createStep<FlowCountdownStep>({ kind: 'countdown', showTitle: true, seconds: 3, label: '准备', autoNext: 'countdownEnded' }))
   } else if (kind === 'playAudioDescription') {
-    list.push({
-      id: generateId(),
+    list.push(createStep<FlowPlayAudioStep>({
       kind: 'playAudio',
       showTitle: true,
       groupId: firstGroupId,
@@ -442,10 +490,9 @@ function addStep(kind: string) {
       showQuestionTitleDescription: true,
       showGroupPrompt: true,
       autoNext: 'audioEnded'
-    } as any)
+    }))
   } else if (kind === 'playAudioContent' || kind === 'playAudio') {
-    list.push({
-      id: generateId(),
+    list.push(createStep<FlowPlayAudioStep>({
       kind: 'playAudio',
       showTitle: true,
       groupId: firstGroupId,
@@ -454,12 +501,17 @@ function addStep(kind: string) {
       showQuestionTitleDescription: true,
       showGroupPrompt: true,
       autoNext: 'audioEnded'
-    } as any)
+    }))
   } else if (kind === 'promptTone') {
-    list.push({ id: generateId(), kind: 'promptTone', showTitle: true, groupId: firstGroupId, url: '/static/audio/small_time.mp3', autoNext: 'audioEnded' } as any)
+    list.push(createStep<FlowPromptToneStep>({
+      kind: 'promptTone',
+      showTitle: true,
+      groupId: firstGroupId,
+      url: '/static/audio/small_time.mp3',
+      autoNext: 'audioEnded'
+    }))
   } else if (kind === 'answerChoice') {
-    list.push({
-      id: generateId(),
+    list.push(createStep<FlowAnswerChoiceStep>({
       kind: 'answerChoice',
       showTitle: true,
       groupId: firstGroupId,
@@ -467,7 +519,7 @@ function addStep(kind: string) {
       showQuestionTitleDescription: true,
       showGroupPrompt: true,
       autoNext: 'tapNext'
-    } as any)
+    }))
   }
 
   update({ ...props.modelValue, flow: { ...props.modelValue.flow, steps: list } })
@@ -486,7 +538,7 @@ function useDefaultFlow() {
         generateId,
         overrides: {},
         module: standardFlows.state.listeningChoice
-      }) as any as ListeningChoiceFlowStep[]
+      }) as ListeningChoiceFlowStep[]
       update({
         ...props.modelValue,
         flow: {
@@ -504,11 +556,29 @@ function useDefaultFlow() {
 }
 
 function plain(rt: RichTextContent | undefined): string {
-  if (!rt || !Array.isArray((rt as any).content)) return ''
-  return (rt as any).content.map((n: any) => (n.type === 'text' ? n.text : '')).join('')
+  if (!rt || !Array.isArray(rt.content)) return ''
+  return rt.content.map((n) => (n.type === 'text' ? n.text : '')).join('')
 }
 
-function toInt(v: any): number {
+function countdownStepSeconds(step: ListeningChoiceFlowStep | undefined): number {
+  return isStepKind(step, 'countdown') ? Number(step.seconds || 0) : 0
+}
+
+function countdownStepLabel(step: ListeningChoiceFlowStep | undefined): string {
+  return isStepKind(step, 'countdown') ? String(step.label || '') : ''
+}
+
+function promptToneStepUrl(step: ListeningChoiceFlowStep | undefined): string {
+  return isStepKind(step, 'promptTone')
+    ? String(step.url || '/static/audio/small_time.mp3')
+    : '/static/audio/small_time.mp3'
+}
+
+function finishStepText(step: ListeningChoiceFlowStep | undefined): string {
+  return isStepKind(step, 'finish') ? String(step.text || '') : ''
+}
+
+function toInt(v: unknown): number {
   const n = parseInt(String(v || '0'), 10)
   return Number.isFinite(n) ? n : 0
 }

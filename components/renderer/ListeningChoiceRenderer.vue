@@ -45,8 +45,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
-import type { ListeningChoiceQuestion, RenderMode, SubQuestion } from '/types'
+import { computed, onUnmounted, ref, watch, type Component } from 'vue'
+import type {
+  ListeningChoiceFlowStep,
+  ListeningChoiceGroup,
+  ListeningChoiceQuestion,
+  RenderMode,
+  SubQuestion
+} from '/types'
 import type { ListeningChoiceRuntimeEvent } from '/engine/flow/listening-choice/runtime.ts'
 import { createListeningChoiceRuntimeState, reduceListeningChoiceRuntimeState } from '/engine/flow/listening-choice/runtime.ts'
 import type { ListeningChoiceStepRenderView } from './listening-choice/stepPlugins'
@@ -85,6 +91,20 @@ const emit = defineEmits<{
   (e: 'stepChange', step: number): void
 }>()
 
+type RendererStep = ListeningChoiceFlowStep
+type RendererStepOfKind<TKind extends RendererStep['kind']> = Extract<RendererStep, { kind: TKind }>
+type CountdownContextInfo =
+  | { kind: 'intro' }
+  | { kind: 'group'; groupId: string }
+  | null
+
+function isStepKind<TKind extends RendererStep['kind']>(
+  step: RendererStep | null | undefined,
+  kind: TKind
+): step is RendererStepOfKind<TKind> {
+  return step?.kind === kind
+}
+
 const steps = computed(() => props.data.flow?.steps || [])
 const groups = computed(() => props.data.content?.groups || [])
 
@@ -122,19 +142,19 @@ const audioRemaining = ref(0)
 const countdownLeft = ref(0)
 const introCountdownLeft = ref(0)
 
-let tickTimer: any = null
+let tickTimer: ReturnType<typeof setInterval> | null = null
 
 const activeStep = computed(() => steps.value[currentStepIndex.value] || null)
 const activeStepRenderView = computed(() => resolveListeningChoiceStepRenderView(activeStep.value))
 
 function resolveDisplayStepIndex(index: number): number {
-  const step = steps.value[index] as any
+  const step = steps.value[index]
   if (!step) return -1
   if (!shouldReuseListeningChoicePreviousScreen(step)) return index
 
   // Steps like "promptTone" should keep the previous screen visible.
   for (let i = index - 1; i >= 0; i -= 1) {
-    const prev = steps.value[i] as any
+    const prev = steps.value[i]
     if (!prev) continue
     if (shouldReuseListeningChoicePreviousScreen(prev)) continue
     return i
@@ -146,10 +166,10 @@ const displayStepIndex = computed(() => resolveDisplayStepIndex(currentStepIndex
 const displayStep = computed(() => {
   const idx = displayStepIndex.value
   if (idx < 0) return null
-  return (steps.value[idx] as any) || null
+  return steps.value[idx] || null
 })
 const displayStepRenderView = computed(() => resolveListeningChoiceStepRenderView(displayStep.value))
-const DISPLAY_RENDERERS: Record<ListeningChoiceStepRenderView, any> = {
+const DISPLAY_RENDERERS: Record<ListeningChoiceStepRenderView, Component> = {
   intro: ListeningChoiceIntroBody,
   groupPrompt: ListeningChoiceGroupPromptBody,
   countdown: ListeningChoiceCountdownBody,
@@ -163,8 +183,8 @@ const displayRenderer = computed(() => {
   return DISPLAY_RENDERERS[displayStepRenderView.value] || ListeningChoiceUnsupportedBody
 })
 
-function resolveAnswerChoiceGroupId(step: any): string | undefined {
-  if (!step) return undefined
+function resolveAnswerChoiceGroupId(step: RendererStep | null | undefined): string | undefined {
+  if (!isStepKind(step, 'answerChoice')) return undefined
   if (step.groupId) return String(step.groupId)
   const ids = Array.isArray(step.questionIds) ? step.questionIds : []
   const groupIds = Array.from(new Set(ids.map(id => questionGroupIdById.value[id]).filter(Boolean)))
@@ -172,7 +192,7 @@ function resolveAnswerChoiceGroupId(step: any): string | undefined {
   return undefined
 }
 
-function resolveStepGroupId(step: any): string | undefined {
+function resolveStepGroupId(step: RendererStep | null | undefined): string | undefined {
   if (!step) return undefined
   const renderView = resolveListeningChoiceStepRenderView(step)
   if (renderView === 'answerChoice') return resolveAnswerChoiceGroupId(step)
@@ -183,11 +203,11 @@ function resolveStepGroupId(step: any): string | undefined {
   return undefined
 }
 
-function resolveAnswerSeconds(step: any): number {
+function resolveAnswerSeconds(step: RendererStep | null | undefined): number {
   if (!step || resolveListeningChoiceStepRenderView(step) !== 'answerChoice') return 0
   const groupId = resolveAnswerChoiceGroupId(step)
   if (!groupId) return 0
-  const raw = (groupsById.value[groupId] as any)?.answerSeconds
+  const raw = groupsById.value[groupId]?.answerSeconds
   const n = Math.floor(Number(raw))
   if (Number.isFinite(n) && n > 0) return n
   return 0
@@ -196,7 +216,7 @@ function resolveAnswerSeconds(step: any): number {
 const activeGroup = computed(() => {
   const step = displayStep.value
   if (!step) return null
-  const groupId = resolveStepGroupId(step as any)
+  const groupId = resolveStepGroupId(step)
   if (groupId) return groupsById.value[groupId] || null
   return null
 })
@@ -207,8 +227,8 @@ const introCountdownSeconds = computed(() => props.data.content?.intro?.countdow
 const introCountdownLabel = computed(() => props.data.content?.intro?.countdown?.label || '准备')
 
 const activePlayAudioSource = computed<'description' | 'content'>(() => {
-  const step: any = displayStep.value
-  if (!step || displayStepRenderView.value !== 'playAudio') return 'content'
+  const step = displayStep.value
+  if (!isStepKind(step, 'playAudio') || displayStepRenderView.value !== 'playAudio') return 'content'
   return step.audioSource === 'description' ? 'description' : 'content'
 })
 
@@ -229,9 +249,9 @@ const isPreview = computed(() => props.mode === 'preview')
 const shouldAutoPlay = computed(() => props.mode === 'exam')
 
 const introBaseTitle = computed(() => String(props.data.content?.intro?.title || '').trim())
-const introTitleDescription = computed(() => String((props.data.content?.intro as any)?.title_description || '').trim())
+const introTitleDescription = computed(() => String(props.data.content?.intro?.title_description || '').trim())
 
-function toBool(v: any, defaultValue = true) {
+function toBool(v: unknown, defaultValue = true) {
   if (typeof v === 'boolean') return v
   return defaultValue
 }
@@ -244,32 +264,32 @@ function buildIntroTitle(showTitleDescription = true) {
   return title || titleDescription
 }
 
-function stepShowTitle(step: any) {
+function stepShowTitle(step: RendererStep | null | undefined) {
   return toBool(step?.showTitle, true)
 }
 
-function stepShowTitleDescription(step: any) {
+function stepShowTitleDescription(step: RendererStep | null | undefined) {
   return toBool(step?.showTitleDescription, true)
 }
 
-function stepShowDescription(step: any) {
+function stepShowDescription(step: RendererStep | null | undefined) {
   return toBool(step?.showDescription, true)
 }
 
-function stepShowQuestionTitle(step: any) {
+function stepShowQuestionTitle(step: RendererStep | null | undefined) {
   return toBool(step?.showQuestionTitle, true)
 }
 
-function stepShowQuestionTitleDescription(step: any) {
+function stepShowQuestionTitleDescription(step: RendererStep | null | undefined) {
   return toBool(step?.showQuestionTitleDescription, true)
 }
 
-function stepShowGroupPrompt(step: any) {
+function stepShowGroupPrompt(step: RendererStep | null | undefined) {
   return toBool(step?.showGroupPrompt, true)
 }
 
 const activeContextTitle = computed(() => {
-  const step: any = displayStep.value
+  const step = displayStep.value
   if (!step) return ''
   if (!isListeningChoiceContextInfoStep(step)) return ''
   if (!stepShowQuestionTitle(step)) return ''
@@ -277,7 +297,7 @@ const activeContextTitle = computed(() => {
 })
 
 const activeContextGroupTitle = computed(() => {
-  const step: any = displayStep.value
+  const step = displayStep.value
   if (!step) return ''
   if (!isListeningChoiceContextInfoStep(step)) return ''
   if (!stepShowTitle(step)) return ''
@@ -286,14 +306,14 @@ const activeContextGroupTitle = computed(() => {
 })
 
 const activeContextShowPrompt = computed(() => {
-  const step: any = displayStep.value
+  const step = displayStep.value
   if (!step) return false
   if (!isListeningChoiceContextInfoStep(step)) return false
   return stepShowGroupPrompt(step)
 })
 
 const activeTitle = computed(() => {
-  const step: any = displayStep.value as any
+  const step = displayStep.value
   if (!step) return ''
   if (!stepShowTitle(step)) return ''
 
@@ -301,7 +321,7 @@ const activeTitle = computed(() => {
 
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
   if (displayStepRenderView.value === 'groupPrompt' || carrier === 'promptTone') {
-    return getGroupDisplayName(step.groupId)
+    return getGroupDisplayName(resolveStepGroupId(step))
   }
 
   if (displayStepRenderView.value === 'playAudio' || displayStepRenderView.value === 'answerChoice') return ''
@@ -330,42 +350,37 @@ function getGroupDisplayName(groupId: string | undefined | null): string {
 }
 
 function hasSeparateIntroCountdownStep(index: number) {
-  const cur = steps.value[index] as any
-  const next = steps.value[index + 1] as any
+  const cur = steps.value[index]
+  const next = steps.value[index + 1]
   return resolveListeningChoiceStepRenderView(cur) === 'intro' && resolveListeningChoiceStepRenderView(next) === 'countdown'
 }
 
-function resolveIntroStepForCountdown(index: number): any | null {
-  const prev = steps.value[index - 1] as any
-  if (resolveListeningChoiceStepRenderView(prev) === 'intro') return prev
-  const intro = (steps.value || []).find((s: any) => resolveListeningChoiceStepRenderView(s) === 'intro')
+function resolveIntroStepForCountdown(index: number): RendererStepOfKind<'intro'> | null {
+  const prev = steps.value[index - 1]
+  if (isStepKind(prev, 'intro')) return prev
+  const intro = steps.value.find((s) => isStepKind(s, 'intro'))
   return intro || null
 }
 
 const activeIntroShowDescription = computed(() => {
-  const step: any = displayStep.value as any
-  if (!step || displayStepRenderView.value !== 'intro') return true
+  const step = displayStep.value
+  if (!isStepKind(step, 'intro') || displayStepRenderView.value !== 'intro') return true
   return stepShowDescription(step)
 })
 
-const countdownContext = computed(() => {
+const countdownContext = computed<CountdownContextInfo>(() => {
   const step = displayStep.value
   if (!step || displayStepRenderView.value !== 'countdown') return null
 
   const baseIndex = displayStepIndex.value
-  const prev = steps.value[baseIndex - 1] as any
-  const next = steps.value[baseIndex + 1] as any
+  const prev = steps.value[baseIndex - 1]
+  const next = steps.value[baseIndex + 1]
 
   if (resolveListeningChoiceStepRenderView(prev) === 'intro') return { kind: 'intro' as const }
 
-  const groupIdFromStep = (s: any): string | null => {
+  const groupIdFromStep = (s: RendererStep | null | undefined): string | null => {
     if (!s) return null
-    const renderView = resolveListeningChoiceStepRenderView(s)
-    const carrier = resolveListeningChoiceStepAudioCarrier(s)
-    if (renderView === 'groupPrompt' || renderView === 'playAudio' || renderView === 'answerChoice' || carrier === 'promptTone') {
-      return s.groupId ? String(s.groupId) : null
-    }
-    return null
+    return resolveStepGroupId(s) || null
   }
 
   const groupId = groupIdFromStep(prev) || groupIdFromStep(next)
@@ -393,7 +408,7 @@ const bottomAudioUrl = computed(() => {
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
   if (carrier === 'intro') return introAudioUrl.value
   if (carrier === 'playAudio') return playAudioUrl.value
-  if (carrier === 'promptTone') return String((step as any).url || '')
+  if (carrier === 'promptTone' && isStepKind(step, 'promptTone')) return String(step.url || '')
   return ''
 })
 
@@ -415,14 +430,14 @@ const bottomMissingAudioText = computed(() => {
 
 const activeQuestions = computed(() => {
   const step = displayStep.value
-  if (!step || displayStepRenderView.value !== 'answerChoice') return []
+  if (!isStepKind(step, 'answerChoice') || displayStepRenderView.value !== 'answerChoice') return []
 
-  const ids = (step as any).questionIds as string[] | undefined
+  const ids = step.questionIds
   if (ids && ids.length > 0) {
     return ids.map(id => questionsById.value[id]).filter(Boolean)
   }
 
-  const groupId = (step as any).groupId as string | undefined
+  const groupId = step.groupId
   if (groupId) {
     return (groupsById.value[groupId]?.subQuestions || []) as SubQuestion[]
   }
@@ -431,14 +446,14 @@ const activeQuestions = computed(() => {
 })
 
 const contextQuestions = computed(() => {
-  const step = displayStep.value as any
+  const step = displayStep.value
   if (!step) return []
 
   // Answer page: honor explicit questionIds first (if provided).
   if (displayStepRenderView.value === 'answerChoice') return activeQuestions.value
 
   if (displayStepRenderView.value === 'groupPrompt' || displayStepRenderView.value === 'playAudio') {
-    const groupId = step.groupId as string | undefined
+    const groupId = resolveStepGroupId(step)
     if (!groupId) return []
     return (groupsById.value[groupId]?.subQuestions || []) as SubQuestion[]
   }
@@ -452,8 +467,13 @@ const contextQuestions = computed(() => {
   return []
 })
 
-const displayRendererProps = computed<Record<string, any>>(() => {
-  const step: any = displayStep.value || {}
+const displayRendererProps = computed<Record<string, unknown>>(() => {
+  const step = displayStep.value
+  if (!step) {
+    return {
+      kind: ''
+    }
+  }
   const shared = {
     answers: props.answers,
     showAnswer: props.showAnswer,
@@ -486,7 +506,7 @@ const displayRendererProps = computed<Record<string, any>>(() => {
       introShowDescription: countdownIntroShowDescription.value,
       groupPrompt: countdownContextGroup.value?.prompt,
       questions: contextQuestions.value,
-      label: String(step.label || '')
+      label: String(isStepKind(step, 'countdown') ? (step.label || '') : '')
     }
   }
 
@@ -517,7 +537,7 @@ const displayRendererProps = computed<Record<string, any>>(() => {
 
   if (displayStepRenderView.value === 'finish') {
     return {
-      text: String(step.text || '')
+      text: String(isStepKind(step, 'finish') ? (step.text || '') : '')
     }
   }
 
@@ -545,16 +565,17 @@ const bottomCountdown = computed(() => {
   if (renderView === 'countdown') {
     if (countdownLeft.value <= 0) return null
 
-    const next = steps.value[currentStepIndex.value + 1] as any
+    const next = steps.value[currentStepIndex.value + 1]
     const nextRenderView = resolveListeningChoiceStepRenderView(next)
     const nextCarrier = resolveListeningChoiceStepAudioCarrier(next)
 
-    let label = step.label ? `${step.label}-倒计时` : '倒计时'
+    const stepLabel = isStepKind(step, 'countdown') ? step.label : undefined
+    let label = stepLabel ? `${stepLabel}-倒计时` : '倒计时'
     if (countdownContext.value?.kind === 'intro') {
       // Intro countdown is already self-explanatory; keep it stable regardless of what comes next.
-      label = `${step.label || introCountdownLabel.value || '准备'}-倒计时`
+      label = `${stepLabel || introCountdownLabel.value || '准备'}-倒计时`
     } else if (nextRenderView === 'playAudio') {
-      const nextSource = next?.audioSource === 'description' ? 'description' : 'content'
+      const nextSource = isStepKind(next, 'playAudio') && next.audioSource === 'description' ? 'description' : 'content'
       label = nextSource === 'description' ? '播放描述音频前-倒计时' : '播放正文音频前-倒计时'
     } else if (nextCarrier === 'promptTone') {
       label = '提示音前-倒计时'
@@ -579,7 +600,7 @@ const bottomCountdown = computed(() => {
 
   if (renderView === 'answerChoice') {
     if (countdownLeft.value <= 0) return null
-    const groupId = resolveAnswerChoiceGroupId(step as any)
+    const groupId = resolveAnswerChoiceGroupId(step)
     const groupLabel = getGroupDisplayName(groupId)
     return {
       label: groupLabel ? `${groupLabel}-答题倒计时` : '答题倒计时',
@@ -609,7 +630,7 @@ function clearTickTimer() {
 
 function dispatchRuntime(event: ListeningChoiceRuntimeEvent) {
   const current = createListeningChoiceRuntimeState(currentStepIndex.value)
-  const next = reduceListeningChoiceRuntimeState(current, steps.value as any, event)
+  const next = reduceListeningChoiceRuntimeState(current, steps.value, event)
   const nextIndex = Number(next?.stepIndex || 0)
   if (nextIndex === currentStepIndex.value) return
   currentStepIndex.value = nextIndex

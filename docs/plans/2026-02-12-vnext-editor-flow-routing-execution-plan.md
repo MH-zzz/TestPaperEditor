@@ -15,6 +15,119 @@
 3. 每周必须完成“代码 + 测试 + 文档”闭环。
 4. 每个阶段都要有可演示可验收的产物。
 
+### 0.1 优先级拍板规则（Demo 阶段）
+
+1. 兼容性权重为 `0`，以“最新、最完善、最可持续、最可扩展”为唯一方向。
+2. 先保主链路确定性（状态一致、流程一致、可追踪），再做体验增强。
+3. 任何任务都必须能落到可验证的测试或验收步骤，不接受“感觉上更好”。
+
+**评分模型（用于 P0/P1 切分）**
+
+- `A. 主链路风险`（0-5）：是否可能导致流程错误、状态错乱、发布误操作。
+- `B. 架构杠杆`（0-5）：是否能减少长期复杂度/重复实现。
+- `C. 依赖阻塞`（0-5）：是否阻塞后续多个任务。
+- `D. 实施成本`（0-5）：改动量和回归成本（分数越高成本越高）。
+
+`PriorityScore = A*4 + B*3 + C*2 - D*1`
+
+- `>= 26`：`P0`（立即执行）
+- `18 - 25`：`P1`（P0 收口后执行）
+- `<= 17`：`P2`（当前阶段不排期）
+
+### 0.2 当前优先级队列（不排 P2）
+
+| 优先级 | 事项 | 为什么现在做 | 完成标准（Exit Criteria） |
+|---|---|---|---|
+| P0 | `FlowModulesManager` 拆分 + 类型收敛 | 当前仍是最大复杂度与类型债热点，改动风险集中 | 组件拆为可复用 composable；关键链路无 `any`；相关测试通过 |
+| P0 | 题目/流程/路由三方 Schema 联合校验 | 解决“隐性契约”风险，避免保存/发布后才暴露错误 | 保存与发布前统一阻断；错误定位到字段/规则 |
+| P0 | 核心类型债清理（`flowProfiles`、`buildModuleDiffSummary`、`types/flow-engine`） | 核心域仍有 `any`，会放大维护和重构成本 | 核心域无 `any/@ts-ignore`；类型可推断；测试全绿 |
+| P0 | 守护测试扩展（禁止绕过闸门/回退到 any） | 防止后续迭代把已收敛链路再次破坏 | 增加 guardrail 测试并纳入回归命令 |
+| P1 | 编辑上手模式（题目编辑/流程编辑/路由编辑引导） | 降低编辑人员学习成本，提高产研协作效率 | 新人按文档可独立完成一次全链路操作 |
+| P1 | 诊断面板增强（命中规则/step 轨迹/effect） | 降低黑盒调试成本 | 任意问题可导出并复现运行轨迹 |
+| P1 | 版本治理操作（批量迁移/归档/影响面预览） | 防止版本碎片化带来维护压力 | 支持批量操作且每次操作有影响范围确认 |
+| P1 | 持久化策略统一到调度写入 | 进一步降低写放大与卡顿风险 | 剩余 store 统一策略，无同步高频写入 |
+
+### 0.3 执行节奏（拍板后怎么落地）
+
+1. 每个迭代只并行：`1 条 P0 主线 + 1 条 P1 收口`。
+2. P0 执行顺序按：`依赖阻塞` > `主链路风险` > `实施成本`。
+3. 每条任务必须同时提交：代码、测试、文档更新；三者缺一不算完成。
+4. 每天以测试结果作为进度基线，不以“代码量”作为进度基线。
+
+### 0.4 联合优先级（含 Visual Flow Editor Roadmap）
+
+> 说明：在不考虑兼容前提下，先收敛主链路与质量地基，再推进可视化编辑器能力。
+
+| 顺位 | 优先级 | 事项 | 依赖门槛 |
+|---|---|---|---|
+| 1 | P0 | `FlowModulesManager` 去 `any` + 拆分 composable（路由模拟/版本发布/每题组步骤） | 无 |
+| 2 | P0 | 核心类型债清理：`stores/flowProfiles.ts`、`domain/flow-module/usecases/buildModuleDiffSummary.ts`、`types/flow-engine.ts` | 1（可部分并行） |
+| 3 | P0 | 保存前强校验闭环：题目模板字段 × 流程模块字段 × 路由引用交叉校验，非法阻断保存/发布 | 1,2 |
+| 4 | P0 | Guardrail 扩展：关键文件禁止回退 `any`、禁止绕过闸门 API | 2,3 |
+| 5 | P1 | 调试可视化增强：命中规则、模块版本、当前 step、autoNext 原因、trace | 1,3 |
+| 6 | P1 | Visual 阶段一（只读可视化）：`steps -> graph`、自动布局、查看弹窗 | 1,5 |
+| 7 | P1 | 版本治理工具：批量迁移路由版本 + 批量归档旧版本 + 影响面预览 | 1,3 |
+| 8 | P1 | 编辑上手优化：三段式引导（题目/流程/路由）+ 预置模板 | 6 |
+| 9 | P1 | 持久化策略统一：`flowLibrary/settings/tag/standardFlows` 收敛到调度写入 | 1 |
+| 10 | P1 | `tests/seeded-shuffle.test.mjs` 正式纳入回归并补覆盖说明 | 无（可随时） |
+| 11 | P1 | Visual 阶段二（线性编辑）：元件库、Inspector、`graph -> steps` 编译、拓扑与孤点校验 | 3,4,6 |
+
+**明确暂不排期（V2）**
+
+1. Visual 阶段三（Branch/Loop/IntelliSense/Snippet）保持在 V2 Backlog，不进入当前执行面板。
+
+### 0.5 执行进度快照（2026-02-12）
+
+**P0 已落地**
+
+1. `FlowModulesManager` 三块 composable 拆分完成：
+   - `components/views/flow-modules/usePerGroupStepEditor.ts`
+   - `components/views/flow-modules/useRouteSimulator.ts`
+   - `components/views/flow-modules/useModuleLifecycle.ts`
+2. 核心类型债收敛完成：
+   - `stores/flowProfiles.ts`
+   - `domain/flow-module/usecases/buildModuleDiffSummary.ts`
+   - `types/flow-engine.ts`
+3. 保存/发布前“题目模板 × 流程模块 × 路由引用”交叉校验已接入：
+   - `domain/flow-module/usecases/validateModuleCommitCrossChecks.ts`
+   - `components/views/FlowModulesManager.vue`（统一 pre-commit hook）
+4. Guardrail 已扩展：
+   - `tests/store-guardrails.test.mjs` 增加关键文件 `any/@ts-ignore` 回退防线
+   - 增加流程提交闸门存在性断言
+5. 交叉校验纯用例已补齐：
+   - `tests/flow-module-commit-cross-checks.test.mjs` 覆盖模板缺字段、路由引用异常、发布无命中 warning、正常通过分支
+6. 阻断项定位能力已落地：
+   - `components/views/FlowModulesManager.vue` 增加“保存/发布阻断项”面板与“定位”按钮
+   - `components/editor/ListeningChoiceEditor.vue` 支持 `focusPath` 并自动展开/高亮目标题组或小题
+   - `components/views/flow-modules/useModuleLifecycle.ts` 支持校验失败回调（页面可接管定位交互）
+7. 持久化策略统一继续完成：
+   - `stores/settings.ts`、`stores/tag.ts` 已切换到 `createPersistenceScheduler`，移除 deep watch 自动落盘
+
+**当前回归状态**
+
+1. `node --test`：`110 passed / 0 failed`
+
+**下一拍建议（仍按 P0 优先）**
+
+1. 把交叉校验错误从“文本列表”升级到“字段定位 + 一键跳转”（编辑器内联提示）。
+2. 为 `validateModuleCommitCrossChecks` 增加纯用例测试文件（覆盖缺题组、缺 prepareSeconds、路由引用不存在/归档等分支）。
+
+### 0.6 1-11 状态总览（2026-02-12）
+
+| 编号 | 事项 | 状态 | 说明 |
+|---|---|---|---|
+| 1 | `FlowModulesManager` 去 `any` + composable 拆分 | ✅ 完成 | 三块 composable 已落地（路由模拟/版本生命周期/每题组步骤） |
+| 2 | 核心类型债清理（`flowProfiles`/`buildModuleDiffSummary`/`flow-engine`） | ✅ 完成 | 指定核心文件已去 `any/@ts-ignore` 并通过回归 |
+| 3 | 保存前强校验闭环（模板×流程×路由） | ✅ 完成 | 交叉校验 usecase + 保存/发布阻断 + 字段定位面板已接入 |
+| 4 | Guardrail 扩展（禁回退 any/绕闸门） | ✅ 完成 | guardrail 测试已覆盖关键文件与提交闸门链路 |
+| 5 | 调试可视化增强（命中规则/step/autoNext/trace） | 🟡 部分完成 | 已有 RuntimeDebug/trace；Flow Center 专用诊断面板仍待补强 |
+| 6 | Visual 阶段一（只读可视化） | ⬜ 未开始 | 尚未落地 `flow-visual` 目录与 `steps -> graph` 只读画布 |
+| 7 | 版本治理工具（批量迁移+批量归档+影响面） | 🟡 部分完成 | 已有“迁移到当前版本”与单版本归档；批量归档/全量影响面预览待补 |
+| 8 | 编辑上手优化（三段式引导+模板） | ⬜ 未开始 | 尚未实现引导模式与预置模板入口 |
+| 9 | 持久化策略统一（`flowLibrary/settings/tag/standardFlows`） | ✅ 完成 | `flowLibrary/standardFlows/settings/tag` 已统一到调度写入策略 |
+| 10 | `seeded-shuffle` 纳入回归并补覆盖说明 | 🟡 部分完成 | 测试文件已执行；覆盖说明文档仍待补充 |
+| 11 | Visual 阶段二（线性编辑） | ⬜ 未开始 | 依赖阶段一，暂未进入实现 |
+
 ## 1. 6 周执行总览（按周）
 
 | 周次 | 核心目标 | 交付物 |
