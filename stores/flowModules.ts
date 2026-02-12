@@ -14,13 +14,17 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-function normalizeText(v: any): string | undefined {
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function normalizeText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
-function normalizeListeningChoiceModuleName(src: any): string {
+function normalizeListeningChoiceModuleName(src: Record<string, unknown>): string {
   const id = normalizeText(src?.id) || LISTENING_CHOICE_STANDARD_FLOW_ID
   const raw = normalizeText(src?.name)
   if (id === LISTENING_CHOICE_STANDARD_FLOW_ID) {
@@ -29,7 +33,7 @@ function normalizeListeningChoiceModuleName(src: any): string {
   return raw || id
 }
 
-function normalizeStatus(v: any): 'draft' | 'published' | 'archived' {
+function normalizeStatus(v: unknown): 'draft' | 'published' | 'archived' {
   if (v === 'draft' || v === 'published' || v === 'archived') return v
   return 'published'
 }
@@ -41,8 +45,8 @@ function canListeningChoiceStatusTransition(from: FlowModuleStatus, to: FlowModu
   return false
 }
 
-function normalizeListeningChoiceModule(input: any): ListeningChoiceFlowModuleV1 {
-  const src = input && typeof input === 'object' ? input : {}
+function normalizeListeningChoiceModule(input: unknown): ListeningChoiceFlowModuleV1 {
+  const src = isObjectRecord(input) ? input : {}
   const base = normalizeListeningChoiceStandardModule(src)
   const now = nowIso()
 
@@ -60,7 +64,7 @@ function normalizeListeningChoiceModule(input: any): ListeningChoiceFlowModuleV1
     introCountdownShowTitle: base.introCountdownShowTitle,
     introCountdownSeconds: base.introCountdownSeconds,
     introCountdownLabel: base.introCountdownLabel,
-    perGroupSteps: base.perGroupSteps as any,
+    perGroupSteps: base.perGroupSteps,
     createdAt: typeof src.createdAt === 'string' && src.createdAt ? src.createdAt : now,
     updatedAt: typeof src.updatedAt === 'string' && src.updatedAt ? src.updatedAt : now
   }
@@ -91,7 +95,7 @@ class FlowModulesStore {
       if (!stored) return
       const parsed = JSON.parse(stored)
       const list = Array.isArray(parsed?.listeningChoice) ? parsed.listeningChoice : []
-      const normalized = list.map((m: any) => normalizeListeningChoiceModule(m))
+      const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
       this.state.listeningChoice = normalized.length ? normalized : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
     } catch (e) {
       console.error('Failed to load flow modules', e)
@@ -139,9 +143,13 @@ class FlowModulesStore {
       .reduce((max, m) => Math.max(max, Number(m.version || 0)), 0)
   }
 
-  upsertListeningChoice(input: any) {
-    const src = input && typeof input === 'object' ? input : {}
-    const idx = this.state.listeningChoice.findIndex(m => m.id === src.id && m.version === src.version)
+  upsertListeningChoice(input: unknown) {
+    const src = isObjectRecord(input) ? input : {}
+    const inputId = normalizeText(src.id)
+    const inputVersion = Number.isFinite(Number(src.version))
+      ? Math.max(1, Math.floor(Number(src.version)))
+      : 1
+    const idx = this.state.listeningChoice.findIndex(m => m.id === inputId && m.version === inputVersion)
     const existing = idx >= 0 ? this.state.listeningChoice[idx] : null
     const defaultStatus = existing ? existing.status : 'draft'
     const normalizedInput = existing

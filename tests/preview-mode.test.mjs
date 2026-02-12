@@ -18,6 +18,14 @@ test('preview page should render in preview mode (no exam auto behaviors)', asyn
   assert.equal(m[1], 'preview')
 })
 
+test('preview page should load question snapshot via repository instead of direct storage access', async () => {
+  const src = await readFile('pages/preview/index.vue')
+  assert.ok(src.includes("import { loadCurrentQuestionSnapshot, saveCurrentQuestionSnapshot } from '/infra/repository/questionRepository'"))
+  assert.ok(src.includes('const snapshot = loadCurrentQuestionSnapshot<Question>()'))
+  assert.ok(!src.includes("uni.getStorageSync('currentQuestion')"))
+  assert.ok(!src.includes("uni.setStorageSync('currentQuestion'"))
+})
+
 test('ListeningChoiceRenderer preview should not simulate audio playback countdown', async () => {
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
 
@@ -120,9 +128,16 @@ test('index page should route learning module to LearningWorkspace', async () =>
   assert.ok(src.includes("<LearningWorkspace v-else-if=\"currentModule === 'learning'\" />"))
 })
 
+test('question library should load recent questions via repository', async () => {
+  const src = await readFile('components/views/QuestionLibrary.vue')
+  assert.ok(src.includes("import { loadRecentQuestions } from '/infra/repository/questionRepository'"))
+  assert.ok(src.includes('questions.value = loadRecentQuestions<Question>()'))
+})
+
 test('learning workspace should support local-library simulation, flow context, and step traces', async () => {
   const src = await readFile('components/views/LearningWorkspace.vue')
-  assert.ok(src.includes('const stored = uni.getStorageSync(\'recentQuestions\')'))
+  assert.ok(src.includes("import { loadRecentQuestions } from '/infra/repository/questionRepository'"))
+  assert.ok(src.includes('const list = loadRecentQuestions<LocalQuestion>()'))
   assert.ok(src.includes('runQuestionFlow'))
   assert.ok(src.includes('reduceQuestionFlowRuntimeState'))
   assert.ok(src.includes('flowModules.getListeningChoiceByRef'))

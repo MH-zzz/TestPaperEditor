@@ -95,7 +95,7 @@ test('flow module store should support business display name + optional note fie
   const file = path.resolve(process.cwd(), 'stores/flowModules.ts')
   const content = await src.readFile(file, 'utf8')
   assert.ok(content.includes("const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'"))
-  assert.ok(content.includes('function normalizeListeningChoiceModuleName(src: any)'))
+  assert.ok(content.includes('function normalizeListeningChoiceModuleName(src: Record<string, unknown>)'))
   assert.ok(content.includes('note: normalizeText(src.note)'))
   assert.ok(content.includes('name: src.name == null ? existing.name : src.name'))
   assert.ok(content.includes('note: src.note == null ? existing.note : src.note'))

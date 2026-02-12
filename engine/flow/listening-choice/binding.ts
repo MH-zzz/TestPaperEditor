@@ -1,4 +1,11 @@
-import type { ListeningChoiceQuestion, ListeningChoiceFlowStep, ListeningChoiceFlowSource, ListeningChoiceFlow } from '/types'
+import type {
+  ListeningChoiceQuestion,
+  ListeningChoiceFlow,
+  ListeningChoiceFlowModuleV1,
+  ListeningChoiceFlowSource,
+  ListeningChoiceFlowStep,
+  QuestionMetadata
+} from '/types'
 import { compileListeningChoiceFlow } from './compiler.ts'
 import { flowModules } from '/stores/flowModules'
 import { flowProfiles } from '/stores/flowProfiles'
@@ -13,33 +20,55 @@ import {
 
 type IdFactory = () => string
 
-function toInt(v: any, fallback = 0) {
+type FlowRoutingContext = { region?: string; scene?: string; grade?: string }
+type QuestionWithMetadata = ListeningChoiceQuestion & { metadata?: QuestionMetadata }
+type FlowOverrides = Record<string, Record<string, unknown>>
+
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function toInt(v: unknown, fallback = 0) {
   const n = parseInt(String(v ?? ''), 10)
   return Number.isFinite(n) ? n : fallback
 }
 
-function normalizeCtxValue(v: any): string | undefined {
+function normalizeCtxValue(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
+function readMetadata(question: ListeningChoiceQuestion): QuestionMetadata {
+  const metadata = (question as QuestionWithMetadata).metadata
+  return isObjectRecord(metadata) ? (metadata as QuestionMetadata) : {}
+}
+
+function normalizeFlowOverrides(raw: unknown): FlowOverrides {
+  if (!isObjectRecord(raw)) return {}
+  const output: FlowOverrides = {}
+  Object.entries(raw).forEach(([key, value]) => {
+    if (!isObjectRecord(value)) return
+    output[String(key)] = { ...value }
+  })
+  return output
+}
+
 function resolveRoutingCtx(
   question: ListeningChoiceQuestion,
-  ctx?: { region?: string; scene?: string; grade?: string }
+  ctx?: FlowRoutingContext
 ) {
-  const q: any = question as any
-  const meta: any = q?.metadata && typeof q.metadata === 'object' ? q.metadata : {}
-  const flowCtx: any = meta?.flowContext && typeof meta.flowContext === 'object' ? meta.flowContext : {}
+  const meta = readMetadata(question)
+  const flowCtx = isObjectRecord(meta.flowContext) ? meta.flowContext : {}
   return {
-    region: normalizeCtxValue(ctx?.region) || normalizeCtxValue(flowCtx?.region) || normalizeCtxValue(meta?.region),
-    scene: normalizeCtxValue(ctx?.scene) || normalizeCtxValue(flowCtx?.scene) || normalizeCtxValue(meta?.scene),
-    grade: normalizeCtxValue(ctx?.grade) || normalizeCtxValue(flowCtx?.grade) || normalizeCtxValue(meta?.grade)
+    region: normalizeCtxValue(ctx?.region) || normalizeCtxValue(flowCtx.region) || normalizeCtxValue(meta.region),
+    scene: normalizeCtxValue(ctx?.scene) || normalizeCtxValue(flowCtx.scene) || normalizeCtxValue(meta.scene),
+    grade: normalizeCtxValue(ctx?.grade) || normalizeCtxValue(flowCtx.grade) || normalizeCtxValue(meta.grade)
   }
 }
 
-function buildModuleFromLegacyStandard() {
-  const m: any = standardFlows.state.listeningChoice || {}
+function buildModuleFromLegacyStandard(): ListeningChoiceFlowModuleV1 {
+  const m = standardFlows.state.listeningChoice
   return {
     kind: 'listening_choice' as const,
     id: String(m.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
@@ -53,26 +82,51 @@ function buildModuleFromLegacyStandard() {
     introCountdownShowTitle: m.introCountdownShowTitle,
     introCountdownSeconds: m.introCountdownSeconds,
     introCountdownLabel: m.introCountdownLabel,
-    perGroupSteps: Array.isArray(m.perGroupSteps) ? m.perGroupSteps : []
+    perGroupSteps: Array.isArray(m.perGroupSteps) ? [...m.perGroupSteps] : []
   }
 }
 
-function resolveFlowSource(question: ListeningChoiceQuestion) {
-  const src = question?.flow?.source as any
-  if (src && typeof src === 'object') return src
+function resolveFlowSource(question: ListeningChoiceQuestion): ListeningChoiceFlowSource {
+  const src = question?.flow?.source
+  if (src?.kind === 'library') {
+    return {
+      kind: 'library',
+      id: String(src.id || '')
+    }
+  }
+
+  if (src?.kind === 'standard') {
+    return {
+      kind: 'standard',
+      id: String(src.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+      version: Number.isFinite(Number(src.version)) ? Math.max(1, toInt(src.version, 1)) : 1,
+      profileId: normalizeCtxValue(src.profileId),
+      overrides: normalizeFlowOverrides(src.overrides)
+    }
+  }
+
   return {
     kind: 'standard',
     id: LISTENING_CHOICE_STANDARD_FLOW_ID,
     version: 1,
     overrides: {}
-  } as any
+  }
 }
 
-function resolveStandardModule(question: ListeningChoiceQuestion, source: any, ctx?: { region?: string; scene?: string; grade?: string }) {
-  const isActiveModule = (module: any) => !!module && module.status !== 'archived'
-  const explicitId = typeof source?.id === 'string' && source.id ? source.id : ''
-  const explicitVersion = Number.isFinite(Number(source?.version)) ? Math.max(1, toInt(source.version, 1)) : 0
-  const profileId = typeof source?.profileId === 'string' && source.profileId ? source.profileId : ''
+function resolveStandardModule(
+  question: ListeningChoiceQuestion,
+  source: ListeningChoiceFlowSource,
+  ctx?: FlowRoutingContext
+) {
+  const isActiveModule = (module: ListeningChoiceFlowModuleV1 | null | undefined): module is ListeningChoiceFlowModuleV1 => {
+    return !!module && module.status !== 'archived'
+  }
+  const standardSource = source.kind === 'standard' ? source : null
+  const explicitId = standardSource?.id ? String(standardSource.id) : ''
+  const explicitVersion = Number.isFinite(Number(standardSource?.version))
+    ? Math.max(1, toInt(standardSource?.version, 1))
+    : 0
+  const profileId = normalizeCtxValue(standardSource?.profileId) || ''
 
   if (explicitId && explicitVersion > 0) {
     const hit = flowModules.getListeningChoiceByRef({ id: explicitId, version: explicitVersion })
@@ -104,21 +158,33 @@ function resolveStandardModule(question: ListeningChoiceQuestion, source: any, c
   return { module: buildModuleFromLegacyStandard(), profileId: profileId || matchedProfile?.id }
 }
 
-function buildNormalizedFlowSource(source: any, patch: Record<string, any>): ListeningChoiceFlowSource {
+function buildNormalizedFlowSource(
+  source: ListeningChoiceFlowSource,
+  patch: { id?: string; version?: number; profileId?: string }
+): ListeningChoiceFlowSource {
   if (source?.kind === 'library') {
     return { kind: 'library', id: String(source.id || '') }
   }
 
+  const id = String(patch.id || source?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+  const versionInput = patch.version == null ? source?.version : patch.version
+  const version = Number.isFinite(Number(versionInput))
+    ? Math.max(1, toInt(versionInput, 1))
+    : undefined
+  const profileId = normalizeCtxValue(patch.profileId == null ? source?.profileId : patch.profileId)
+
   return {
     kind: 'standard',
-    id: String(patch.id || source?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
-    version: Number.isFinite(Number(patch.version)) ? Math.max(1, toInt(patch.version, 1)) : undefined,
-    profileId: typeof patch.profileId === 'string' && patch.profileId ? patch.profileId : undefined,
-    overrides: source?.overrides && typeof source.overrides === 'object' ? source.overrides : {}
+    id,
+    version,
+    profileId,
+    overrides: source?.overrides && isObjectRecord(source.overrides)
+      ? normalizeFlowOverrides(source.overrides)
+      : {}
   }
 }
 
-function toLegacyStandardModule(module: any) {
+function toLegacyStandardModule(module: ListeningChoiceFlowModuleV1) {
   return {
     version: 1,
     id: String(module?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
@@ -135,9 +201,9 @@ function toLegacyStandardModule(module: any) {
 
 export function resolveListeningChoiceFlowSteps(
   question: ListeningChoiceQuestion,
-  opts?: { generateId?: IdFactory; ctx?: { region?: string; scene?: string; grade?: string } }
+  opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
 ): { steps: ListeningChoiceFlowStep[]; source: ListeningChoiceFlowSource } {
-  const source: any = resolveFlowSource(question)
+  const source = resolveFlowSource(question)
   const routingCtx = resolveRoutingCtx(question, opts?.ctx)
 
   if (source.kind === 'library') {
@@ -146,7 +212,7 @@ export function resolveListeningChoiceFlowSteps(
     if (mod && Array.isArray(mod.steps)) {
       const steps = materializeListeningChoiceTemplateSteps(question, mod.steps, {
         generateId: opts?.generateId
-      }) as any
+      }) as ListeningChoiceFlowStep[]
       return {
         steps,
         source: buildNormalizedFlowSource(source, {})
@@ -155,13 +221,13 @@ export function resolveListeningChoiceFlowSteps(
   }
 
   const resolved = resolveStandardModule(question, source, routingCtx)
-  const compiled = compileListeningChoiceFlow(question, resolved.module as any, {
+  const compiled = compileListeningChoiceFlow(question, resolved.module, {
     generateId: opts?.generateId,
-    overrides: source?.overrides || {}
+    overrides: source?.kind === 'standard' ? source.overrides || {} : {}
   })
 
   return {
-    steps: compiled.steps as any,
+    steps: compiled.steps,
     source: buildNormalizedFlowSource(source, {
       id: resolved.module.id,
       version: resolved.module.version,
@@ -172,14 +238,14 @@ export function resolveListeningChoiceFlowSteps(
 
 export function resolveListeningChoiceQuestion(
   question: ListeningChoiceQuestion,
-  opts?: { generateId?: IdFactory; ctx?: { region?: string; scene?: string; grade?: string } }
+  opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
 ): ListeningChoiceQuestion {
   const resolved = resolveListeningChoiceFlowSteps(question, opts)
   const flow: ListeningChoiceFlow = {
     ...(question.flow || { version: 1, mode: 'semi-auto' as const }),
     version: 1,
     source: resolved.source,
-    steps: resolved.steps as any
+    steps: resolved.steps
   }
 
   return {
@@ -190,10 +256,10 @@ export function resolveListeningChoiceQuestion(
 
 export function normalizeListeningChoiceQuestionForSave(
   question: ListeningChoiceQuestion,
-  opts?: { generateId?: IdFactory; ctx?: { region?: string; scene?: string; grade?: string } }
+  opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
 ): ListeningChoiceQuestion {
   const resolvedQuestion = resolveListeningChoiceQuestion(question, opts)
-  const src: any = resolvedQuestion.flow?.source || { kind: 'standard', id: LISTENING_CHOICE_STANDARD_FLOW_ID }
+  const src = resolvedQuestion.flow?.source || { kind: 'standard', id: LISTENING_CHOICE_STANDARD_FLOW_ID }
 
   if (src?.kind === 'library') {
     return resolvedQuestion
@@ -202,14 +268,14 @@ export function normalizeListeningChoiceQuestionForSave(
   const routingCtx = resolveRoutingCtx(resolvedQuestion, opts?.ctx)
   const resolved = resolveStandardModule(resolvedQuestion, src, routingCtx)
   const legacyModule = toLegacyStandardModule(resolved.module)
-  const steps = (resolvedQuestion.flow?.steps || []) as any[]
-  const detected = detectListeningChoiceStandardFlowOverrides(resolvedQuestion as any, steps, {
-    module: legacyModule as any
+  const steps = resolvedQuestion.flow?.steps || []
+  const detected = detectListeningChoiceStandardFlowOverrides(resolvedQuestion, steps, {
+    module: legacyModule
   })
 
   if (detected.ok) {
-    const overrides = detected.overrides || {}
-    const compiled = compileListeningChoiceFlow(resolvedQuestion, resolved.module as any, {
+    const overrides = normalizeFlowOverrides(detected.overrides)
+    const compiled = compileListeningChoiceFlow(resolvedQuestion, resolved.module, {
       generateId: opts?.generateId,
       overrides
     })
@@ -224,14 +290,16 @@ export function normalizeListeningChoiceQuestionForSave(
           profileId: resolved.profileId,
           overrides
         },
-        steps: compiled.steps as any
+        steps: compiled.steps
       }
     }
   }
 
-  const templateSteps = concreteListeningChoiceStepsToTemplate(resolvedQuestion, steps as any)
+  const templateSteps = concreteListeningChoiceStepsToTemplate(resolvedQuestion, steps)
   const mod = flowLibrary.ensureModule('listening_choice', templateSteps)
-  const materialized = materializeListeningChoiceTemplateSteps(resolvedQuestion, templateSteps, { generateId: opts?.generateId }) as any
+  const materialized = materializeListeningChoiceTemplateSteps(resolvedQuestion, templateSteps, {
+    generateId: opts?.generateId
+  }) as ListeningChoiceFlowStep[]
   return {
     ...resolvedQuestion,
     flow: {

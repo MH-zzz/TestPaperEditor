@@ -229,7 +229,7 @@ test('flow center should show module names in routing cards and published-versio
 
 test('listening-choice binding should skip archived module refs and fallback', async () => {
   const src = await readFile('engine/flow/listening-choice/binding.ts')
-  assert.ok(src.includes('const isActiveModule = (module: any) => !!module && module.status !== \'archived\''))
+  assert.ok(src.includes('const isActiveModule = (module: ListeningChoiceFlowModuleV1 | null | undefined): module is ListeningChoiceFlowModuleV1 => {'))
   assert.ok(src.includes('if (isActiveModule(hit)) return { module: hit, profileId: profileId || undefined }'))
 })
 

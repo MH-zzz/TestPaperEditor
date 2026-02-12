@@ -41,7 +41,7 @@ test('learning workspace should run exam flow via unified runtime usecase', asyn
   const src = await readFile('components/views/LearningWorkspace.vue')
 
   assert.ok(src.includes("from '/app/usecases/runQuestionFlow'"))
-  assert.ok(src.includes('const run = runQuestionFlow(cloned as any'))
+  assert.ok(src.includes('const run = runQuestionFlow(cloned, {'))
   assert.ok(src.includes('reduceQuestionFlowRuntimeState('))
   assert.ok(src.includes('dispatchRuntime({ type: \'goToStep\', stepIndex: index }, \'step\')'))
   assert.ok(src.includes(':runtime-meta="runtimeMeta"'))

@@ -1,4 +1,11 @@
-import type { Question, ListeningChoiceQuestion, RichTextContent } from '/types'
+import type {
+  ListeningChoiceGroup,
+  ListeningChoiceQuestion,
+  Question,
+  QuestionOption,
+  RichTextContent,
+  SubQuestion
+} from '/types'
 
 export interface ValidationIssue {
   code: string
@@ -10,16 +17,18 @@ export interface QuestionValidationResult {
   ok: boolean
   errors: ValidationIssue[]
   warnings: ValidationIssue[]
-  diagnostics: Record<string, any>
+  diagnostics: Record<string, unknown>
 }
 
-function toArray<T = any>(value: any): T[] {
-  return Array.isArray(value) ? value : []
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : []
 }
 
-function hasRichTextContent(value: any): value is RichTextContent {
-  if (!value || value.type !== 'richtext' || !Array.isArray(value.content)) return false
-  return value.content.some((node: any) => {
+function hasRichTextContent(value: unknown): value is RichTextContent {
+  if (!value || typeof value !== 'object') return false
+  const richtext = value as RichTextContent
+  if (richtext.type !== 'richtext' || !Array.isArray(richtext.content)) return false
+  return richtext.content.some((node) => {
     if (!node || typeof node !== 'object') return false
     if (node.type === 'text') return Boolean(String(node.text || '').trim())
     if (node.type === 'image') return Boolean(String(node.url || '').trim())
@@ -31,7 +40,7 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
   const errors: ValidationIssue[] = []
   const warnings: ValidationIssue[] = []
 
-  const intro = question.content?.intro || ({} as any)
+  const intro = question.content?.intro
   if (!String(intro.title || '').trim()) {
     errors.push({
       code: 'intro_title_required',
@@ -57,9 +66,9 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
     })
   }
 
-  groups.forEach((group: any, gIndex: number) => {
+  groups.forEach((group: ListeningChoiceGroup, gIndex: number) => {
     const groupPath = `content.groups[${gIndex}]`
-    const subQuestions = toArray(group?.subQuestions)
+    const subQuestions = toArray<SubQuestion>(group?.subQuestions)
     if (subQuestions.length === 0) {
       errors.push({
         code: 'sub_questions_required',
@@ -69,7 +78,7 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
       return
     }
 
-    subQuestions.forEach((sq: any, sqIndex: number) => {
+    subQuestions.forEach((sq: SubQuestion, sqIndex: number) => {
       const sqPath = `${groupPath}.subQuestions[${sqIndex}]`
       if (!hasRichTextContent(sq?.stem)) {
         errors.push({
@@ -79,7 +88,7 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
         })
       }
 
-      const options = toArray(sq?.options)
+      const options = toArray<QuestionOption>(sq?.options)
       if (options.length < 2) {
         errors.push({
           code: 'sub_question_options_too_few',
@@ -89,7 +98,7 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
       }
 
       const optionKeys = options
-        .map((opt: any) => String(opt?.key || '').trim())
+        .map((opt) => String(opt?.key || '').trim())
         .filter(Boolean)
       const uniqueKeys = new Set(optionKeys)
       if (optionKeys.length !== options.length || uniqueKeys.size !== optionKeys.length) {
@@ -155,7 +164,7 @@ export function validateQuestionBeforeSave(question: Question): QuestionValidati
   }
 
   if (question.type === 'listening_choice') {
-    return validateListeningChoice(question as ListeningChoiceQuestion)
+    return validateListeningChoice(question)
   }
 
   return baseResult()

@@ -1,17 +1,17 @@
 import { reactive } from 'vue'
-import type { Question, ListeningChoiceQuestion } from '/types'
+import type { Question, ListeningChoiceQuestion, QuestionMetadata } from '/types'
 import { questionTemplates, migrateListeningChoiceFlowSplitIntro, type TemplateKey, generateId } from '/templates'
 import { resolveListeningChoiceQuestion } from '../engine/flow/listening-choice/binding.ts'
-
-const CURRENT_QUESTION_KEY = 'currentQuestion'
-const RECENT_QUESTIONS_KEY = 'recentQuestions'
+import { createPersistenceScheduler } from './persistence'
+import {
+  loadCurrentQuestionSnapshot,
+  loadRecentQuestions,
+  saveCurrentQuestionSnapshot,
+  saveRecentQuestions
+} from '/infra/repository/questionRepository'
 
 type DraftQuestion = Question & {
-  metadata?: {
-    tags?: string[]
-    source?: string
-    [key: string]: any
-  }
+  metadata?: QuestionMetadata
 }
 
 function clone<T>(value: T): T {
@@ -22,21 +22,25 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-function ensureMetadata(question: any) {
-  if (!question || typeof question !== 'object') return
-  if (!question.metadata || typeof question.metadata !== 'object') question.metadata = {}
-  if (!Array.isArray(question.metadata.tags)) question.metadata.tags = []
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
 }
 
-function normalizeListeningChoiceQuestion(question: any) {
+function ensureMetadata(question: DraftQuestion): DraftQuestion {
+  if (!isObjectRecord(question.metadata)) question.metadata = {}
+  if (!Array.isArray(question.metadata.tags)) question.metadata.tags = []
+  return question
+}
+
+function normalizeListeningChoiceQuestion(question: DraftQuestion): DraftQuestion {
   if (!question || question.type !== 'listening_choice') return question
 
   if (!question.content || !question.flow) {
-    return questionTemplates.listening_choice.create()
+    return questionTemplates.listening_choice.create() as DraftQuestion
   }
 
   const migrated = migrateListeningChoiceFlowSplitIntro(question as ListeningChoiceQuestion)
-  return resolveListeningChoiceQuestion(migrated as ListeningChoiceQuestion, { generateId }) as any
+  return resolveListeningChoiceQuestion(migrated as ListeningChoiceQuestion, { generateId }) as DraftQuestion
 }
 
 class QuestionDraftStore {
@@ -47,6 +51,7 @@ class QuestionDraftStore {
     lastDraftSavedAt: '',
     lastLibrarySavedAt: ''
   })
+  private readonly draftPersistence = createPersistenceScheduler(() => this.persistCurrentNow(), 300)
 
   constructor() {
     this.loadFromStorage()
@@ -54,23 +59,30 @@ class QuestionDraftStore {
 
   private setCurrentQuestion(
     nextQuestion: Question,
-    options: { snapshot?: boolean; normalizeFlow?: boolean; persist?: boolean; markDirty?: boolean } = {}
+    options: {
+      snapshot?: boolean
+      normalizeFlow?: boolean
+      persist?: boolean
+      persistImmediately?: boolean
+      markDirty?: boolean
+    } = {}
   ) {
     const snapshot = options.snapshot !== false
     const normalizeFlow = options.normalizeFlow !== false
     const persist = options.persist === true
+    const persistImmediately = options.persistImmediately === true
     const markDirty = options.markDirty === true
 
-    let normalized = clone(nextQuestion) as any
+    let normalized = clone(nextQuestion) as DraftQuestion
     if (normalizeFlow) normalized = normalizeListeningChoiceQuestion(normalized)
-    ensureMetadata(normalized)
+    normalized = ensureMetadata(normalized)
 
-    this.state.currentQuestion = normalized as DraftQuestion
-    if (snapshot) this.state.originalQuestion = clone(normalized as DraftQuestion)
+    this.state.currentQuestion = normalized
+    if (snapshot) this.state.originalQuestion = clone(normalized)
     if (markDirty) this.state.dirty = true
     if (persist) {
-      this.persistCurrent()
-      this.state.lastDraftSavedAt = nowIso()
+      if (persistImmediately) this.draftPersistence.flush()
+      else this.draftPersistence.schedule()
     }
   }
 
@@ -78,19 +90,31 @@ class QuestionDraftStore {
     return questionTemplates.listening_choice.create() as Question
   }
 
-  private persistCurrent() {
+  private persistCurrentNow() {
     if (!this.state.currentQuestion) return
-    uni.setStorageSync(CURRENT_QUESTION_KEY, JSON.stringify(this.state.currentQuestion))
+    saveCurrentQuestionSnapshot(this.state.currentQuestion)
+    this.state.lastDraftSavedAt = nowIso()
   }
 
   loadFromStorage() {
     try {
-      const stored = uni.getStorageSync(CURRENT_QUESTION_KEY)
-      const loaded = stored ? JSON.parse(stored) : this.createDefaultQuestion()
-      this.setCurrentQuestion(loaded as Question, { snapshot: true, normalizeFlow: true, persist: true, markDirty: false })
+      const loaded = loadCurrentQuestionSnapshot<Question>() || this.createDefaultQuestion()
+      this.setCurrentQuestion(loaded as Question, {
+        snapshot: true,
+        normalizeFlow: true,
+        persist: true,
+        persistImmediately: true,
+        markDirty: false
+      })
     } catch (e) {
       console.error('Failed to load current question from storage', e)
-      this.setCurrentQuestion(this.createDefaultQuestion(), { snapshot: true, normalizeFlow: true, persist: true, markDirty: false })
+      this.setCurrentQuestion(this.createDefaultQuestion(), {
+        snapshot: true,
+        normalizeFlow: true,
+        persist: true,
+        persistImmediately: true,
+        markDirty: false
+      })
     }
     this.state.dirty = false
     return this.state.currentQuestion
@@ -100,13 +124,25 @@ class QuestionDraftStore {
     const template = questionTemplates[type]
     if (!template) return null
     const created = template.create() as Question
-    this.setCurrentQuestion(created, { snapshot: true, normalizeFlow: true, persist: true, markDirty: false })
+    this.setCurrentQuestion(created, {
+      snapshot: true,
+      normalizeFlow: true,
+      persist: true,
+      persistImmediately: true,
+      markDirty: false
+    })
     this.state.dirty = false
     return this.state.currentQuestion
   }
 
   loadQuestion(question: Question) {
-    this.setCurrentQuestion(question, { snapshot: true, normalizeFlow: true, persist: true, markDirty: false })
+    this.setCurrentQuestion(question, {
+      snapshot: true,
+      normalizeFlow: true,
+      persist: true,
+      persistImmediately: true,
+      markDirty: false
+    })
     this.state.dirty = false
     return this.state.currentQuestion
   }
@@ -117,6 +153,7 @@ class QuestionDraftStore {
       snapshot: false,
       normalizeFlow: false,
       persist: persistDraft,
+      persistImmediately: false,
       markDirty: true
     })
   }
@@ -124,28 +161,25 @@ class QuestionDraftStore {
   saveDraft() {
     if (!this.state.currentQuestion) return
     ensureMetadata(this.state.currentQuestion)
-    this.persistCurrent()
-    this.state.lastDraftSavedAt = nowIso()
+    this.draftPersistence.flush()
   }
 
   resetToOriginal() {
     if (!this.state.originalQuestion) return
     this.state.currentQuestion = clone(this.state.originalQuestion)
-    this.persistCurrent()
+    this.draftPersistence.flush()
     this.state.dirty = false
-    this.state.lastDraftSavedAt = nowIso()
   }
 
   updateMetadata(patch: { tags?: string[]; source?: string }) {
-    const current = this.state.currentQuestion as any
+    const current = this.state.currentQuestion
     if (!current) return
 
     ensureMetadata(current)
     if (patch.tags !== undefined) current.metadata.tags = [...patch.tags]
     if (patch.source !== undefined) current.metadata.source = patch.source
-    this.persistCurrent()
+    this.draftPersistence.schedule()
     this.state.dirty = true
-    this.state.lastDraftSavedAt = nowIso()
   }
 
   saveToRecent(limit = 50) {
@@ -153,14 +187,14 @@ class QuestionDraftStore {
     if (!current) return
 
     try {
-      const stored = uni.getStorageSync(RECENT_QUESTIONS_KEY)
-      let list: DraftQuestion[] = stored ? JSON.parse(stored) : []
+      this.draftPersistence.flush()
+      let list = loadRecentQuestions<DraftQuestion>()
 
       list = list.filter(q => q.id !== current.id)
       list.unshift(clone(current))
       list = list.slice(0, Math.max(1, limit))
 
-      uni.setStorageSync(RECENT_QUESTIONS_KEY, JSON.stringify(list))
+      saveRecentQuestions(list)
       this.state.originalQuestion = clone(current)
       this.state.dirty = false
       const now = nowIso()

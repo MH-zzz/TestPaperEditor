@@ -156,21 +156,33 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import type { ListeningChoiceQuestion } from '/types'
+import type {
+  ListeningChoiceQuestion,
+  QuestionMetadata,
+  RichTextContent
+} from '/types'
+import type { FlowRuntimeEvent } from '/engine/flow/runtime.ts'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
 import RuntimeDebugDrawer from '/components/layout/RuntimeDebugDrawer.vue'
 import { generateId } from '/templates'
 import { flowModules } from '/stores/flowModules'
 import { runtimeDebug } from '/stores/runtimeDebug'
 import { questionDraft } from '/stores/questionDraft'
-import { runQuestionFlow, reduceQuestionFlowRuntimeState } from '/app/usecases/runQuestionFlow'
+import { loadRecentQuestions } from '/infra/repository/questionRepository'
+import {
+  runQuestionFlow,
+  reduceQuestionFlowRuntimeState,
+  type QuestionFlowRuntimeMeta
+} from '/app/usecases/runQuestionFlow'
 
-type LocalQuestion = {
-  id: string
-  type: string
-  content?: any
-  flow?: any
-  metadata?: any
+type LocalQuestion = ListeningChoiceQuestion & {
+  metadata?: QuestionMetadata
+}
+
+type FlowContextSnapshot = {
+  region: string
+  scene: string
+  grade: string
 }
 
 type TraceItem = {
@@ -195,14 +207,17 @@ const showAnswer = ref(false)
 const currentStepIndex = ref(0)
 const traceEvents = ref<TraceItem[]>([])
 
-const runtimeMeta = ref({
+const defaultRuntimeMeta: QuestionFlowRuntimeMeta = {
   sourceKind: '',
   profileId: '',
   moduleId: '',
+  moduleVersion: 0,
   moduleDisplayRef: '',
   moduleNote: '',
   moduleVersionText: '-'
-})
+}
+
+const runtimeMeta = ref<QuestionFlowRuntimeMeta>({ ...defaultRuntimeMeta })
 
 const selectedQuestion = computed(() => {
   return questionPool.value.find((q) => q.id === selectedQuestionId.value) || null
@@ -225,21 +240,33 @@ const previewTotalSteps = computed(() => {
 const activeStepLabel = computed(() => {
   const steps = resolvedQuestion.value?.flow?.steps || []
   const idx = currentStepIndex.value
-  const step: any = steps[idx]
+  const step = steps[idx]
   if (!step) return '-'
   return `${idx + 1}/${steps.length} · ${String(step.kind || '-')}`
 })
 
-function normalizeText(v: any) {
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function normalizeText(v: unknown) {
   return String(v || '').trim().toLowerCase()
 }
 
-function getPlainText(richtext: any): string {
-  if (!richtext || !Array.isArray(richtext.content)) return ''
-  return richtext.content.map((n: any) => (n?.type === 'text' ? n.text : '')).join('')
+function toRichTextContent(value: unknown): RichTextContent | null {
+  if (!isObjectRecord(value) || !Array.isArray(value.content)) return null
+  return value as RichTextContent
 }
 
-function getQuestionSummary(q: any): string {
+function getPlainText(richtext: unknown): string {
+  const content = toRichTextContent(richtext)
+  if (!content) return ''
+  return content.content
+    .map((node) => (node.type === 'text' ? node.text : ''))
+    .join('')
+}
+
+function getQuestionSummary(q: LocalQuestion): string {
   if (!q || q.type !== 'listening_choice') return ''
   return (
     getPlainText(q.content?.intro?.text) ||
@@ -258,7 +285,7 @@ function syncTraceEventsFromStore() {
   }))
 }
 
-function appendTrace(type: string, message: string, payload?: any) {
+function appendTrace(type: string, message: string, payload?: unknown) {
   runtimeDebug.record(learningDebugSessionId, {
     type,
     message,
@@ -267,9 +294,9 @@ function appendTrace(type: string, message: string, payload?: any) {
   syncTraceEventsFromStore()
 }
 
-function extractFlowContext(question: any) {
-  const metadata = question?.metadata && typeof question.metadata === 'object' ? question.metadata : {}
-  const flowContext = metadata?.flowContext && typeof metadata.flowContext === 'object' ? metadata.flowContext : {}
+function extractFlowContext(question: LocalQuestion | null): FlowContextSnapshot {
+  const metadata = isObjectRecord(question?.metadata) ? question.metadata : {}
+  const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
   return {
     region: String(flowContext.region || metadata.region || ''),
     scene: String(flowContext.scene || metadata.scene || ''),
@@ -296,7 +323,7 @@ function selectQuestion(questionId: string) {
 }
 
 function resolveStepKindByIndex(index: number): string {
-  const step: any = resolvedQuestion.value?.flow?.steps?.[index]
+  const step = resolvedQuestion.value?.flow?.steps?.[index]
   return String(step?.kind || '-')
 }
 
@@ -304,7 +331,7 @@ function resolveModuleDisplay(ref: { id: string; version: number }): { displayRe
   const id = String(ref.id || '').trim()
   const version = Math.max(1, Number(ref.version || 1))
   if (!id) return null
-  const hit = flowModules.getListeningChoiceByRef({ id, version } as any)
+  const hit = flowModules.getListeningChoiceByRef({ id, version })
   const name = String(hit?.name || id).trim() || id
   const note = String(hit?.note || '').trim()
   return {
@@ -315,9 +342,7 @@ function resolveModuleDisplay(ref: { id: string; version: number }): { displayRe
 
 function reloadQuestionPool() {
   try {
-    const stored = uni.getStorageSync('recentQuestions')
-    const parsed = stored ? JSON.parse(stored) : []
-    const list = Array.isArray(parsed) ? parsed.filter((item) => item && item.type === 'listening_choice') : []
+    const list = loadRecentQuestions<LocalQuestion>().filter((item) => item && item.type === 'listening_choice')
     questionPool.value = list
     if (!questionPool.value.find((item) => item.id === selectedQuestionId.value)) {
       selectedQuestionId.value = questionPool.value[0]?.id || ''
@@ -342,8 +367,8 @@ function startSimulation() {
     grade: String(simGrade.value || '').trim() || undefined
   }
 
-  const cloned = JSON.parse(JSON.stringify(source))
-  const run = runQuestionFlow(cloned as any, {
+  const cloned = JSON.parse(JSON.stringify(source)) as LocalQuestion
+  const run = runQuestionFlow(cloned, {
     generateId,
     ctx,
     resolveModuleDisplay
@@ -378,15 +403,15 @@ function startSimulation() {
   appendTrace('step', `进入步骤 1 (${resolveStepKindByIndex(currentStepIndex.value)})`)
 }
 
-function dispatchRuntime(event: { type: string; stepIndex?: number }, traceType = 'step') {
+function dispatchRuntime(event: FlowRuntimeEvent, traceType = 'step') {
   const question = resolvedQuestion.value
   if (!question) return
 
   const before = currentStepIndex.value
   const nextState = reduceQuestionFlowRuntimeState(
-    question as any,
+    question,
     { stepIndex: before },
-    event as any
+    event
   )
   const next = Number(nextState?.stepIndex || 0)
   if (next === before) return
@@ -451,14 +476,7 @@ watch(selectedQuestionId, () => {
   previewAnswers.value = {}
   showAnswer.value = false
   currentStepIndex.value = 0
-  runtimeMeta.value = {
-    sourceKind: '',
-    profileId: '',
-    moduleId: '',
-    moduleDisplayRef: '',
-    moduleNote: '',
-    moduleVersionText: '-'
-  }
+  runtimeMeta.value = { ...defaultRuntimeMeta }
   runtimeDebug.resetSession(learningDebugSessionId, {
     meta: {
       mode: 'exam',

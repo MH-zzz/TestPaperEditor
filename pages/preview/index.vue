@@ -20,6 +20,7 @@ import type { Question, MatchMode } from '/types'
 import QuestionRenderer from '/components/renderer/QuestionRenderer.vue'
 import { questionTemplates, migrateListeningChoiceFlowSplitIntro, generateId } from '/templates'
 import { resolveListeningChoiceQuestion } from '../../engine/flow/listening-choice/binding.ts'
+import { loadCurrentQuestionSnapshot, saveCurrentQuestionSnapshot } from '/infra/repository/questionRepository'
 
 const questionData = ref<Question | null>(null)
 const userAnswers = ref<Record<string, string | string[]>>({})
@@ -115,29 +116,29 @@ function resolveListeningChoiceFlowSource(data: any) {
 
 onMounted(() => {
   try {
-    const stored = uni.getStorageSync('currentQuestion')
-    if (stored) {
-      let data = JSON.parse(stored)
-      if (data?.type === 'listening_choice' && (!data.content || !data.flow)) {
-        data = questionTemplates.listening_choice.create()
-        uni.setStorageSync('currentQuestion', JSON.stringify(data))
-      }
-      if (data?.type === 'listening_choice' && data.content && data.flow) {
-        const migrated = migrateListeningChoiceFlowSplitIntro(data)
-        if (migrated !== data) {
-          data = migrated
-          uni.setStorageSync('currentQuestion', JSON.stringify(data))
-        }
-      }
-      if (data?.type === 'listening_choice' && data.content && data.flow) {
-        const resolved = resolveListeningChoiceFlowSource(data)
-        if (resolved !== data) {
-          data = resolved
-          uni.setStorageSync('currentQuestion', JSON.stringify(data))
-        }
-      }
-      questionData.value = data
+    const snapshot = loadCurrentQuestionSnapshot<Question>()
+    if (!snapshot) return
+
+    let data = snapshot
+    if (data?.type === 'listening_choice' && (!data.content || !data.flow)) {
+      data = questionTemplates.listening_choice.create()
+      saveCurrentQuestionSnapshot(data)
     }
+    if (data?.type === 'listening_choice' && data.content && data.flow) {
+      const migrated = migrateListeningChoiceFlowSplitIntro(data)
+      if (migrated !== data) {
+        data = migrated
+        saveCurrentQuestionSnapshot(data)
+      }
+    }
+    if (data?.type === 'listening_choice' && data.content && data.flow) {
+      const resolved = resolveListeningChoiceFlowSource(data)
+      if (resolved !== data) {
+        data = resolved
+        saveCurrentQuestionSnapshot(data)
+      }
+    }
+    questionData.value = data
   } catch (e) {
     console.error('加载预览数据失败：', e)
   }

@@ -76,6 +76,7 @@ import type { Question } from '/types'
 import { tagStore } from '/stores/tag'
 import { questionTemplates, type TemplateKey } from '/templates'
 import { questionDraft } from '/stores/questionDraft'
+import { loadRecentQuestions } from '/infra/repository/questionRepository'
 
 const emit = defineEmits<{
   (e: 'open-editor'): void
@@ -86,10 +87,7 @@ const searchQuery = ref('')
 const filterType = ref('all')
 
 function loadData() {
-  const stored = uni.getStorageSync('recentQuestions')
-  if (stored) {
-    questions.value = JSON.parse(stored)
-  }
+  questions.value = loadRecentQuestions<Question>()
 }
 
 onMounted(() => {

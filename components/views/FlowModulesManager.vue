@@ -720,6 +720,11 @@ import { flowProfiles } from '/stores/flowProfiles'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'
 import {
+  type FlowModulePublishLogRecord,
+  loadFlowModulePublishLogs as loadFlowModulePublishLogsFromRepository,
+  saveFlowModulePublishLogs as saveFlowModulePublishLogsToRepository
+} from '/infra/repository/flowModuleRepository'
+import {
   patchListeningChoiceQuestionFlow,
   patchQuestionFlowContext,
   readQuestionFlowContext
@@ -750,16 +755,8 @@ type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'answerChoice'
 type AudioSource = 'description' | 'content'
 type QuickAddPerGroupKind = 'playAudioDescription' | 'playAudioContent' | 'countdown' | 'promptTone' | 'answerChoice'
 const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'
-const FLOW_MODULE_PUBLISH_LOG_KEY = 'flow_module_publish_logs_v1'
 
-type FlowModulePublishLog = {
-  id: string
-  createdAt: string
-  moduleId: string
-  moduleVersion: number
-  moduleDisplayRef: string
-  summaryLines: string[]
-}
+type FlowModulePublishLog = FlowModulePublishLogRecord
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))
@@ -1525,9 +1522,7 @@ function formatFlowProfileVersionSummary(rules: FlowProfileV1[]) {
 
 function loadFlowModulePublishLogs() {
   try {
-    const stored = uni.getStorageSync(FLOW_MODULE_PUBLISH_LOG_KEY)
-    const parsed = stored ? JSON.parse(stored) : []
-    const list = Array.isArray(parsed) ? parsed : []
+    const list = loadFlowModulePublishLogsFromRepository()
     flowModulePublishLogs.value = list
       .map((item: any) => ({
         id: String(item?.id || ''),
@@ -1547,7 +1542,7 @@ function loadFlowModulePublishLogs() {
 
 function persistFlowModulePublishLogs() {
   try {
-    uni.setStorageSync(FLOW_MODULE_PUBLISH_LOG_KEY, JSON.stringify(flowModulePublishLogs.value))
+    saveFlowModulePublishLogsToRepository(flowModulePublishLogs.value)
   } catch (e) {
     console.error('Failed to save flow module publish logs', e)
   }

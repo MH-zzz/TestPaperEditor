@@ -1,4 +1,10 @@
-import type { ListeningChoiceQuestion, Question } from '/types'
+import type {
+  ListeningChoiceFlowSource,
+  ListeningChoiceFlowStep,
+  ListeningChoiceQuestion,
+  Question,
+  QuestionMetadata
+} from '/types'
 
 export type FlowContextInput = {
   region?: string
@@ -12,15 +18,28 @@ export type FlowContextSnapshot = {
   grade: string
 }
 
-function normalizeNullableText(v: any): string | undefined {
+type QuestionWithMetadata<TQuestion extends Question = Question> = TQuestion & {
+  metadata?: QuestionMetadata
+}
+
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function normalizeNullableText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
-export function readQuestionFlowContext(question: any): FlowContextSnapshot {
-  const metadata = question?.metadata && typeof question.metadata === 'object' ? question.metadata : {}
-  const flowContext = metadata.flowContext && typeof metadata.flowContext === 'object' ? metadata.flowContext : {}
+function readQuestionMetadata(question: unknown): QuestionMetadata {
+  if (!isObjectRecord(question) || !isObjectRecord(question.metadata)) return {}
+  return question.metadata as QuestionMetadata
+}
+
+export function readQuestionFlowContext(question: unknown): FlowContextSnapshot {
+  const metadata = readQuestionMetadata(question)
+  const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
   return {
     region: normalizeNullableText(flowContext.region) || normalizeNullableText(metadata.region) || '',
     scene: normalizeNullableText(flowContext.scene) || normalizeNullableText(metadata.scene) || '',
@@ -28,11 +47,11 @@ export function readQuestionFlowContext(question: any): FlowContextSnapshot {
   }
 }
 
-export function patchQuestionFlowContext<TQuestion extends Question>(
+export function patchQuestionFlowContext<TQuestion extends QuestionWithMetadata>(
   question: TQuestion,
   input: FlowContextInput
 ): TQuestion {
-  const metadata = question?.metadata && typeof question.metadata === 'object' ? question.metadata : {}
+  const metadata = readQuestionMetadata(question)
   const region = normalizeNullableText(input.region)
   const scene = normalizeNullableText(input.scene)
   const grade = normalizeNullableText(input.grade)
@@ -41,25 +60,25 @@ export function patchQuestionFlowContext<TQuestion extends Question>(
   if (scene) flowContext.scene = scene
   if (grade) flowContext.grade = grade
 
-  const nextMetadata: Record<string, any> = { ...metadata }
+  const nextMetadata: QuestionMetadata = { ...metadata }
   if (Object.keys(flowContext).length > 0) nextMetadata.flowContext = flowContext
   else delete nextMetadata.flowContext
 
   return {
-    ...(question as any),
+    ...question,
     metadata: nextMetadata
-  } as TQuestion
+  }
 }
 
 export function patchListeningChoiceQuestionFlow(
   question: ListeningChoiceQuestion,
-  source: Record<string, any>,
-  steps: any[]
+  source: ListeningChoiceFlowSource,
+  steps: ListeningChoiceFlowStep[]
 ): ListeningChoiceQuestion {
   return {
-    ...(question as any),
+    ...question,
     flow: {
-      ...(((question as any)?.flow || {}) as Record<string, any>),
+      ...question.flow,
       version: 1,
       mode: 'semi-auto',
       source,

@@ -198,7 +198,13 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
-import type { ListeningChoiceQuestion, MatchMode, Question } from '/types'
+import type {
+  ListeningChoiceQuestion,
+  MatchMode,
+  Question,
+  QuestionMetadata
+} from '/types'
+import type { FlowRuntimeEvent } from '/engine/flow/runtime.ts'
 import { questionTemplates, type TemplateKey, generateId } from '/templates'
 import { globalSettings } from '/stores/settings'
 import { questionDraft } from '/stores/questionDraft'
@@ -226,6 +232,10 @@ type InteractionLeaf = {
   templateKey?: TemplateKey
   icon: string
   description: string
+}
+
+type QuestionWithMetadata = Question & {
+  metadata?: QuestionMetadata
 }
 
 import interactionTypeRoots from '../../交互类型.json'
@@ -276,6 +286,21 @@ function resolveListeningChoiceModuleDisplay(ref: { id: string; version: number 
   }
 }
 
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function getQuestionTemplateMeta(templateKey?: TemplateKey) {
+  if (!templateKey) return null
+  return questionTemplates[templateKey] || null
+}
+
+function readQuestionMetadata(question: Question | null): QuestionMetadata {
+  if (!question) return {}
+  const metadata = (question as QuestionWithMetadata).metadata
+  return isObjectRecord(metadata) ? { ...(metadata as QuestionMetadata) } : {}
+}
+
 const runtimeResult = computed(() => {
   const q = questionData.value
   if (!q) return null
@@ -322,14 +347,18 @@ function clampPreviewStepIndex() {
 }
 
 function getPreviewStepKind(index: number): string {
-  const question = runtimeQuestion.value as any
+  const question = runtimeQuestion.value
   if (!question) return '-'
-  if (question.type === 'listening_choice') return String(question.flow?.steps?.[index]?.kind || '-')
-  if (question.type === 'speaking_steps') return String(question.steps?.[index]?.type || '-')
+  if (question.type === 'listening_choice') {
+    return String(question.flow?.steps?.[index]?.kind || '-')
+  }
+  if (question.type === 'speaking_steps') {
+    return String(question.steps?.[index]?.type || '-')
+  }
   return '-'
 }
 
-function dispatchPreviewRuntime(event: { type: string; stepIndex?: number }, traceType = 'step') {
+function dispatchPreviewRuntime(event: FlowRuntimeEvent, traceType = 'step') {
   const q = runtimeQuestion.value
   if (!q) return
 
@@ -337,7 +366,7 @@ function dispatchPreviewRuntime(event: { type: string; stepIndex?: number }, tra
   const nextState = reduceQuestionFlowRuntimeState(
     q,
     { stepIndex: before },
-    event as any
+    event
   )
   const next = Number(nextState?.stepIndex || 0)
   if (next === before) return
@@ -417,7 +446,7 @@ const interactionLeaves = computed<InteractionLeaf[]>(() => {
     }
 
     const resolved = resolveTemplate(path)
-    const template = resolved.templateKey ? (questionTemplates as any)[resolved.templateKey] : null
+    const template = getQuestionTemplateMeta(resolved.templateKey)
 
     const icon = template?.icon || '•'
     const description = resolved.enabled ? (template?.name ? `将创建：${template.name}` : '将创建') : (resolved.reason || '暂不可用')
@@ -482,7 +511,8 @@ const interactionSections = computed(() => {
 
 function getTypeName(type?: string) {
   if (!type) return '编辑器'
-  return questionTemplates[type as TemplateKey]?.name || type
+  const template = getQuestionTemplateMeta(type as TemplateKey)
+  return template?.name || type
 }
 
 function selectType(nextType: string) {
@@ -502,32 +532,34 @@ function selectInteractionLeaf(item: InteractionLeaf) {
   selectType(item.templateKey)
 }
 
-function resolveListeningChoiceFlowSource(data: any) {
+function resolveListeningChoiceFlowSource(data: Question): Question {
   if (!data || data.type !== 'listening_choice') return data
-  return resolveListeningChoiceQuestion(data as ListeningChoiceQuestion, { generateId }) as any
+  return resolveListeningChoiceQuestion(data, { generateId })
 }
 
-function normalizeFlowContextText(v: any): string | undefined {
+function normalizeFlowContextText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
 function getFlowContextValue(key: 'region' | 'scene' | 'grade'): string {
-  const q: any = questionData.value as any
-  if (!q?.metadata || typeof q.metadata !== 'object') return ''
-  const metadata: any = q.metadata
-  const flowContext = metadata.flowContext && typeof metadata.flowContext === 'object' ? metadata.flowContext : {}
-  return String(flowContext[key] || metadata[key] || '')
+  const metadata = readQuestionMetadata(questionData.value)
+  const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
+  const flowValue = normalizeFlowContextText(flowContext[key])
+  const metadataValue = normalizeFlowContextText(metadata[key])
+  return flowValue || metadataValue || ''
 }
 
 function updateFlowContext(key: 'region' | 'scene' | 'grade', rawValue: string) {
-  const current: any = questionData.value as any
+  const current = questionData.value
   if (!current || current.type !== 'listening_choice') return
 
   const nextValue = normalizeFlowContextText(rawValue)
-  const metadata: any = current.metadata && typeof current.metadata === 'object' ? { ...current.metadata } : {}
-  const flowContext: any = metadata.flowContext && typeof metadata.flowContext === 'object' ? { ...metadata.flowContext } : {}
+  const metadata = readQuestionMetadata(current)
+  const flowContext = isObjectRecord(metadata.flowContext)
+    ? { ...metadata.flowContext }
+    : {}
 
   if (nextValue) {
     flowContext[key] = nextValue
@@ -571,7 +603,7 @@ function saveQuestion() {
     defaultTags: globalSettings.state.defaultTags,
     normalizeQuestion: (question) => {
       if (question.type !== 'listening_choice') return question
-      return normalizeListeningChoiceQuestionForSave(question as ListeningChoiceQuestion, { generateId }) as any
+      return normalizeListeningChoiceQuestionForSave(question, { generateId })
     }
   })
 
@@ -611,7 +643,7 @@ function toggleRuntimeDebug() {
 }
 
 function updateListeningChoice(next: ListeningChoiceQuestion) {
-  questionData.value = next as any
+  questionData.value = next
 }
 
 // 编辑区步骤展开 → 更新预览区
@@ -683,17 +715,15 @@ function onPreviewSelect(subId: string, key: string) {
 
   if (questionData.value?.type === 'listening_choice') {
     let mode: 'single' | 'multiple' = 'single'
-    try {
-      const groups = (questionData.value as any).content?.groups || []
-      for (const g of groups) {
-        for (const sq of (g.subQuestions || [])) {
-          if (sq.id === subId) {
-            mode = sq.answerMode || 'single'
-            break
-          }
+    const groups = questionData.value.content?.groups || []
+    for (const g of groups) {
+      for (const sq of (g.subQuestions || [])) {
+        if (sq.id === subId) {
+          mode = sq.answerMode || 'single'
+          break
         }
       }
-    } catch {}
+    }
     const current = previewAnswers.value[subId]
     if (mode === 'multiple') {
       const list = Array.isArray(current) ? [...current] : current ? [current] : []

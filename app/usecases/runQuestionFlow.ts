@@ -10,7 +10,13 @@ import {
 } from '/engine/flow/speaking-steps/runtime.ts'
 import { resolveListeningChoiceQuestion } from '/engine/flow/listening-choice/binding.ts'
 import { LISTENING_CHOICE_STANDARD_FLOW_ID } from '/flows/listeningChoiceFlowModules'
-import type { ListeningChoiceQuestion, Question, SpeakingQuestion, SpeakingStepsQuestion } from '/types'
+import type {
+  ListeningChoiceQuestion,
+  Question,
+  QuestionMetadata,
+  SpeakingQuestion,
+  SpeakingStepsQuestion
+} from '/types'
 
 export type FlowRoutingContext = {
   region?: string
@@ -59,13 +65,19 @@ type RuntimeStepProtocol = {
   autoNext?: string
 }
 
-function normalizeText(v: any): string | undefined {
+type QuestionWithMetadata = Question & { metadata?: QuestionMetadata }
+
+function isObjectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function normalizeText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
-function toInt(v: any, fallback = 0): number {
+function toInt(v: unknown, fallback = 0): number {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.floor(n)
@@ -79,11 +91,14 @@ function normalizeRoutingContext(ctx?: FlowRoutingContext): FlowRoutingContext {
   }
 }
 
+function readQuestionMetadata(question: Question): QuestionMetadata {
+  const metadata = (question as QuestionWithMetadata).metadata
+  return isObjectRecord(metadata) ? (metadata as QuestionMetadata) : {}
+}
+
 function getQuestionRoutingContext(question: Question): FlowRoutingContext {
-  const meta: any = (question as any)?.metadata && typeof (question as any).metadata === 'object'
-    ? (question as any).metadata
-    : {}
-  const flowCtx: any = meta.flowContext && typeof meta.flowContext === 'object' ? meta.flowContext : {}
+  const meta = readQuestionMetadata(question)
+  const flowCtx = isObjectRecord(meta.flowContext) ? meta.flowContext : {}
   return {
     region: normalizeText(flowCtx.region) || normalizeText(meta.region),
     scene: normalizeText(flowCtx.scene) || normalizeText(meta.scene),
@@ -102,15 +117,21 @@ function mergeRoutingContext(question: Question, inputCtx?: FlowRoutingContext):
 }
 
 function toSpeakingRuntimeSteps(question: SpeakingQuestion): RuntimeStepProtocol[] {
-  return (question.steps || []).map((step: any, index) => ({
+  return (question.steps || []).map((step, index) => ({
     id: String(step?.id || `speaking_${index + 1}`),
     kind: String(step?.behavior || 'manual')
   }))
 }
 
+function readSpeakingStepsAutoNext(step: unknown): string | undefined {
+  if (!isObjectRecord(step)) return undefined
+  const raw = step.autoNext
+  return typeof raw === 'string' ? raw : undefined
+}
+
 export function getQuestionFlowSteps(question: Question): RuntimeStepProtocol[] {
   if (question.type === 'listening_choice') {
-    const steps = ((question as ListeningChoiceQuestion).flow?.steps || []) as any[]
+    const steps = (question as ListeningChoiceQuestion).flow?.steps || []
     return steps.map((step, index) => ({
       id: String(step?.id || `flow_${index + 1}`),
       kind: String(step?.kind || 'unknown'),
@@ -119,11 +140,11 @@ export function getQuestionFlowSteps(question: Question): RuntimeStepProtocol[] 
   }
 
   if (question.type === 'speaking_steps') {
-    const steps = ((question as SpeakingStepsQuestion).steps || []) as any[]
+    const steps = (question as SpeakingStepsQuestion).steps || []
     return steps.map((step, index) => ({
       id: String(step?.id || `speaking_steps_${index + 1}`),
       kind: String(step?.type || 'unknown'),
-      autoNext: typeof step?.autoNext === 'string' ? step.autoNext : undefined
+      autoNext: readSpeakingStepsAutoNext(step)
     }))
   }
 
@@ -159,7 +180,7 @@ export function reduceQuestionFlowRuntimeState(
   if (question.type === 'listening_choice') {
     return reduceListeningChoiceRuntimeState(
       state,
-      ((question as ListeningChoiceQuestion).flow?.steps || []) as any,
+      (question as ListeningChoiceQuestion).flow?.steps || [],
       event
     )
   }
@@ -167,7 +188,7 @@ export function reduceQuestionFlowRuntimeState(
   if (question.type === 'speaking_steps') {
     return reduceSpeakingStepsRuntimeState(
       state,
-      ((question as SpeakingStepsQuestion).steps || []) as any,
+      (question as SpeakingStepsQuestion).steps || [],
       event
     )
   }
@@ -200,14 +221,14 @@ function resolveRuntimeMeta(
     }
   }
 
-  const source: any = (question as ListeningChoiceQuestion).flow?.source || {}
-  const sourceKind = String(source.kind || 'standard')
-  const profileId = String(source.profileId || '')
+  const source = (question as ListeningChoiceQuestion).flow?.source
+  const sourceKind = source?.kind === 'library' ? 'library' : 'standard'
+  const profileId = sourceKind === 'standard' ? String(source?.profileId || '') : ''
   const moduleId = sourceKind === 'library'
-    ? String(source.id || '')
-    : String(source.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+    ? String(source?.id || '')
+    : String(source?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   const moduleVersion = sourceKind === 'standard'
-    ? Math.max(1, toInt(source.version, 1))
+    ? Math.max(1, toInt(source?.version, 1))
     : 0
 
   const display = sourceKind === 'standard' && moduleId && opts?.resolveModuleDisplay
