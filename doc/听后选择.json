@@ -1,0 +1,100 @@
+{
+    "id": "spk_001",
+    "type": "speaking_steps",
+    "partType": 2, // 听后选择（内部枚举：口头选择）
+    "title": "听后选择",
+    "title_description": "(共9分,没小题 1.5 分)", // 这是新增 外显的时候就是 title + title_description
+    "stem": {
+      "type": "richtext",
+      "content": [{ "type": "text", "text": "听问题后，说出正确选项。" }]
+    },
+
+    "steps": [
+      {
+        "type": "introduction",
+        "id": "step_intro",
+        "title": "听后选择",
+        "description": "听问题后，说出正确选项",
+        "audio": { "url": "/static/intro.mp3", "duration": 8, "name": "题型介绍音频" } // 可选
+      },
+      {
+        "type": "display-content",
+        "id": "step_rule",
+        "label": "题目说明",
+        "content": {
+          "type": "richtext",
+          "content": [{ "type": "text", "text": "请先听材料，再逐题作答。" }]
+        }
+      },
+      {
+        "type": "play-audio",
+        "id": "step_material",
+        "audio": { "url": "/static/material.mp3", "duration": 30, "name": "材料音频" }, // 整体材料/对话
+        "playCount": 1,
+        "showProgress": true,
+        "showPlayCount": true, // 可选：显示“第X遍播放”
+        "label": "请听材料"
+      },
+      {
+        "type": "loop-sub-questions",
+        "id": "step_loop",
+        "stepsPerQuestion": [
+          {
+            "type": "play-audio",
+            "id": "q_play",
+            "audio": null, // null = 使用 subQuestions[i].audio
+            "playCount": 1,
+            "showProgress": true,
+            "label": "请听问题"
+          },
+          {
+            "type": "countdown",
+            "id": "q_prepare",
+            "duration": 5,
+            "label": "请准备作答",
+            "showProgress": true
+          },
+          {
+            "type": "record",
+            "id": "q_record",
+            "duration": 15,
+            "playBeepBefore": true,
+            "showTimer": true,
+            "showStopButton": true,
+            "assessmentMode": "H" // 口头选择
+          }
+        ]
+      }
+    ],
+
+    "subQuestions": [
+      {
+        "id": "q1",
+        "descriptionAudio": {
+          "url": "/static/q1.mp3",
+          "duration": 5,
+          "name": "问题1音频"
+        },
+        // 去掉段落标题  只有描述 + 描述音频
+        "content": { "type": "richtext", "content": [{ "type": "text", "text": "问题1：..." }] },
+        "contentAudio": { "url": "/static/q1.mp3", "duration": 5, "name": "问题1音频" }, // 改成 contentAudio
+        "options": [
+          { "key": "A", "content": { "type": "richtext", "content": [{ "type": "text", "text": "选项A" }] } },
+          { "key": "B", "content": { "type": "richtext", "content": [{ "type": "text", "text": "选项B" }] } },
+          { "key": "C", "content": { "type": "richtext", "content": [{ "type": "text", "text": "选项C" }] } }
+        ],
+        "referenceAnswer": "A" // 可选：参考/标准答案（字段名就是 referenceAnswer）
+      }
+    ],
+
+    "assessment": {
+      "mode": "H" // 口头选择
+    },
+
+    "totalSteps": 6, // 供 UI 显示用：非 loop 步骤数(3) + subQuestions(1)*stepsPerQuestion(3)
+
+    "metadata": {
+      "tags": [],
+      "updatedAt": "2026/2/11 10:00:00"
+    }
+  }

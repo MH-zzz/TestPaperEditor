@@ -1,0 +1,57 @@
+[
+  {
+    "title": "听力",
+    "children": [
+      {
+        "title": "选择"
+      },
+      {
+        "title": "点选（拖拽）",
+        "children": [
+          { "title": "情景选择" },
+          { "title": "图文匹配" },
+          { "title": "连词成句" },
+          { "title": "词汇分类" }
+        ]
+      },
+      {
+        "title": "听说",
+        "children": [
+          { "title": "听后选择" },
+          { "title": "听后回答" },
+          { "title": "听后转述" },
+          { "title": "短文朗读" }
+        ]
+      },
+      { "title": "判断" },
+      { "title": "排序" },
+      { "title": "连线" },
+      { "title": "填空" }
+    ]
+  },
+  {
+    "title": "笔试",
+    "children": [
+      {
+        "title": "选择"
+      },
+      {
+        "title": "点选（拖拽）",
+        "children": [
+          { "title": "情景选择" },
+          { "title": "图文匹配" },
+          { "title": "连词成句" },
+          { "title": "词汇分类" }
+        ]
+      },
+      { "title": "判断" },
+      { "title": "排序" },
+      { "title": "连线" },
+      { "title": "填空" },
+      { "title": "完形填空" },
+      { "title": "阅读理解" },
+      { "title": "任务型阅读" },
+      { "title": "写作" }
+    ]
+  }
+]

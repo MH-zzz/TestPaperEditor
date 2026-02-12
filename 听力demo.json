@@ -1,0 +1,350 @@
+{
+  "id": "listening_demo_unit1_3segments",
+  "type": "listening_demo",
+  "meta": {
+    "title": "Unit 1 听力测试 Demo",
+    "createdAt": "2026-02-10",
+    "updatedAt": "2026-02-10"
+  },
+  "content": {
+    "intro": {
+      "text": {
+        "type": "richtext",
+        "content": [
+          {
+            "type": "text",
+            "text": "听下面3段对话或独白。每段对话或独白后有两道小题，从每题所给的A、B、C三个选项中选出最佳选项。每段对话或独白你将听两遍。"
+          }
+        ]
+      },
+      "audio": {
+        "url": "",
+        "playCount": 1,
+        "note": "说明音频（占位，可为空）"
+      },
+      "countdown": {
+        "seconds": 3,
+        "label": "准备",
+        "endBeepUrl": "/static/beep.mp3"
+      }
+    },
+    "groups": [
+      {
+        "id": "g1",
+        "title": "第一段对话",
+        "prompt": {
+          "type": "richtext",
+          "content": [{ "type": "text", "text": "请听一段对话，完成第1至第2小题。" }]
+        },
+        "audio": {
+          "url": "",
+          "playCount": 2,
+          "note": "第一段对话音频（占位）"
+        },
+        "subQuestions": [
+          {
+            "id": "1770692619224_4gspsvfsk",
+            "order": 1,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Where did Sam go last vacation?" }]
+            },
+            "options": [
+              { "key": "A", "content": { "type": "richtext", "content": [{ "type": "text", "text": "To the UK." }] } },
+              { "key": "B", "content": { "type": "richtext", "content": [{ "type": "text", "text": "To the US." }] } },
+              { "key": "C", "content": { "type": "richtext", "content": [{ "type": "text", "text": "To Australia." }] } }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          },
+          {
+            "id": "1770692619225_1wiyq2asj",
+            "order": 2,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "How was the weather when Sam stayed there?" }]
+            },
+            "options": [
+              { "key": "A", "content": { "type": "richtext", "content": [{ "type": "text", "text": "Windy." }] } },
+              { "key": "B", "content": { "type": "richtext", "content": [{ "type": "text", "text": "Rainy." }] } },
+              { "key": "C", "content": { "type": "richtext", "content": [{ "type": "text", "text": "Sunny." }] } }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          }
+        ]
+      },
+      {
+        "id": "g2",
+        "title": "第二段对话",
+        "prompt": {
+          "type": "richtext",
+          "content": [{ "type": "text", "text": "请听一段对话，完成第3至第4小题。" }]
+        },
+        "audio": {
+          "url": "",
+          "playCount": 2,
+          "note": "第二段对话音频（占位）"
+        },
+        "subQuestions": [
+          {
+            "id": "1770692619227_x2pvohe99",
+            "order": 3,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Who went back to the hometown with the boy?" }]
+            },
+            "options": [
+              { "key": "A", "content": { "type": "richtext", "content": [{ "type": "text", "text": "No one else." }] } },
+              { "key": "B", "content": { "type": "richtext", "content": [{ "type": "text", "text": "His father." }] } },
+              { "key": "C", "content": { "type": "richtext", "content": [{ "type": "text", "text": "His mother." }] } }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          },
+          {
+            "id": "1770692619228_ozcql45qk",
+            "order": 4,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Why were the boy's grandparents happy to see them?" }]
+            },
+            "options": [
+              {
+                "key": "A",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "Because his grandparents didn't see them last year." }]
+                }
+              },
+              {
+                "key": "B",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "Because they could stay together for a week." }]
+                }
+              },
+              {
+                "key": "C",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "Because his grandparents felt very lonely without them." }]
+                }
+              }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          }
+        ]
+      },
+      {
+        "id": "g3",
+        "title": "第三段独白",
+        "prompt": {
+          "type": "richtext",
+          "content": [{ "type": "text", "text": "请听一段独白，完成第5至第6小题。" }]
+        },
+        "audio": {
+          "url": "",
+          "playCount": 2,
+          "note": "第三段独白音频（占位）"
+        },
+        "subQuestions": [
+          {
+            "id": "1770692619229_8mvjra8j9",
+            "order": 5,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "What can we know about John's and Jennie's trips?" }]
+            },
+            "options": [
+              {
+                "key": "A",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "John wanted to go climbing in Guangzhou." }]
+                }
+              },
+              {
+                "key": "B",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "John stayed in Guangzhou for half a month." }]
+                }
+              },
+              {
+                "key": "C",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "Jennie left Yunnan last Sunday morning." }]
+                }
+              }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          },
+          {
+            "id": "1770692619231_eo720bqsz",
+            "order": 6,
+            "stem": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Why does the speaker give this talk?" }]
+            },
+            "options": [
+              {
+                "key": "A",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "To talk about John's and Jennie's vacation plans." }]
+                }
+              },
+              {
+                "key": "B",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "To tell John and Jennie what to do after their trips." }]
+                }
+              },
+              {
+                "key": "C",
+                "content": {
+                  "type": "richtext",
+                  "content": [{ "type": "text", "text": "To share John's and Jennie's travelling experiences." }]
+                }
+              }
+            ],
+            "answer": [],
+            "explanation": {
+              "type": "richtext",
+              "content": [{ "type": "text", "text": "Demo：答案/解析待编辑。" }]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "flow": {
+    "version": 1,
+    "mode": "semi-auto",
+    "notes": "翻页式：音频/倒计时/答题计时自动推进；进入每段前可插入 countdown，结束播放滴提示音。",
+    "steps": [
+      {
+        "id": "s_intro",
+        "kind": "intro",
+        "title": "听力说明",
+        "blocks": [{ "kind": "richtext", "ref": "content.intro.text" }],
+        "autoNext": "countdownEnded",
+        "note": "该步可按：播放 content.intro.audio -> 跑 content.intro.countdown -> 自动下一步"
+      },
+      {
+        "id": "s_g1_prompt",
+        "kind": "groupPrompt",
+        "groupId": "g1",
+        "autoNext": "tapNext"
+      },
+      {
+        "id": "s_g1_countdown",
+        "kind": "countdown",
+        "seconds": 3,
+        "label": "准备",
+        "autoNext": "countdownEnded",
+        "onEndEffects": [{ "kind": "playSfx", "url": "/static/beep.mp3" }]
+      },
+      {
+        "id": "s_g1_audio",
+        "kind": "playAudio",
+        "groupId": "g1",
+        "autoNext": "audioEnded"
+      },
+      {
+        "id": "s_g1_answer",
+        "kind": "answerChoice",
+        "title": "第1至第2小题",
+        "groupId": "g1",
+        "timeLimitSec": 120,
+        "allowEarlyNext": true,
+        "autoNext": "timeEnded"
+      },
+      {
+        "id": "s_g2_prompt",
+        "kind": "groupPrompt",
+        "groupId": "g2",
+        "autoNext": "tapNext"
+      },
+      {
+        "id": "s_g2_countdown",
+        "kind": "countdown",
+        "seconds": 3,
+        "label": "准备",
+        "autoNext": "countdownEnded",
+        "onEndEffects": [{ "kind": "playSfx", "url": "/static/beep.mp3" }]
+      },
+      {
+        "id": "s_g2_audio",
+        "kind": "playAudio",
+        "groupId": "g2",
+        "autoNext": "audioEnded"
+      },
+      {
+        "id": "s_g2_answer",
+        "kind": "answerChoice",
+        "title": "第3至第4小题",
+        "groupId": "g2",
+        "timeLimitSec": 120,
+        "allowEarlyNext": true,
+        "autoNext": "timeEnded"
+      },
+      {
+        "id": "s_g3_prompt",
+        "kind": "groupPrompt",
+        "groupId": "g3",
+        "autoNext": "tapNext"
+      },
+      {
+        "id": "s_g3_countdown",
+        "kind": "countdown",
+        "seconds": 3,
+        "label": "准备",
+        "autoNext": "countdownEnded",
+        "onEndEffects": [{ "kind": "playSfx", "url": "/static/beep.mp3" }]
+      },
+      {
+        "id": "s_g3_audio",
+        "kind": "playAudio",
+        "groupId": "g3",
+        "autoNext": "audioEnded"
+      },
+      {
+        "id": "s_g3_answer",
+        "kind": "answerChoice",
+        "title": "第5至第6小题",
+        "groupId": "g3",
+        "timeLimitSec": 120,
+        "allowEarlyNext": true,
+        "autoNext": "timeEnded"
+      },
+      {
+        "id": "s_finish",
+        "kind": "finish",
+        "title": "完成",
+        "blocks": [{ "kind": "text", "text": "本部分结束。" }],
+        "autoNext": "tapNext"
+      }
+    ]
+  }
+}
