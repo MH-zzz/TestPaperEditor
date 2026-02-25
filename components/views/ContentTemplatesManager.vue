@@ -89,6 +89,7 @@
             :show-answer="showAnswer"
             :step-index="currentStepIndex"
             :total-steps="previewTotalSteps"
+            :show-runtime-meta="false"
             @prev="previewPrevStep"
             @next="previewNextStep"
             @toggle-answer="showAnswer = !showAnswer"

@@ -25,9 +25,6 @@
       <text>剩余播放 {{ audioRemaining }} 次</text>
     </view>
 
-    <view v-if="mode === 'preview'" class="lc-step__hint">
-      <text>预览不会自动播放音频，也不会启动倒计时或自动进入下一步；请手动播放或点击下一步继续。</text>
-    </view>
   </view>
 </template>
 

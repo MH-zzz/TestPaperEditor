@@ -10,12 +10,16 @@
       'is-just-moved': justMoved
     }"
     :style="nodeStyle"
+    :data-flow-node-id="nodeId || ''"
     :draggable="draggable"
     @click="emit('select')"
     @dragstart="emit('drag-start', $event)"
     @dragover.stop.prevent="emit('drag-over', $event)"
     @drop.stop.prevent="emit('drop', $event)"
     @dragend="emit('drag-end', $event)"
+    @mousedown.stop="emit('pointer-down', $event)"
+    @mousemove.stop="emit('pointer-move', $event)"
+    @mouseup.stop="emit('pointer-up', $event)"
   >
     <slot />
   </view>
@@ -25,6 +29,7 @@
 import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{
+  nodeId?: string
   x: number
   y: number
   width: number
@@ -37,6 +42,7 @@ const props = withDefaults(defineProps<{
   dropPosition?: '' | 'before' | 'after'
   justMoved?: boolean
 }>(), {
+  nodeId: '',
   borderColor: '#475569',
   active: false,
   draggable: false,
@@ -52,6 +58,9 @@ const emit = defineEmits<{
   (e: 'drag-over', event: Event): void
   (e: 'drop', event: Event): void
   (e: 'drag-end', event: Event): void
+  (e: 'pointer-down', event: Event): void
+  (e: 'pointer-move', event: Event): void
+  (e: 'pointer-up', event: Event): void
 }>()
 
 const nodeStyle = computed(() => {
@@ -68,6 +77,7 @@ const nodeStyle = computed(() => {
 <style lang="scss" scoped>
 .base-flow-node {
   position: absolute;
+  user-select: none;
   transition: top 180ms ease, box-shadow 140ms ease, opacity 120ms ease, transform 180ms ease;
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-left-width: 4px;

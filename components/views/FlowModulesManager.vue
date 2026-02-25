@@ -826,6 +826,7 @@
             :show-answer="showAnswer"
             :step-index="currentStepIndex"
             :total-steps="previewTotalSteps"
+            :show-runtime-meta="false"
             @prev="previewPrevStep"
             @next="previewNextStep"
             @toggle-answer="showAnswer = !showAnswer"
@@ -889,7 +890,7 @@
             @dragover.stop.prevent
             @drop.stop.prevent="onReadonlyFlowVisualDrop"
           >
-            <scroll-view scroll-y class="flow-visual-canvas-wrap">
+            <view class="flow-visual-canvas-wrap" @wheel.stop>
               <ReadonlyFlowCanvas
                 :graph="readonlyFlowGraph"
                 :active-node-id="readonlyFlowVisualActiveNodeId"
@@ -898,7 +899,7 @@
                 @reorder-node="reorderReadonlyFlowVisualNode"
                 @insert-stencil-near-node="insertReadonlyFlowVisualStepNearNode"
               />
-            </scroll-view>
+            </view>
           </view>
 
           <view class="flow-visual-detail">
@@ -2078,6 +2079,19 @@ const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
 const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
 const readonlyFlowVisualActiveNodeId = flowVisualEditor.selectedNodeId
 const readonlyFlowVisualActiveNode = flowVisualEditor.selectedNode
+let flowVisualBodyOverflow = ''
+
+function setFlowVisualBodyScrollLocked(locked: boolean) {
+  if (typeof document === 'undefined') return
+  const body = document.body
+  if (!body) return
+  if (locked) {
+    flowVisualBodyOverflow = body.style.overflow || ''
+    body.style.overflow = 'hidden'
+    return
+  }
+  body.style.overflow = flowVisualBodyOverflow
+}
 
 function openReadonlyFlowVisual() {
   readonlyFlowVisualVisible.value = true
@@ -2113,20 +2127,85 @@ function redoReadonlyFlowVisual() {
 }
 
 function onReadonlyFlowVisualDragStart(kind: string) {
+  console.log('[FlowModulesManager] onReadonlyFlowVisualDragStart', kind)
   flowVisualDraggingKind.value = String(kind || '')
 }
 
 function onReadonlyFlowVisualDragEnd() {
+  console.log('[FlowModulesManager] onReadonlyFlowVisualDragEnd')
   flowVisualDraggingKind.value = ''
 }
 
 function onReadonlyFlowVisualDrop(event: Event) {
+  console.log('[FlowModulesManager] onReadonlyFlowVisualDrop fired')
   const drag = event as DragEvent
   const fromTransfer = drag.dataTransfer?.getData('text/flow-kind') || ''
   const kind = String(fromTransfer || flowVisualDraggingKind.value || '')
   if (!kind) return
-  flowVisualEditor.appendNode(kind)
+
+  // Try to find the nearest node at the drop position to insert near it
+  // instead of always appending to the end
+  const targetInfo = resolveDropTargetFromDragEvent(drag)
+  if (targetInfo) {
+    flowVisualEditor.insertNodeNearTarget(kind, targetInfo.nodeId, targetInfo.position)
+  } else {
+    flowVisualEditor.appendNode(kind)
+  }
   flowVisualDraggingKind.value = ''
+}
+
+function resolveDropTargetFromDragEvent(drag: DragEvent): { nodeId: string; position: 'before' | 'after' } | null {
+  const clientX = drag.clientX
+  const clientY = drag.clientY
+
+  // Guard against non-finite coordinates which cause elementFromPoint to throw
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return null
+  }
+
+  // Method 1: check if the drop landed on or near a flow node element
+  if (typeof document !== 'undefined') {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+    const nodeEl = el?.closest?.('[data-flow-node-id]') as HTMLElement | null
+    if (nodeEl) {
+      const nodeId = String(nodeEl.dataset.flowNodeId || '')
+      if (nodeId) {
+        const rect = nodeEl.getBoundingClientRect()
+        const middle = rect.top + rect.height / 2
+        const position: 'before' | 'after' = drag.clientY > middle ? 'after' : 'before'
+        return { nodeId, position }
+      }
+    }
+  }
+
+  // Method 2: use the graph node positions to find the nearest node by Y coordinate
+  const graphNodes = readonlyFlowGraph.value?.nodes || []
+  if (graphNodes.length === 0) return null
+
+  // Find the graph container element to get relative Y
+  const graphContainer = typeof document !== 'undefined'
+    ? document.querySelector('.readonly-flow-canvas__graph') as HTMLElement | null
+    : null
+  if (!graphContainer) return null
+
+  const graphRect = graphContainer.getBoundingClientRect()
+  const offsetY = drag.clientY - graphRect.top
+
+  let bestNodeId = ''
+  let bestPos: 'before' | 'after' = 'after'
+  let minDist = Infinity
+
+  for (const node of graphNodes) {
+    const nodeMid = node.position.y + node.size.height / 2
+    const dist = Math.abs(offsetY - nodeMid)
+    if (dist < minDist) {
+      minDist = dist
+      bestNodeId = node.id
+      bestPos = offsetY < nodeMid ? 'before' : 'after'
+    }
+  }
+
+  return bestNodeId ? { nodeId: bestNodeId, position: bestPos } : null
 }
 
 function patchReadonlyFlowVisualNode(patch: FlowVisualNodePatch) {
@@ -2433,6 +2512,11 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', onFlowVisualKeydown)
   }
+  setFlowVisualBodyScrollLocked(false)
+})
+
+watch(readonlyFlowVisualVisible, (visible) => {
+  setFlowVisualBodyScrollLocked(visible)
 })
 
 watch(flowCenterRouteSignature, (next, prev) => {
@@ -3795,6 +3879,7 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   position: fixed;
   inset: 0;
   z-index: 340;
+  overscroll-behavior: contain;
 }
 
 .flow-visual-modal__mask {
@@ -3816,6 +3901,7 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .flow-visual-modal__header {
@@ -3869,10 +3955,15 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 .flow-visual-canvas-dropzone {
   min-height: 0;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(241, 245, 249, 0.94));
+  overflow: hidden;
 }
 
 .flow-visual-canvas-wrap {
   min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 14px;
   box-sizing: border-box;
   background: transparent;
@@ -3885,6 +3976,7 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: auto;
 }
 
 .flow-visual-detail__title {

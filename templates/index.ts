@@ -169,7 +169,7 @@ export function createListeningFillTemplate(): ListeningFillQuestion {
     id: generateId(),
     type: 'listening_fill',
     audio: {
-      url: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3',
+      url: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3',
       position: 'above'
     },
     stem: createRichText('Hello, my name is Lucy. I am 10 years old. I have a happy family. There are three people in my family — my father, my mother and me.'),
@@ -216,7 +216,7 @@ export function createListeningMatchTemplate(): ListeningMatchQuestion {
     type: 'listening_match',
     matchMode: 'one-to-many',
     audio: {
-      url: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3',
+      url: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3',
       position: 'above'
     },
     stem: createRichText('Listen and match the fruit names with the pictures.'),
@@ -269,7 +269,7 @@ export function createSpeakingTemplate(): SpeakingQuestion {
         id: generateId(),
         title: '听题',
         behavior: 'auto_play',
-        audioUrl: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3',
+        audioUrl: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3',
         instruction: createRichText('请仔细听题目要求。')
       },
       {

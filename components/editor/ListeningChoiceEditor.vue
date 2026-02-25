@@ -495,7 +495,7 @@ function regenerateFlowStepsFromSource(question: ListeningChoiceQuestion): Liste
 }
 
 function setIntroDemoAudio() {
-  updateIntroAudioUrl('https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3')
+  updateIntroAudioUrl('https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
   uni.showToast({ title: '已关联示例音频', icon: 'success' })
 }
 
@@ -607,12 +607,12 @@ function updateGroupDescriptionAudioPlayCount(gIndex: number, rawValue: any) {
 }
 
 function setGroupDemoAudio(gIndex: number) {
-  updateGroupAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3')
+  updateGroupAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
   uni.showToast({ title: '已关联示例音频', icon: 'success' })
 }
 
 function setGroupDescriptionDemoAudio(gIndex: number) {
-  updateGroupDescriptionAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3')
+  updateGroupDescriptionAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
   uni.showToast({ title: '已关联示例音频', icon: 'success' })
 }
 

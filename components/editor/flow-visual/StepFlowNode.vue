@@ -1,12 +1,13 @@
 <template>
   <BaseFlowNode
+    :node-id="node.id"
     :x="node.position.x"
     :y="node.position.y"
     :width="node.size.width"
     :height="node.size.height"
     :border-color="node.color"
     :active="active"
-    :draggable="reorderable"
+    :draggable="false"
     :dragging="dragging"
     :drop-target="dropTarget"
     :drop-position="dropPosition"
@@ -16,6 +17,9 @@
     @drag-over="onDragOver"
     @drop="onDrop"
     @drag-end="onDragEnd"
+    @pointer-down="onPointerDown"
+    @pointer-move="onPointerMove"
+    @pointer-up="onPointerUp"
   >
     <text class="step-flow-node__title">{{ node.label }}</text>
     <text class="step-flow-node__subtitle">{{ node.subtitle || '无附加信息' }}</text>
@@ -54,6 +58,10 @@ const emit = defineEmits<{
   (e: 'drag-over', payload: { nodeId: string; position: FlowNodeDropPosition }): void
   (e: 'drop-on-node', payload: { sourceId: string; targetId: string; position: FlowNodeDropPosition; flowKind?: string }): void
   (e: 'drag-end', nodeId: string): void
+  (e: 'pointer-drag-start', payload: { nodeId: string }): void
+  (e: 'pointer-drag-over', payload: { nodeId: string; position: FlowNodeDropPosition }): void
+  (e: 'pointer-drag-drop', payload: { targetId: string; position: FlowNodeDropPosition }): void
+  (e: 'pointer-drag-end'): void
 }>()
 
 const metaLine = computed(() => {
@@ -78,15 +86,25 @@ function onDragStart(event: Event) {
 
 function resolveDropPosition(event: Event): FlowNodeDropPosition {
   const drag = event as DragEvent
-  const target = drag.currentTarget as HTMLElement | null
-  if (!target) return 'before'
-  const rect = target.getBoundingClientRect()
+  // Fix: currentTarget is null when passed out of the component scope.
+  // We use target.closest to find the wrapper element.
+  let target = drag.target as Element | null
+  // Handle text nodes if necessary (though rare in this setup)
+  if (target && target.nodeType === 3) {
+    target = target.parentElement
+  }
+  
+  const nodeEl = target?.closest?.('.base-flow-node')
+  if (!nodeEl) return 'before'
+
+  const rect = nodeEl.getBoundingClientRect()
   const middle = rect.top + rect.height / 2
   return drag.clientY > middle ? 'after' : 'before'
 }
 
 function onDragOver(event: Event) {
   if (!props.reorderable) return
+  console.log('[StepFlowNode] onDragOver', props.node.id)
   emit('drag-over', {
     nodeId: props.node.id,
     position: resolveDropPosition(event)
@@ -98,6 +116,7 @@ function onDrop(event: Event) {
   const drag = event as DragEvent
   const sourceId = String(drag.dataTransfer?.getData('text/flow-node-id') || '')
   const flowKind = String(drag.dataTransfer?.getData('text/flow-kind') || '')
+  console.log('[StepFlowNode] onDrop', { sourceId, flowKind, targetId: props.node.id })
   emit('drop-on-node', {
     sourceId,
     targetId: props.node.id,
@@ -109,6 +128,28 @@ function onDrop(event: Event) {
 function onDragEnd() {
   if (!props.reorderable) return
   emit('drag-end', props.node.id)
+}
+
+function onPointerDown() {
+  if (!props.reorderable) return
+  emit('pointer-drag-start', { nodeId: props.node.id })
+}
+
+function onPointerMove(event: Event) {
+  if (!props.reorderable) return
+  emit('pointer-drag-over', {
+    nodeId: props.node.id,
+    position: resolveDropPosition(event)
+  })
+}
+
+function onPointerUp(event: Event) {
+  if (!props.reorderable) return
+  emit('pointer-drag-drop', {
+    targetId: props.node.id,
+    position: resolveDropPosition(event)
+  })
+  emit('pointer-drag-end')
 }
 </script>
 

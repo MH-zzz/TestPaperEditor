@@ -169,7 +169,7 @@ function updateStem(content: RichTextContent) {
 }
 
 function uploadAudio() {
-  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3'
+  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3'
   emit('update:modelValue', {
     ...props.modelValue,
     audio: { ...props.modelValue.audio, url }

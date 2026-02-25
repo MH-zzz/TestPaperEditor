@@ -99,6 +99,7 @@
           :step-index="currentStepIndex"
           :total-steps="previewTotalSteps"
           :runtime-meta="runtimeMeta"
+          :show-runtime-meta="false"
           @prev="previewPrevStep"
           @next="previewNextStep"
           @toggle-answer="showAnswer = !showAnswer"

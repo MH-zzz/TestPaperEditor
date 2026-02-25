@@ -135,6 +135,7 @@
           :step-index="currentStepIndex"
           :total-steps="previewTotalSteps"
           :runtime-meta="runtimeMeta"
+          :show-runtime-meta="false"
           :render-mode="'exam'"
           :show-answer-toggle="true"
           @prev="previewPrevStep"
@@ -517,28 +518,28 @@ watch(() => questionDraft.state.lastLibrarySavedAt, () => {
 .learning-header {
   flex-shrink: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 16px 18px;
+  padding: 12px 18px;
   background: rgba(255, 255, 255, 0.86);
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .learning-header__main {
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .learning-title {
-  display: block;
   font-size: 18px;
   font-weight: 800;
   color: rgba(15, 23, 42, 0.92);
 }
 
 .learning-subtitle {
-  display: block;
-  margin-top: 4px;
   font-size: 12px;
   color: rgba(15, 23, 42, 0.55);
 }

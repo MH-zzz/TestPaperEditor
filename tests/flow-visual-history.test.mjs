@@ -30,6 +30,8 @@ test('editable flow graph should provide history stack and undo/redo APIs', asyn
 test('flow center should expose visual undo/redo buttons and keyboard shortcuts', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   const propertySrc = await readFile('components/editor/flow-visual/PropertyPanel.vue')
+  const canvasSrc = await readFile('components/editor/flow-visual/ReadonlyFlowCanvas.vue')
+  const stepNodeSrc = await readFile('components/editor/flow-visual/StepFlowNode.vue')
   assert.ok(src.includes('撤销'))
   assert.ok(src.includes('重做'))
   assert.ok(src.includes('canReadonlyFlowVisualUndo'))
@@ -47,4 +49,8 @@ test('flow center should expose visual undo/redo buttons and keyboard shortcuts'
   assert.ok(src.includes('locateReadonlyFlowVisualIssue'))
   assert.ok(src.includes('readonlyFlowLinearChecks'))
   assert.ok(propertySrc.includes('Ctrl/Cmd+D'))
+  assert.ok(canvasSrc.includes('onPointerDragStart'))
+  assert.ok(canvasSrc.includes('onPointerDragDrop'))
+  assert.ok(stepNodeSrc.includes('pointer-drag-start'))
+  assert.ok(stepNodeSrc.includes('onPointerDown'))
 })

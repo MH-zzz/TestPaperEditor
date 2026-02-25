@@ -41,13 +41,17 @@
         @drag-over="onNodeDragOver"
         @drop-on-node="onNodeDrop"
         @drag-end="onNodeDragEnd"
+        @pointer-drag-start="onPointerDragStart"
+        @pointer-drag-over="onPointerDragOver"
+        @pointer-drag-drop="onPointerDragDrop"
+        @pointer-drag-end="onPointerDragEnd"
       />
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { FlowVisualGraph } from '/types'
 import type { ReadonlyFlowNodePayload } from '/components/views/flow-modules/useReadonlyFlowGraph'
 import StepFlowNode from './StepFlowNode.vue'
@@ -73,6 +77,11 @@ const emit = defineEmits<{
 const draggingNodeId = ref('')
 const dropTarget = ref<{ nodeId: string; position: 'before' | 'after' } | null>(null)
 
+type PointerPoint = {
+  clientX: number
+  clientY: number
+}
+
 const legendItems = computed<LegendItem[]>(() => {
   const map = new Map<string, LegendItem>()
   for (const node of props.graph.nodes || []) {
@@ -89,6 +98,7 @@ const legendItems = computed<LegendItem[]>(() => {
 })
 
 function onNodeDragStart(nodeId: string) {
+  console.log('[ReadonlyFlowCanvas] onNodeDragStart', nodeId)
   draggingNodeId.value = String(nodeId || '')
   dropTarget.value = null
 }
@@ -104,36 +114,154 @@ function onNodeDragOver(payload: { nodeId: string; position: 'before' | 'after' 
 }
 
 function onNodeDrop(payload: { sourceId: string; targetId: string; position: 'before' | 'after'; flowKind?: string }) {
+  console.log('[ReadonlyFlowCanvas] onNodeDrop', JSON.stringify(payload))
   const sourceId = String(payload?.sourceId || draggingNodeId.value || '')
   const targetId = String(payload?.targetId || '')
   const position = payload?.position === 'after' ? 'after' : 'before'
   const flowKind = String(payload?.flowKind || '')
 
   if (!sourceId && flowKind && targetId) {
+    console.log('[ReadonlyFlowCanvas] -> insert-stencil-near-node', { kind: flowKind, targetId, position })
     emit('insert-stencil-near-node', {
       kind: flowKind,
       targetId,
       position
     })
-    draggingNodeId.value = ''
-    dropTarget.value = null
+    clearDragState()
     return
   }
 
   if (!sourceId || !targetId || sourceId === targetId) {
-    draggingNodeId.value = ''
-    dropTarget.value = null
+    console.log('[ReadonlyFlowCanvas] -> no-op, clearing drag state')
+    clearDragState()
     return
   }
   emit('reorder-node', { sourceId, targetId, position })
+  clearDragState()
+}
+
+function onNodeDragEnd() {
+  clearDragState()
+}
+
+function onPointerDragStart(payload: { nodeId: string }) {
+  const nodeId = String(payload?.nodeId || '')
+  if (!nodeId) return
+  draggingNodeId.value = nodeId
+  dropTarget.value = null
+}
+
+function onPointerDragOver(payload: { nodeId: string; position: 'before' | 'after' }) {
+  if (!draggingNodeId.value) return
+  const target = String(payload?.nodeId || '')
+  const position = payload?.position === 'after' ? 'after' : 'before'
+  if (!target || target === draggingNodeId.value) return
+  dropTarget.value = { nodeId: target, position }
+}
+
+function onPointerDragDrop(payload: { targetId: string; position: 'before' | 'after' }) {
+  const sourceId = String(draggingNodeId.value || '')
+  const targetId = String(payload?.targetId || '')
+  const position = payload?.position === 'after' ? 'after' : 'before'
+  if (!sourceId || !targetId || sourceId === targetId) {
+    clearDragState()
+    return
+  }
+  emit('reorder-node', { sourceId, targetId, position })
+  clearDragState()
+}
+
+function onPointerDragEnd() {
+  clearDragState()
+}
+
+function clearDragState() {
   draggingNodeId.value = ''
   dropTarget.value = null
 }
 
-function onNodeDragEnd() {
-  draggingNodeId.value = ''
-  dropTarget.value = null
+function resolveDropTargetFromPoint(point: PointerPoint): { nodeId: string; position: 'before' | 'after' } | null {
+  if (typeof document === 'undefined') return null
+  const el = document.elementFromPoint(point.clientX, point.clientY) as HTMLElement | null
+  const nodeEl = el?.closest?.('[data-flow-node-id]') as HTMLElement | null
+  if (!nodeEl) return null
+  const nodeId = String(nodeEl.dataset.flowNodeId || '')
+  if (!nodeId || nodeId === draggingNodeId.value) return null
+  const rect = nodeEl.getBoundingClientRect()
+  const middle = rect.top + rect.height / 2
+  const position: 'before' | 'after' = point.clientY > middle ? 'after' : 'before'
+  return { nodeId, position }
 }
+
+function syncDropTargetFromPoint(point: PointerPoint) {
+  if (!draggingNodeId.value) return
+  const next = resolveDropTargetFromPoint(point)
+  dropTarget.value = next
+}
+
+function onWindowPointerMove(event: MouseEvent) {
+  if (!draggingNodeId.value) return
+  syncDropTargetFromPoint({ clientX: event.clientX, clientY: event.clientY })
+}
+
+function onWindowPointerRelease(event: MouseEvent) {
+  if (!draggingNodeId.value) return
+  const target = resolveDropTargetFromPoint({ clientX: event.clientX, clientY: event.clientY }) || dropTarget.value
+  if (target) {
+    emit('reorder-node', {
+      sourceId: draggingNodeId.value,
+      targetId: target.nodeId,
+      position: target.position
+    })
+  }
+  clearDragState()
+}
+
+function readTouchPoint(evt: TouchEvent): PointerPoint | null {
+  const touch = evt.touches?.[0] || evt.changedTouches?.[0]
+  if (!touch) return null
+  return {
+    clientX: touch.clientX,
+    clientY: touch.clientY
+  }
+}
+
+function onWindowTouchMove(event: TouchEvent) {
+  if (!draggingNodeId.value) return
+  const point = readTouchPoint(event)
+  if (!point) return
+  syncDropTargetFromPoint(point)
+}
+
+function onWindowTouchEnd(event: TouchEvent) {
+  if (!draggingNodeId.value) return
+  const point = readTouchPoint(event)
+  const target = point ? (resolveDropTargetFromPoint(point) || dropTarget.value) : dropTarget.value
+  if (target) {
+    emit('reorder-node', {
+      sourceId: draggingNodeId.value,
+      targetId: target.nodeId,
+      position: target.position
+    })
+  }
+  clearDragState()
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined') return
+  window.addEventListener('mousemove', onWindowPointerMove)
+  window.addEventListener('mouseup', onWindowPointerRelease)
+  window.addEventListener('touchmove', onWindowTouchMove)
+  window.addEventListener('touchend', onWindowTouchEnd)
+})
+
+onBeforeUnmount(() => {
+  if (typeof window === 'undefined') return
+  window.removeEventListener('mousemove', onWindowPointerMove)
+  window.removeEventListener('mouseup', onWindowPointerRelease)
+  window.removeEventListener('touchmove', onWindowTouchMove)
+  window.removeEventListener('touchend', onWindowTouchEnd)
+})
 </script>
 
 <style lang="scss" scoped>

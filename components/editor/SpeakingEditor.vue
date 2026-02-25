@@ -276,7 +276,7 @@ function toggleContent(index: number, field: 'instruction' | 'passage' | 'imageU
 
 function selectAudio(index: number) {
   // Demo: 使用示例音频
-  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/xueke/audio/right.mp3'
+  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3'
   updateStep(index, 'audioUrl', url)
   uni.showToast({ title: '已选择示例音频', icon: 'success' })
 }
