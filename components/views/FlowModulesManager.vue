@@ -23,11 +23,8 @@
         <template v-if="page === 'listening_choice'">
           <button class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
           <button class="btn btn-outline btn-sm" @click="showPublishLogs">发布日志</button>
-          <button class="btn btn-outline btn-sm" @click="saveStandardAsNextVersion">另存新版本</button>
-          <button class="btn btn-outline btn-sm" :disabled="!canPublishCurrentStandard" @click="publishCurrentStandard">发布当前版本</button>
-          <button class="btn btn-outline btn-sm danger" :disabled="!canArchiveCurrentStandard" @click="archiveCurrentStandard">归档当前版本</button>
           <button class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
-          <button class="btn btn-primary btn-sm" :disabled="!canSaveCurrentStandard" @click="saveStandard">保存题型流程</button>
+          <button class="btn btn-primary btn-sm" :disabled="!canSaveCurrentStandard" @click="updateCurrentFlowLine">更新当前流程线</button>
         </template>
       </view>
     </view>
@@ -46,7 +43,7 @@
           <text class="flow-card__title">听后选择</text>
           <text class="flow-card__desc">介绍页 → 每题组：播放描述音频 → 倒计时 → 播放正文音频 → 答题</text>
           <view class="flow-card__meta">
-            <text class="meta-item">流程库：{{ listeningChoiceLibraryCount }}</text>
+            <text class="meta-item">流程线：{{ flowLineOptions.length }}</text>
             <text class="meta-dot">·</text>
             <text class="meta-item">影响所有标准题</text>
           </view>
@@ -98,10 +95,24 @@
                   <text class="panel__title">题型流程图</text>
                   <text class="panel__desc">当前题型的标准执行规则</text>
                   <view class="module-state">
-                    <text class="module-state__ref">当前版本：{{ draftModuleDisplayRef }}</text>
+                    <text class="module-state__ref">当前流程线：{{ draftModuleDisplayRef }}</text>
                     <text class="module-state__tag" :class="`is-${currentModuleStatus}`">{{ currentModuleStatusLabel }}</text>
                   </view>
-                  <text class="module-state__id">流程 ID：{{ draftModuleId }}</text>
+                  <view class="flow-line-switch">
+                    <text class="flow-line-switch__label">流程线切换</text>
+                    <view class="flow-line-switch__chips">
+                      <view
+                        v-for="line in flowLineOptions"
+                        :key="line.id"
+                        class="flow-line-chip"
+                        :class="{ active: line.id === draftModuleId }"
+                        @click="switchToFlowLine(line.id)"
+                      >
+                        <text class="flow-line-chip__name">{{ line.name }}</text>
+                        <text class="flow-line-chip__meta">{{ line.statusLabel }}</text>
+                      </view>
+                    </view>
+                  </view>
                   <view class="module-meta-grid">
                     <view class="form-item">
                       <text class="form-item__label">流程名称</text>
@@ -121,6 +132,18 @@
                         maxlength="200"
                         @input="(e) => draftModuleNote = e.detail.value"
                       />
+                    </view>
+                    <view class="form-item">
+                      <text class="form-item__label">新流程线名称</text>
+                      <input
+                        class="text-input"
+                        :value="newFlowLineName"
+                        placeholder="例如：听后选择北京 / 听后选择成都"
+                        @input="(e) => newFlowLineName = String(e.detail.value || '')"
+                      />
+                    </view>
+                    <view class="form-item form-item--full">
+                      <button class="btn btn-outline btn-sm" @click="createFlowLineDraft">新建流程线</button>
                     </view>
                   </view>
                   <text class="module-state__hint">{{ currentModuleStatusHint }}</text>
@@ -364,14 +387,34 @@
                 <view class="diagram-hint">
                   <text class="diagram-hint__text">点击步骤可展开配置；拖动右侧手柄可排序每题组步骤；再次点击同一步骤可收起</text>
                 </view>
+
+                <view class="region-binding">
+                  <view class="region-binding__head">
+                    <text class="region-binding__title">地区匹配</text>
+                    <text class="region-binding__desc">一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线。未勾选地区走标准流程。</text>
+                  </view>
+                  <view v-if="regionBindingOptions.length === 0" class="empty-tip">暂无地区标签，请先在标签管理补充“地区”。</view>
+                  <view v-else class="region-binding__chips">
+                    <view
+                      v-for="region in regionBindingOptions"
+                      :key="region"
+                      class="region-chip"
+                      :class="{ active: isRegionBoundToCurrentFlowLine(region) }"
+                      @click="toggleRegionBindingForCurrentFlowLine(region)"
+                    >
+                      <text class="region-chip__name">{{ region }}</text>
+                      <text class="region-chip__target">{{ formatRegionBindingTarget(region) }}</text>
+                    </view>
+                  </view>
+                </view>
               </view>
             </view>
 
             <view v-if="commitValidationIssues.length > 0" class="panel panel--blocking">
               <view class="panel__header panel__header--blocking">
                 <view class="panel__header-left">
-                  <text class="panel__title">保存/发布阻断项</text>
-                  <text class="panel__desc">修复以下问题后，才能保存或发布流程版本</text>
+                  <text class="panel__title">更新阻断项</text>
+                  <text class="panel__desc">修复以下问题后，才能更新流程线</text>
                 </view>
                 <view class="panel__header-actions">
                   <button class="btn btn-outline btn-xs" @click="jumpToFirstCommitValidationIssue">定位首个问题</button>
@@ -391,425 +434,6 @@
                     <text class="blocking-item__path">{{ item.path }}</text>
                     <view class="blocking-item__actions">
                       <button class="btn btn-outline btn-xs" @click="jumpToCommitValidationIssue(item)">定位</button>
-                    </view>
-                  </view>
-                </view>
-              </view>
-            </view>
-
-            <view class="panel panel--guide">
-              <view class="panel__header">
-                <view class="panel__header-left">
-                  <text class="panel__title">编辑上手引导</text>
-                  <text class="panel__desc">建议按“题目编辑 → 流程编辑 → 路由编辑”完成一次全链路配置</text>
-                </view>
-                <view class="panel__header-actions">
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :class="{ 'is-active': onboardingStage === 'question' }"
-                    @click="setOnboardingStage('question')"
-                  >题目编辑</button>
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :class="{ 'is-active': onboardingStage === 'flow' }"
-                    @click="setOnboardingStage('flow')"
-                  >流程编辑</button>
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :class="{ 'is-active': onboardingStage === 'routing' }"
-                    @click="setOnboardingStage('routing')"
-                  >路由编辑</button>
-                </view>
-              </view>
-              <view class="panel__body">
-                <view class="onboarding">
-                  <text class="onboarding__stage">{{ onboardingStageMeta.title }}</text>
-                  <text class="onboarding__desc">{{ onboardingStageMeta.description }}</text>
-                  <view class="onboarding__list">
-                    <text
-                      v-for="(item, idx) in onboardingStageMeta.checklist"
-                      :key="`${onboardingStage}:${idx}`"
-                      class="onboarding__item"
-                    >{{ idx + 1 }}. {{ item }}</text>
-                  </view>
-                  <view class="onboarding__actions">
-                    <button
-                      v-for="action in onboardingStageMeta.actions"
-                      :key="action.key"
-                      class="btn btn-outline btn-xs"
-                      @click="runOnboardingAction(action.key)"
-                    >{{ action.label }}</button>
-                  </view>
-                  <view v-if="onboardingStage === 'routing'" class="onboarding__preset">
-                    <text class="onboarding__preset-title">路由预置模板</text>
-                    <view class="onboarding__preset-actions">
-                      <button class="btn btn-outline btn-xs" @click="applyRoutePreset('national_default')">全国通用</button>
-                      <button class="btn btn-outline btn-xs" @click="applyRoutePreset('region_scene_demo')">地区+场景示例</button>
-                    </view>
-                  </view>
-                </view>
-              </view>
-            </view>
-
-            <view class="panel" :class="{ 'panel--focus': routePanelFocusActive }">
-              <view class="panel__header">
-                <view class="panel__header-left">
-                  <text class="panel__title">题型流程路由</text>
-                  <text class="panel__desc">按地区/场景/年级绑定流程版本，编辑器与预览会按匹配结果自动选择流程</text>
-                </view>
-                <view class="panel__header-actions">
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :disabled="flowProfilesMigratableToCurrentVersion.length === 0"
-                    @click="migrateFlowProfilesToCurrentVersion"
-                  >迁移到当前版本{{ flowProfilesMigratableToCurrentVersion.length > 0 ? `(${flowProfilesMigratableToCurrentVersion.length})` : '' }}</button>
-                  <button
-                    class="btn btn-outline btn-xs danger"
-                    :disabled="flowModulesArchivableToCurrentVersion.length === 0"
-                    @click="archiveHistoricalStandards"
-                  >批量归档旧版本{{ flowModulesArchivableToCurrentVersion.length > 0 ? `(${flowModulesArchivableToCurrentVersion.length})` : '' }}</button>
-                  <button class="btn btn-outline btn-xs" @click="addFlowProfileRule">新增路由</button>
-                  <button class="btn btn-outline btn-xs" @click="resetFlowProfileRules">重置路由</button>
-                </view>
-              </view>
-              <view class="panel__body">
-                <view v-if="flowProfileRules.length === 0" class="empty-tip">暂无路由规则</view>
-
-                <view v-else class="profile-list">
-                  <view
-                    v-for="profile in flowProfileRules"
-                    :key="profile.id"
-                    class="profile-card"
-                    :class="{ 'is-focus': routePanelFocusProfileId === profile.id }"
-                  >
-                    <view class="profile-card__head">
-                      <text class="profile-card__id">{{ profile.id }}</text>
-                      <text class="profile-card__module">{{ formatModuleDisplayRef(profile.module) }}</text>
-                    </view>
-
-                    <view class="profile-grid">
-                      <view class="form-item">
-                        <text class="form-item__label">规则名称</text>
-                        <input
-                          class="text-input"
-                          :value="profile.note || ''"
-                          placeholder="例如：广东中考听后选择"
-                          @input="(e) => updateFlowProfileText(profile.id, 'note', e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">优先级</text>
-                        <input
-                          class="text-input"
-                          type="number"
-                          :value="Number(profile.priority || 0)"
-                          @input="(e) => updateFlowProfilePriority(profile.id, e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">地区</text>
-                        <input
-                          class="text-input"
-                          :value="profile.region || ''"
-                          placeholder="留空=通配"
-                          @input="(e) => updateFlowProfileText(profile.id, 'region', e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">场景</text>
-                        <input
-                          class="text-input"
-                          :value="profile.scene || ''"
-                          placeholder="留空=通配"
-                          @input="(e) => updateFlowProfileText(profile.id, 'scene', e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">年级</text>
-                        <input
-                          class="text-input"
-                          :value="profile.grade || ''"
-                          placeholder="留空=通配"
-                          @input="(e) => updateFlowProfileText(profile.id, 'grade', e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">启用</text>
-                        <view class="toggle" :class="{ active: profile.enabled !== false }" @click="toggleFlowProfileEnabled(profile.id)">
-                          {{ profile.enabled === false ? '否' : '是' }}
-                        </view>
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">模块 ID</text>
-                        <input
-                          class="text-input"
-                          :value="profile.module.id"
-                          placeholder="listening_choice.standard.v1"
-                          @input="(e) => updateFlowProfileModuleId(profile.id, e.detail.value)"
-                        />
-                      </view>
-
-                      <view class="form-item">
-                        <text class="form-item__label">模块版本</text>
-                        <input
-                          class="text-input"
-                          type="number"
-                          :value="Number(profile.module.version || 1)"
-                          @input="(e) => updateFlowProfileModuleVersion(profile.id, e.detail.value)"
-                        />
-                      </view>
-                    </view>
-
-                    <view class="profile-ref-list">
-                      <text class="profile-ref-list__label">可选版本（仅已发布）</text>
-                      <view class="profile-ref-list__chips">
-                        <view
-                          v-for="m in flowModuleRefOptions"
-                          :key="`${m.id}:${m.version}`"
-                          class="profile-chip"
-                          :class="{ active: m.id === profile.module.id && Number(m.version) === Number(profile.module.version) }"
-                          @click="bindProfileToModuleRef(profile.id, { id: m.id, version: Number(m.version) })"
-                        >
-                          {{ formatModuleDisplayRef(m) }}（已发布）
-                        </view>
-                      </view>
-                    </view>
-
-                    <view class="profile-card__actions">
-                      <button class="btn btn-outline btn-xs" @click="bindProfileToDraftModule(profile.id)">绑定当前流程版本</button>
-                      <button
-                        class="btn btn-outline btn-xs danger"
-                        :disabled="!canRemoveFlowProfile(profile.id)"
-                        @click="removeFlowProfileRule(profile.id)"
-                      >删除路由</button>
-                    </view>
-                  </view>
-                </view>
-
-                <view class="route-check">
-                  <view class="route-check__head">
-                    <text class="route-check__title">路由规则检查</text>
-                    <text class="route-check__meta">
-                      冲突 {{ flowProfileDiagnostics.conflicts.length }}
-                      · 潜在死规则 {{ flowProfileDiagnostics.deadRules.length }}
-                      · 弱覆盖 {{ flowProfileDiagnostics.weakCoverage.length }}
-                      · 可提交 {{ flowProfileSubmitValidation.ok ? '是' : '否' }}
-                    </text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <text class="route-check__section-title">冲突规则</text>
-                    <view v-if="flowProfileDiagnostics.conflicts.length === 0" class="route-check__ok">未发现冲突规则</view>
-                    <view v-else class="route-check__list">
-                      <view v-for="item in flowProfileDiagnostics.conflicts" :key="item.signature" class="route-check__item">
-                        <text class="route-check__item-main">{{ item.signature }}</text>
-                        <text class="route-check__item-sub">{{ item.ids.join(' / ') }}</text>
-                      </view>
-                    </view>
-                  </view>
-
-                <view class="route-check__section">
-                  <text class="route-check__section-title">潜在死规则</text>
-                  <view v-if="flowProfileDiagnostics.deadRules.length === 0" class="route-check__ok">未发现潜在死规则</view>
-                  <view v-else class="route-check__list">
-                      <view v-for="item in flowProfileDiagnostics.deadRules" :key="item.id" class="route-check__item">
-                        <text class="route-check__item-main">{{ item.id }}</text>
-                        <text class="route-check__item-sub">被更高优先级规则覆盖：{{ item.blockedBy.join(' / ') }}</text>
-                    </view>
-                  </view>
-                </view>
-
-                <view class="route-check__section">
-                  <text class="route-check__section-title">弱覆盖提示</text>
-                  <view v-if="flowProfileDiagnostics.weakCoverage.length === 0" class="route-check__ok">未发现弱覆盖风险</view>
-                  <view v-else class="route-check__list">
-                    <view v-for="item in flowProfileDiagnostics.weakCoverage" :key="item.id" class="route-check__item">
-                      <text class="route-check__item-main">{{ item.id }}</text>
-                      <text class="route-check__item-sub">{{ item.reason }}</text>
-                    </view>
-                  </view>
-                </view>
-
-                <view class="route-check__section">
-                  <view class="route-check__section-head">
-                    <text class="route-check__section-title">自动修复建议</text>
-                    <button
-                      v-if="flowProfileFixSuggestions.length > 0"
-                      class="btn btn-outline btn-xs"
-                      @click="applyAllFlowProfileFixSuggestions"
-                    >预览全部修复</button>
-                  </view>
-                  <view v-if="flowProfileFixSuggestions.length === 0" class="route-check__ok">当前无需自动修复</view>
-                  <view v-else class="route-check__list">
-                    <view v-for="item in flowProfileFixSuggestions" :key="item.key" class="route-check__item">
-                      <text class="route-check__item-main">{{ item.summary }}</text>
-                      <text class="route-check__item-sub">{{ item.reason }}</text>
-                      <view class="route-check__item-actions">
-                        <button
-                          v-if="item.autoApplicable !== false && Object.keys(item.patch || {}).length > 0"
-                          class="btn btn-outline btn-xs"
-                          @click="applyFlowProfileFixSuggestion(item)"
-                        >预览修复</button>
-                        <text v-else class="route-check__manual-tip">需手动处理</text>
-                      </view>
-                    </view>
-                  </view>
-                </view>
-
-                <view class="route-check__section" v-if="pendingFlowProfileFixSuggestions.length > 0">
-                  <view class="route-check__section-head">
-                    <text class="route-check__section-title">修复预览</text>
-                    <view class="route-check__preview-actions">
-                      <button class="btn btn-outline btn-xs" @click="cancelFlowProfileFixPreview">取消</button>
-                      <button class="btn btn-primary btn-xs" @click="confirmFlowProfileFixPreview">确认应用</button>
-                    </view>
-                  </view>
-                  <view class="route-check__list">
-                    <view v-for="item in pendingFlowProfileFixSuggestions" :key="item.key" class="route-check__item">
-                      <text class="route-check__item-main">{{ item.summary }}</text>
-                      <text class="route-check__item-sub">{{ item.previewText }}</text>
-                      <view class="route-check__preview-fields">
-                        <view v-for="field in item.previewFields" :key="`${item.key}:${field.key}`" class="route-check__preview-field">
-                          <text class="route-check__preview-key">{{ field.key }}</text>
-                          <text class="route-check__preview-before">修改前：{{ field.before }}</text>
-                          <text class="route-check__preview-after">修改后：{{ field.after }}</text>
-                        </view>
-                      </view>
-                    </view>
-                  </view>
-                </view>
-                </view>
-
-                <view class="route-sim">
-                  <view class="route-sim__head">
-                    <view class="route-sim__head-main">
-                      <text class="route-sim__title">路由命中模拟</text>
-                      <text class="route-sim__desc">输入上下文后，查看当前会命中哪条路由规则与流程版本</text>
-                    </view>
-                    <view class="route-sim__head-actions">
-                      <button class="btn btn-outline btn-xs" @click="loadRouteSimFromCurrentQuestion">读取当前题目上下文</button>
-                      <button class="btn btn-outline btn-xs" @click="syncRouteSimToCurrentQuestion">写回当前题目上下文</button>
-                    </view>
-                  </view>
-
-                  <view class="route-sim__grid">
-                    <view class="form-item">
-                      <text class="form-item__label">模拟地区</text>
-                      <input
-                        class="text-input"
-                        :value="routeSimRegion"
-                        placeholder="例如：广东"
-                        @input="(e) => routeSimRegion = e.detail.value"
-                      />
-                    </view>
-
-                    <view class="form-item">
-                      <text class="form-item__label">模拟场景</text>
-                      <input
-                        class="text-input"
-                        :value="routeSimScene"
-                        placeholder="例如：中考"
-                        @input="(e) => routeSimScene = e.detail.value"
-                      />
-                    </view>
-
-                    <view class="form-item">
-                      <text class="form-item__label">模拟年级</text>
-                      <input
-                        class="text-input"
-                        :value="routeSimGrade"
-                        placeholder="例如：九年级"
-                        @input="(e) => routeSimGrade = e.detail.value"
-                      />
-                    </view>
-                  </view>
-
-                  <view class="route-sim__result">
-                    <text class="route-sim__result-title">匹配结果</text>
-                    <template v-if="simulatedProfile && simulatedBestCandidate">
-                      <text class="route-sim__line">规则：{{ simulatedProfile.id }}（{{ simulatedProfile.note || '未命名' }}）</text>
-                      <text class="route-sim__line">模块：{{ formatModuleDisplayRef(simulatedProfile.module) }}</text>
-                      <text class="route-sim__line" v-if="simulatedModule">模块备注：{{ simulatedModule.note || '无' }}</text>
-                      <text class="route-sim__line" v-else>模块备注：未找到对应模块（请检查模块 ID / 版本）</text>
-                      <text class="route-sim__line">匹配分解：地区 {{ simulatedBestCandidate.regionScore }} + 场景 {{ simulatedBestCandidate.sceneScore }} + 年级 {{ simulatedBestCandidate.gradeScore }} + 优先级 {{ simulatedBestCandidate.priorityScore }}</text>
-                      <text class="route-sim__line">总分：{{ simulatedBestCandidate.totalScore }}</text>
-                      <text class="route-sim__line">候选数：{{ simulatedRankedCandidates.length }}</text>
-                    </template>
-                    <text v-else class="route-sim__line">未命中路由规则</text>
-                  </view>
-
-                  <view class="route-sim__result route-sim__result--soft" v-if="simulatedRankedCandidates.length > 0">
-                    <text class="route-sim__result-title">匹配分解</text>
-                    <view class="route-sim__rank-list">
-                      <view v-for="item in simulatedRankedCandidates.slice(0, 3)" :key="item.profile.id" class="route-sim__rank-item">
-                        <text class="route-sim__rank-main">{{ item.profile.id }} · 总分 {{ item.totalScore }}</text>
-                        <text class="route-sim__rank-sub">地区 {{ item.regionScore }} / 场景 {{ item.sceneScore }} / 年级 {{ item.gradeScore }} / 优先级 {{ item.priorityScore }}</text>
-                      </view>
-                    </view>
-                  </view>
-
-                  <view class="flow-diagnostics">
-                    <view class="flow-diagnostics__head">
-                      <view class="flow-diagnostics__head-main">
-                        <text class="flow-diagnostics__title">引擎诊断面板</text>
-                        <text class="flow-diagnostics__desc">汇总路由命中、当前 step、autoNext 原因，并记录 trace 轨迹</text>
-                      </view>
-                      <view class="flow-diagnostics__head-actions">
-                        <button class="btn btn-outline btn-xs" @click="clearFlowCenterDiagnosticsTrace">清空 trace</button>
-                        <button class="btn btn-outline btn-xs" @click="exportFlowCenterDiagnostics">导出 trace</button>
-                      </view>
-                    </view>
-
-                    <view class="flow-diagnostics__grid">
-                      <text class="flow-diagnostics__line">命中规则：{{ flowCenterHitRuleText }}</text>
-                      <text class="flow-diagnostics__line">模块版本：{{ flowCenterHitModuleVersionText }}</text>
-                      <text class="flow-diagnostics__line">当前 step：{{ flowCenterCurrentStepText }}</text>
-                      <text class="flow-diagnostics__line">autoNext 原因：{{ flowCenterAutoNextReasonText }}</text>
-                    </view>
-
-                    <view class="flow-diagnostics__trace">
-                      <text class="flow-diagnostics__trace-title">trace</text>
-                      <view v-if="flowCenterTraceEvents.length > 0" class="flow-diagnostics__trace-list">
-                        <view v-for="item in flowCenterTraceEvents.slice(0, 8)" :key="item.id" class="flow-diagnostics__trace-item">
-                          <view class="flow-diagnostics__trace-head">
-                            <text class="flow-diagnostics__trace-time">{{ item.time }}</text>
-                            <text class="flow-diagnostics__trace-type">{{ item.type }}</text>
-                          </view>
-                          <text class="flow-diagnostics__trace-text">{{ item.message }}</text>
-                        </view>
-                      </view>
-                      <view v-else class="empty-tip">暂无 trace</view>
-                    </view>
-                  </view>
-                </view>
-              </view>
-            </view>
-
-            <view class="panel">
-              <view class="panel__header">
-                <view class="panel__header-left">
-                  <text class="panel__title">题型流程库 (自动沉淀)</text>
-                  <text class="panel__desc">当题目的流程结构偏离标准时，会自动保存到这里</text>
-                </view>
-              </view>
-              <view class="panel__body">
-                <view v-if="libraryModules.length === 0" class="empty-tip">暂无自定义流程</view>
-
-                <view v-else class="library-list">
-                  <view v-for="m in libraryModules" :key="m.id" class="lib-card">
-                    <view class="lib-card__main">
-                      <text class="lib-card__title">{{ m.id }}</text>
-                      <text class="lib-card__meta">{{ m.createdAt }}</text>
-                      <text class="lib-card__steps">{{ summarizeSteps(m.steps) }}</text>
-                    </view>
-                    <view class="lib-card__ops">
-                      <button class="btn btn-outline btn-xs" @click="applyLibraryToCurrentQuestion(m.id)">套用到当前题目</button>
                     </view>
                   </view>
                 </view>
@@ -928,6 +552,9 @@
             <view class="flow-visual-compile">
               <text class="flow-visual-detail__title">线性编译结果</text>
               <text class="flow-visual-detail__line">预览覆盖：{{ hasVisualPreviewOverride ? '已启用' : '未启用' }}</text>
+              <text class="flow-visual-detail__line">可视脏状态：{{ flowVisualDebugInfo.dirty ? 'dirty' : 'clean' }}</text>
+              <text class="flow-visual-detail__line">最近动作：{{ flowVisualDebugInfo.lastDirtyAction || '-' }} @ {{ formatFlowVisualDebugTime(flowVisualDebugInfo.lastDirtyAt) }}</text>
+              <text class="flow-visual-detail__line">最近清理：{{ flowVisualDebugInfo.lastCleanReason || '-' }} @ {{ formatFlowVisualDebugTime(flowVisualDebugInfo.lastCleanAt) }}</text>
               <view class="flow-visual-constraint">
                 <text class="flow-visual-constraint__title">线性约束</text>
                 <view class="flow-visual-constraint__list">
@@ -946,10 +573,10 @@
                 <text class="flow-visual-compile__status is-ok">状态：可编译（{{ readonlyFlowCompileResult.steps.length }} steps）</text>
                 <view class="flow-visual-compile__list">
                   <text
-                    v-for="item in readonlyFlowCompiledStepPreview"
+                    v-for="(item, index) in readonlyFlowCompiledStepPreview"
                     :key="item.id"
                     class="flow-visual-detail__line"
-                  >{{ item.id }} · {{ item.kind }} · {{ item.autoNext || 'manual' }}</text>
+                  >步骤 {{ index + 1 }} · {{ item.kind }} · {{ item.autoNext || 'manual' }}</text>
                 </view>
               </template>
               <template v-else>
@@ -983,6 +610,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   FlowAutoNext,
   FlowModuleRef,
+  FlowModuleStatus,
   FlowProfileV1,
   ListeningChoiceFlowModuleV1,
   ListeningChoiceQuestion,
@@ -997,11 +625,11 @@ import StencilPanel from '/components/editor/flow-visual/StencilPanel.vue'
 import PropertyPanel from '/components/editor/flow-visual/PropertyPanel.vue'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
 import { contentTemplates } from '/stores/contentTemplates'
-import { flowLibrary } from '/stores/flowLibrary'
 import { flowModules } from '/stores/flowModules'
 import { flowProfiles } from '/stores/flowProfiles'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'
+import { tagStore } from '/stores/tag'
 import { runtimeDebug, type RuntimeDebugEvent } from '/stores/runtimeDebug'
 import {
   patchListeningChoiceQuestionFlow
@@ -1022,7 +650,6 @@ import {
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   type ListeningChoiceStandardFlowModuleV1,
   materializeListeningChoiceStandardSteps,
-  materializeListeningChoiceTemplateSteps,
   validateListeningChoiceStandardModule
 } from '../../flows/listeningChoiceFlowModules'
 import {
@@ -1191,6 +818,17 @@ function moduleNameFallbackById(id: string): string {
   return id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
 }
 
+function normalizeFlowModuleStatus(value: unknown): FlowModuleStatus {
+  if (value === 'draft' || value === 'published' || value === 'archived') return value
+  return 'draft'
+}
+
+function formatFlowModuleStatusLabel(status: FlowModuleStatus): string {
+  if (status === 'published') return '已发布'
+  if (status === 'archived') return '已归档'
+  return '草稿'
+}
+
 type ModuleDisplayRefLike = Partial<FlowModuleRef & { name?: string | null }> | null | undefined
 
 function formatModuleDisplayRef(refLike: ModuleDisplayRefLike): string {
@@ -1198,7 +836,23 @@ function formatModuleDisplayRef(refLike: ModuleDisplayRefLike): string {
   const version = Math.max(1, toInt(refLike?.version || 1))
   const hit = flowModules.getListeningChoiceByRef({ id, version })
   const name = normalizeModuleName(refLike?.name || hit?.name, moduleNameFallbackById(id))
-  return `${name} @ v${version}`
+  return name
+}
+
+function formatFlowProfileLabel(profileLike: Partial<FlowProfileV1> | null | undefined): string {
+  const note = normalizeNullableText(profileLike?.note)
+  if (note) return note
+  return '未命名规则'
+}
+
+function formatFlowProfileLabelById(id: string): string {
+  const hit = flowProfiles.getById(String(id || ''))
+  return formatFlowProfileLabel(hit || null)
+}
+
+function formatFlowProfileLabelsByIds(ids: string[]): string {
+  if (!Array.isArray(ids) || ids.length <= 0) return '未命名规则'
+  return ids.map((id) => formatFlowProfileLabelById(id)).join(' / ')
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -1263,13 +917,13 @@ const draftModuleId = ref(String(defaultModule.id || LISTENING_CHOICE_STANDARD_F
 const draftModuleVersion = ref(Number(defaultModule.version || 1))
 const draftModuleName = ref(normalizeModuleName(defaultModule.name, DEFAULT_LISTENING_CHOICE_MODULE_NAME))
 const draftModuleNote = ref(normalizeModuleNote(defaultModule?.note))
+const newFlowLineName = ref('')
 const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toLegacyStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
   const id = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
   const fallbackName = id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
   const name = normalizeModuleName(draftModuleName.value, fallbackName)
-  const version = Math.max(1, toInt(draftModuleVersion.value || 1))
-  return `${name} @ v${version}`
+  return name
 })
 const demoBase = computed<ListeningChoiceQuestion>({
   get() {
@@ -1284,15 +938,289 @@ const demoBase = computed<ListeningChoiceQuestion>({
   }
 })
 
-const libraryModules = computed(() => {
-  return (flowLibrary.state.modules || []).filter(m => m.type === 'listening_choice')
+const flowProfileRules = computed<FlowProfileV1[]>(() => flowProfiles.listByQuestionType('listening_choice'))
+const listeningChoiceModules = computed<ListeningChoiceFlowModuleV1[]>(() => {
+  return flowModules.listListeningChoice() || []
+})
+const flowModuleRefOptions = computed(() => {
+  return listeningChoiceModules.value.filter((m) => normalizeFlowModuleStatus(m?.status) === 'published')
+})
+type FlowLineOption = {
+  id: string
+  name: string
+  status: FlowModuleStatus
+  statusLabel: string
+}
+
+const flowLineOptions = computed<FlowLineOption[]>(() => {
+  const groups = new Map<string, ListeningChoiceFlowModuleV1[]>()
+  for (const module of listeningChoiceModules.value) {
+    const id = String(module?.id || '')
+    if (!id) continue
+    const list = groups.get(id) || []
+    list.push(module)
+    groups.set(id, list)
+  }
+
+  const result: FlowLineOption[] = []
+  groups.forEach((modules, id) => {
+    const sorted = [...modules].sort((a, b) => Number(b.version || 0) - Number(a.version || 0))
+    const preferred = sorted.find((item) => normalizeFlowModuleStatus(item?.status) !== 'archived') || sorted[0]
+    if (!preferred) return
+    const status = normalizeFlowModuleStatus(preferred.status)
+    result.push({
+      id,
+      name: normalizeModuleName(preferred.name, moduleNameFallbackById(id)),
+      status,
+      statusLabel: formatFlowModuleStatusLabel(status)
+    })
+  })
+
+  return result.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+})
+const REGION_FLOW_PROFILE_PRIORITY = 10
+
+type RegionRoutingBinding = {
+  region: string
+  module: FlowModuleRef
+  note?: string
+  id?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+const currentFlowLineRef = computed<FlowModuleRef>(() => ({
+  id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
+  version: Math.max(1, toInt(draftModuleVersion.value || 1))
+}))
+
+function buildRegionProfileId(region: string): string {
+  return `profile:listening_choice:region:${encodeURIComponent(region)}`
+}
+
+function readRegionTagOptions(): string[] {
+  const roots = Array.isArray(tagStore.state.tree) ? tagStore.state.tree : []
+  const regionRoot = roots.find((node) => normalizeNullableText((node as { title?: string })?.title) === '地区')
+  const children = Array.isArray((regionRoot as { children?: Array<{ title?: string }> | undefined })?.children)
+    ? (regionRoot as { children?: Array<{ title?: string }> }).children || []
+    : []
+  return children
+    .map((item) => normalizeNullableText(item?.title))
+    .filter((item): item is string => Boolean(item))
+}
+
+function getPublishedFallbackModuleRef(): FlowModuleRef {
+  const fallback = flowModules.getListeningChoiceDefault()
+  return {
+    id: String(fallback?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+    version: Math.max(1, toInt(fallback?.version || 1))
+  }
+}
+
+function resolveActiveModuleRef(
+  refLike: Partial<FlowModuleRef> | null | undefined,
+  fallback: FlowModuleRef
+): FlowModuleRef {
+  const candidate = {
+    id: String(refLike?.id || ''),
+    version: Math.max(1, toInt(refLike?.version || 1))
+  }
+  if (candidate.id) {
+    const hit = flowModules.getListeningChoiceByRef(candidate)
+    if (hit && normalizeFlowModuleStatus(hit.status) !== 'archived') return candidate
+  }
+  return fallback
+}
+
+function collectRegionRoutingBindings(profiles: FlowProfileV1[]): RegionRoutingBinding[] {
+  const sorted = [...(profiles || [])]
+    .filter((profile) => profile?.enabled !== false)
+    .sort((a, b) => {
+      const pa = toInt(b?.priority || 0) - toInt(a?.priority || 0)
+      if (pa !== 0) return pa
+      const updatedCompare = String(b?.updatedAt || '').localeCompare(String(a?.updatedAt || ''))
+      if (updatedCompare !== 0) return updatedCompare
+      return String(b?.createdAt || '').localeCompare(String(a?.createdAt || ''))
+    })
+
+  const map = new Map<string, RegionRoutingBinding>()
+  sorted.forEach((profile) => {
+    const region = normalizeNullableText(profile?.region)
+    if (!region) return
+    if (map.has(region)) return
+    map.set(region, {
+      region,
+      module: {
+        id: String(profile?.module?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+        version: Math.max(1, toInt(profile?.module?.version || 1))
+      },
+      note: normalizeNullableText(profile?.note),
+      id: String(profile?.id || buildRegionProfileId(region)),
+      createdAt: profile?.createdAt,
+      updatedAt: profile?.updatedAt
+    })
+  })
+
+  return Array.from(map.values()).sort((a, b) => a.region.localeCompare(b.region, 'zh-Hans-CN'))
+}
+
+function buildRegionOnlyProfiles(
+  currentProfiles: FlowProfileV1[],
+  bindings: RegionRoutingBinding[]
+): FlowProfileV1[] {
+  const now = new Date().toISOString()
+  const fallbackModuleRef = getPublishedFallbackModuleRef()
+  const defaultCandidate = (currentProfiles || []).find((profile) => !normalizeNullableText(profile?.region))
+  const defaultModuleRef = resolveActiveModuleRef(defaultCandidate?.module, fallbackModuleRef)
+
+  const defaultProfile: FlowProfileV1 = {
+    id: String(defaultCandidate?.id || 'profile:listening_choice:default'),
+    questionType: 'listening_choice',
+    region: undefined,
+    scene: undefined,
+    grade: undefined,
+    module: defaultModuleRef,
+    priority: 0,
+    enabled: true,
+    note: normalizeNullableText(defaultCandidate?.note) || '听后选择默认流程',
+    createdAt: defaultCandidate?.createdAt || now,
+    updatedAt: now
+  }
+
+  const regionProfiles = (bindings || []).map((binding) => {
+    const region = normalizeNullableText(binding?.region) || ''
+    const moduleRef = resolveActiveModuleRef(binding?.module, defaultModuleRef)
+    return {
+      id: String(binding?.id || buildRegionProfileId(region)),
+      questionType: 'listening_choice' as const,
+      region,
+      scene: undefined,
+      grade: undefined,
+      module: moduleRef,
+      priority: REGION_FLOW_PROFILE_PRIORITY,
+      enabled: true,
+      note: normalizeNullableText(binding?.note) || `${region}地区流程`,
+      createdAt: binding?.createdAt || now,
+      updatedAt: now
+    } as FlowProfileV1
+  })
+
+  return [defaultProfile, ...regionProfiles]
+}
+
+function isLegacyRegionRoutingModel(profiles: FlowProfileV1[]): boolean {
+  const list = profiles || []
+  const seenRegions = new Set<string>()
+  let hasDefault = false
+  for (const profile of list) {
+    if (profile?.enabled === false) return true
+    const region = normalizeNullableText(profile?.region)
+    const scene = normalizeNullableText(profile?.scene)
+    const grade = normalizeNullableText(profile?.grade)
+    if (!region) {
+      hasDefault = true
+      if (scene || grade) return true
+      continue
+    }
+    if (scene || grade) return true
+    if (seenRegions.has(region)) return true
+    seenRegions.add(region)
+  }
+  return !hasDefault
+}
+
+function replaceRegionRoutingBindings(bindings: RegionRoutingBinding[]): boolean {
+  const nextProfiles = buildRegionOnlyProfiles(flowProfileRules.value || [], bindings || [])
+  const result = flowProfiles.replaceQuestionTypeProfiles('listening_choice', nextProfiles)
+  if (!result.ok) {
+    uni.showToast({ title: '地区匹配更新失败', icon: 'none' })
+    return false
+  }
+  clearCommitValidationIssues()
+  return true
+}
+
+function ensureRegionRoutingMode(silent = true) {
+  const profiles = flowProfileRules.value || []
+  if (!isLegacyRegionRoutingModel(profiles)) return true
+  const ok = replaceRegionRoutingBindings(collectRegionRoutingBindings(profiles))
+  if (ok && !silent) {
+    uni.showToast({ title: '已切换为地区匹配模式', icon: 'none' })
+  }
+  return ok
+}
+
+const regionRoutingBindings = computed<RegionRoutingBinding[]>(() => {
+  return collectRegionRoutingBindings(flowProfileRules.value || [])
 })
 
-const listeningChoiceLibraryCount = computed(() => libraryModules.value.length)
-const flowProfileRules = computed<FlowProfileV1[]>(() => flowProfiles.listByQuestionType('listening_choice'))
-const flowModuleRefOptions = computed(() => {
-  return (flowModules.listListeningChoice() || []).filter((m) => m?.status === 'published')
+const regionBindingMap = computed(() => {
+  const map = new Map<string, RegionRoutingBinding>()
+  regionRoutingBindings.value.forEach((item) => {
+    map.set(item.region, item)
+  })
+  return map
 })
+
+const regionBindingOptions = computed<string[]>(() => {
+  const fromTags = readRegionTagOptions()
+  const fromBindings = regionRoutingBindings.value.map((item) => item.region)
+  const unique = new Set<string>([...fromTags, ...fromBindings])
+  return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+})
+
+function isRegionBoundToCurrentFlowLine(rawRegion: string): boolean {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return false
+  const binding = regionBindingMap.value.get(region)
+  if (!binding) return false
+  return (
+    String(binding.module.id || '') === String(currentFlowLineRef.value.id || '') &&
+    Number(binding.module.version || 0) === Number(currentFlowLineRef.value.version || 0)
+  )
+}
+
+function formatRegionBindingTarget(rawRegion: string): string {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return '未绑定'
+  const binding = regionBindingMap.value.get(region)
+  if (!binding) return '标准流程'
+  if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'
+  return formatModuleDisplayRef(binding.module)
+}
+
+function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return
+  ensureRegionRoutingMode(true)
+  const nextMap = new Map<string, RegionRoutingBinding>()
+  regionRoutingBindings.value.forEach((item) => {
+    nextMap.set(item.region, item)
+  })
+
+  const currentlyBound = isRegionBoundToCurrentFlowLine(region)
+  if (currentlyBound) {
+    nextMap.delete(region)
+  } else {
+    const previous = nextMap.get(region)
+    nextMap.set(region, {
+      region,
+      module: currentFlowLineRef.value,
+      note: previous?.note || `${region}地区流程`,
+      id: previous?.id || buildRegionProfileId(region),
+      createdAt: previous?.createdAt,
+      updatedAt: previous?.updatedAt
+    })
+  }
+
+  const ok = replaceRegionRoutingBindings(Array.from(nextMap.values()))
+  if (!ok) return
+  uni.showToast({
+    title: currentlyBound ? `已取消 ${region} 绑定` : `已绑定 ${region}`,
+    icon: 'success'
+  })
+}
+
 const routeSimulator = useRouteSimulator({
   flowProfileRules,
   getCurrentQuestionSnapshot,
@@ -1316,72 +1244,6 @@ const flowProfileSubmitValidation = computed<FlowProfileSubmitValidation>(() => 
   return canSubmitFlowProfiles(flowProfileRules.value || [])
 })
 const pendingFlowProfileFixSuggestions = ref<FlowProfileFixPreviewItem[]>([])
-type OnboardingStage = 'question' | 'flow' | 'routing'
-
-type OnboardingAction = {
-  key: string
-  label: string
-}
-
-type OnboardingStageMeta = {
-  title: string
-  description: string
-  checklist: string[]
-  actions: OnboardingAction[]
-}
-
-type RoutePresetKind = 'national_default' | 'region_scene_demo'
-
-const onboardingStage = ref<OnboardingStage>('question')
-const onboardingStageMetaMap: Record<OnboardingStage, OnboardingStageMeta> = {
-  question: {
-    title: '题目编辑',
-    description: '先确认题面字段完整，再把上下文写入当前题目，避免后续流程预览偏差。',
-    checklist: [
-      '校对题组结构、音频字段和准备时长',
-      '读取当前题目上下文（地区/场景/年级）',
-      '必要时把模拟上下文写回当前题目'
-    ],
-    actions: [
-      { key: 'question_load_ctx', label: '读取题目上下文' },
-      { key: 'question_sync_ctx', label: '写回题目上下文' },
-      { key: 'question_apply_standard', label: '套用当前流程' }
-    ]
-  },
-  flow: {
-    title: '流程编辑',
-    description: '在流程图侧完成步骤增删改，并通过“保存/另存/发布”沉淀为可路由版本。',
-    checklist: [
-      '配置介绍页、每题组步骤及关键参数',
-      '先保存草稿，再另存新版本做增量调整',
-      '确认无阻断项后发布当前版本'
-    ],
-    actions: [
-      { key: 'flow_save_draft', label: '保存题型流程' },
-      { key: 'flow_save_next', label: '另存新版本' },
-      { key: 'flow_publish', label: '发布当前版本' }
-    ]
-  },
-  routing: {
-    title: '路由编辑',
-    description: '通过规则把流程版本绑定到地区/场景/年级，并用模拟器验证命中结果。',
-    checklist: [
-      '新增或调整路由规则并设置优先级',
-      '将旧规则批量迁移到当前流程版本',
-      '执行路由命中模拟并确认模块版本'
-    ],
-    actions: [
-      { key: 'routing_add_rule', label: '新增路由' },
-      { key: 'routing_migrate', label: '迁移到当前版本' },
-      { key: 'routing_simulate', label: '加载题目上下文模拟' }
-    ]
-  }
-}
-const onboardingStageMeta = computed(() => onboardingStageMetaMap[onboardingStage.value])
-
-function setOnboardingStage(stage: OnboardingStage) {
-  onboardingStage.value = stage
-}
 
 function loadRouteSimFromCurrentQuestion() {
   routeSimulator.loadRouteSimFromCurrentQuestion()
@@ -1444,9 +1306,6 @@ type CommitValidationIssue = {
 const commitValidationIssues = ref<CommitValidationIssue[]>([])
 const activeCommitValidationIssueKey = ref('')
 const templateFocusPath = ref('')
-const routePanelFocusActive = ref(false)
-const routePanelFocusProfileId = ref('')
-let routePanelFocusTimer: ReturnType<typeof setTimeout> | null = null
 
 function resolveCommitValidationScope(path: string): CommitValidationIssueScope {
   if (path.startsWith('content.')) return 'template'
@@ -1471,8 +1330,8 @@ function resolveCommitValidationLocationLabel(
     return '题目模板'
   }
   if (scope === 'routing') {
-    if (profileId) return `流程路由 > ${profileId}`
-    return '流程路由'
+    if (profileId) return `地区匹配 > ${formatFlowProfileLabelById(profileId)}`
+    return '地区匹配'
   }
   if (scope === 'visual') {
     if (visualNodeId) return `可视流程 > 节点 ${visualNodeId}`
@@ -1506,48 +1365,26 @@ function normalizeCommitValidationIssue(
   }
 }
 
-function setRoutePanelFocus(profileId?: string) {
-  routePanelFocusActive.value = true
-  routePanelFocusProfileId.value = profileId || ''
-  if (routePanelFocusTimer) clearTimeout(routePanelFocusTimer)
-  routePanelFocusTimer = setTimeout(() => {
-    routePanelFocusActive.value = false
-    routePanelFocusProfileId.value = ''
-    routePanelFocusTimer = null
-  }, 1800)
-}
-
 function clearCommitValidationIssues() {
   commitValidationIssues.value = []
   activeCommitValidationIssueKey.value = ''
   templateFocusPath.value = ''
-  routePanelFocusActive.value = false
-  routePanelFocusProfileId.value = ''
-  if (routePanelFocusTimer) {
-    clearTimeout(routePanelFocusTimer)
-    routePanelFocusTimer = null
-  }
 }
 
 function jumpToCommitValidationIssue(issue: CommitValidationIssue) {
   activeCommitValidationIssueKey.value = issue.key
   if (issue.scope === 'template') {
     templateFocusPath.value = issue.path
-    routePanelFocusActive.value = false
-    routePanelFocusProfileId.value = ''
     uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
     return
   }
   if (issue.scope === 'routing') {
     templateFocusPath.value = ''
-    setRoutePanelFocus(issue.targetProfileId)
     uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
     return
   }
   if (issue.scope === 'visual') {
     templateFocusPath.value = ''
-    routePanelFocusActive.value = false
-    routePanelFocusProfileId.value = ''
     readonlyFlowVisualVisible.value = true
     if (issue.targetVisualNodeId) {
       flowVisualEditor.selectNode(issue.targetVisualNodeId)
@@ -1745,6 +1582,7 @@ function buildCommitValidationFailureResult(
 
 function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload): ModuleCommitValidationResult {
   if (flowVisualEditor.dirty.value) {
+    console.warn('[FlowModulesManager] commit blocked: visual graph dirty', flowVisualEditor.debugInfo.value)
     if (!readonlyFlowCompileResult.value.ok) {
       return buildCommitValidationFailureResult(
         (readonlyFlowCompileResult.value.errors || []).map((item) => ({
@@ -1758,7 +1596,7 @@ function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPa
       {
         code: 'flow_visual_unapplied_changes',
         path: 'flowVisual.graph',
-        message: '可视流程存在未应用变更，请先“应用到流程草稿”或“重置图”后再保存/发布。'
+        message: '可视流程存在未应用变更，请先“应用到流程草稿”或“重置图”后再更新流程线。'
       }
     ])
   }
@@ -1797,11 +1635,7 @@ const {
   currentModuleStatus,
   currentModuleStatusLabel,
   currentModuleStatusHint,
-  canSaveCurrentStandard,
-  canPublishCurrentStandard,
-  canArchiveCurrentStandard,
-  flowProfilesMigratableToCurrentVersion,
-  flowModulesArchivableToCurrentVersion
+  canSaveCurrentStandard
 } = moduleLifecycle
 
 function addFlowProfileRule() {
@@ -1875,16 +1709,6 @@ function toggleFlowProfileEnabled(id: string) {
   patchFlowProfile(id, { enabled: current.enabled === false })
 }
 
-function updateFlowProfileModuleId(id: string, value: string) {
-  const nextId = normalizeNullableText(value) || LISTENING_CHOICE_STANDARD_FLOW_ID
-  patchFlowProfile(id, { module: { id: nextId } })
-}
-
-function updateFlowProfileModuleVersion(id: string, value: unknown) {
-  const nextVersion = Math.max(1, toInt(value || 1))
-  patchFlowProfile(id, { module: { version: nextVersion } })
-}
-
 function bindProfileToDraftModule(id: string) {
   const ok = patchFlowProfile(id, {
     module: {
@@ -1893,7 +1717,7 @@ function bindProfileToDraftModule(id: string) {
     }
   })
   if (!ok) return
-  uni.showToast({ title: '已绑定当前流程版本', icon: 'success' })
+  uni.showToast({ title: '已绑定当前流程线', icon: 'success' })
 }
 
 function bindProfileToModuleRef(id: string, ref: { id: string; version: number }) {
@@ -1903,132 +1727,6 @@ function bindProfileToModuleRef(id: string, ref: { id: string; version: number }
       version: Math.max(1, toInt(ref?.version || 1))
     }
   })
-}
-
-function runOnboardingAction(actionKey: string) {
-  if (actionKey === 'question_load_ctx') {
-    loadRouteSimFromCurrentQuestion()
-    return
-  }
-  if (actionKey === 'question_sync_ctx') {
-    syncRouteSimToCurrentQuestion()
-    return
-  }
-  if (actionKey === 'question_apply_standard') {
-    applyStandardToCurrentQuestion()
-    return
-  }
-  if (actionKey === 'flow_save_draft') {
-    saveStandard()
-    return
-  }
-  if (actionKey === 'flow_save_next') {
-    saveStandardAsNextVersion()
-    return
-  }
-  if (actionKey === 'flow_publish') {
-    publishCurrentStandard()
-    return
-  }
-  if (actionKey === 'routing_add_rule') {
-    addFlowProfileRule()
-    return
-  }
-  if (actionKey === 'routing_migrate') {
-    migrateFlowProfilesToCurrentVersion()
-    return
-  }
-  if (actionKey === 'routing_simulate') {
-    loadRouteSimFromCurrentQuestion()
-  }
-}
-
-function applyRoutePreset(kind: RoutePresetKind) {
-  const targetModule = {
-    id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-    version: Math.max(1, toInt(draftModuleVersion.value || 1))
-  }
-
-  if (kind === 'national_default') {
-    uni.showModal({
-      title: '应用路由预置：全国通用',
-      content: '将重置为单条默认路由并绑定当前流程版本。是否继续？',
-      confirmText: '应用',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        flowProfiles.resetToDefault()
-        patchFlowProfile('profile:listening_choice:default', {
-          module: targetModule,
-          priority: 0,
-          enabled: true,
-          note: '全国通用默认路由'
-        })
-        uni.showToast({ title: '已应用全国通用预置', icon: 'success' })
-      }
-    })
-    return
-  }
-
-  if (kind === 'region_scene_demo') {
-    uni.showModal({
-      title: '应用路由预置：地区+场景示例',
-      content: '将创建“地区/场景”示例规则并重置现有路由。是否继续？',
-      confirmText: '应用',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        const ts = Date.now()
-        const presetRules: FlowProfileV1[] = [
-          {
-            id: 'profile:listening_choice:default',
-            questionType: 'listening_choice',
-            region: undefined,
-            scene: undefined,
-            grade: undefined,
-            module: targetModule,
-            priority: 0,
-            enabled: true,
-            note: '全国通用兜底规则'
-          },
-          {
-            id: `profile:listening_choice:preset:region:${ts}`,
-            questionType: 'listening_choice',
-            region: '广东',
-            scene: '中考',
-            grade: '九年级',
-            module: targetModule,
-            priority: 120,
-            enabled: true,
-            note: '地区优先示例：广东中考'
-          },
-          {
-            id: `profile:listening_choice:preset:scene:${ts}`,
-            questionType: 'listening_choice',
-            region: undefined,
-            scene: '模考',
-            grade: '九年级',
-            module: targetModule,
-            priority: 80,
-            enabled: true,
-            note: '场景优先示例：九年级模考'
-          }
-        ]
-        flowProfiles.resetToDefault()
-        let okCount = 0
-        for (const profile of presetRules) {
-          const result = flowProfiles.upsertWithDiagnostics(profile)
-          if (result.ok) okCount += 1
-        }
-        if (okCount < presetRules.length) {
-          showFlowProfileSubmitBlocked(flowProfiles.validateBeforeSubmit('listening_choice'))
-          uni.showToast({ title: '预置应用失败，请检查路由诊断', icon: 'none' })
-          return
-        }
-        uni.showToast({ title: '已应用地区+场景预置', icon: 'success' })
-      }
-    })
-  }
 }
 
 const visualPreviewOverrideSteps = ref<ListeningChoiceQuestion['flow']['steps'] | null>(null)
@@ -2068,6 +1766,7 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
 const flowVisualEditor = useEditableFlowGraph(demoQuestion)
 const flowVisualStencilItems = flowVisualEditor.stencilItems
 const readonlyFlowVisualPropertyFields = flowVisualEditor.propertyFieldsForSelectedNode
+const flowVisualDebugInfo = flowVisualEditor.debugInfo
 const flowVisualDraggingKind = ref('')
 const readonlyFlowVisualVisible = ref(false)
 const readonlyFlowGraph = flowVisualEditor.graph
@@ -2080,6 +1779,16 @@ const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
 const readonlyFlowVisualActiveNodeId = flowVisualEditor.selectedNodeId
 const readonlyFlowVisualActiveNode = flowVisualEditor.selectedNode
 let flowVisualBodyOverflow = ''
+
+function formatFlowVisualDebugTime(value: unknown) {
+  const ms = Number(value || 0)
+  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  try {
+    return new Date(ms).toLocaleTimeString()
+  } catch {
+    return '-'
+  }
+}
 
 function setFlowVisualBodyScrollLocked(locked: boolean) {
   if (typeof document === 'undefined') return
@@ -2354,6 +2063,7 @@ function applyReadonlyFlowVisualToDraft() {
     uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
     return
   }
+  console.log('[FlowModulesManager] apply visual to draft:start', flowVisualDebugInfo.value)
 
   const firstGroup = demoBase.value?.content?.groups?.[0]
   const mapperResult = buildListeningChoiceModuleFromLinearSteps(readonlyFlowCompileResult.value.steps, {
@@ -2402,6 +2112,10 @@ function applyReadonlyFlowVisualToDraft() {
     }
 
     visualPreviewOverrideSteps.value = null
+    clearCommitValidationIssues()
+    flowVisualEditor.clearDirty()
+    flowVisualEditor.reloadFromQuestion()
+    console.log('[FlowModulesManager] apply visual to draft:done', flowVisualDebugInfo.value)
     const warningCount = mapperResult.warnings.length + validation.warnings.length
     if (warningCount > 0) {
       uni.showToast({ title: `已应用到流程草稿（${warningCount} 条提醒）`, icon: 'none' })
@@ -2452,8 +2166,7 @@ const flowCenterAutoNextCode = computed(() => String(flowCenterCurrentStep.value
 const flowCenterAutoNextReasonText = computed(() => formatAutoNextReason(flowCenterAutoNextCode.value))
 const flowCenterHitRuleText = computed(() => {
   if (!simulatedProfile.value) return '未命中路由规则'
-  const note = simulatedProfile.value.note || '未命名'
-  return `${simulatedProfile.value.id}（${note}）`
+  return formatFlowProfileLabel(simulatedProfile.value)
 })
 const flowCenterHitModuleVersionText = computed(() => {
   const ref = simulatedProfile.value?.module
@@ -2638,11 +2351,90 @@ function syncDraftModuleMeta(module: unknown) {
   draftModuleNote.value = normalizeModuleNote(mod.note)
 }
 
+function buildUniqueFlowLineId(baseId: string): string {
+  const normalizedBaseId = String(baseId || '').trim() || `listening_choice.line.${Date.now()}`
+  const existingIds = new Set(
+    (listeningChoiceModules.value || []).map((module) => String(module?.id || '')).filter(Boolean)
+  )
+  if (!existingIds.has(normalizedBaseId)) return normalizedBaseId
+
+  let suffix = 2
+  let candidate = `${normalizedBaseId}.${suffix}`
+  while (existingIds.has(candidate)) {
+    suffix += 1
+    candidate = `${normalizedBaseId}.${suffix}`
+  }
+  return candidate
+}
+
+function switchDraftToModuleRef(ref: FlowModuleRef) {
+  const targetRef = {
+    id: String(ref?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+    version: Math.max(1, toInt(ref?.version || 1))
+  }
+  const module = flowModules.getListeningChoiceByRef(targetRef)
+  if (!module) {
+    uni.showToast({ title: '目标流程版本不存在', icon: 'none' })
+    return
+  }
+  draftModuleId.value = targetRef.id
+  draftModuleVersion.value = targetRef.version
+  syncDraftModuleMeta(module)
+  listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  visualPreviewOverrideSteps.value = null
+  clearCommitValidationIssues()
+  flowVisualEditor.clearDirty()
+  flowVisualEditor.reloadFromQuestion()
+}
+
+function switchToFlowLine(lineId: string) {
+  const targetId = String(lineId || '').trim()
+  if (!targetId) return
+  const candidates = (listeningChoiceModules.value || [])
+    .filter((module) => String(module?.id || '') === targetId)
+    .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))
+  if (candidates.length <= 0) {
+    uni.showToast({ title: '流程线不存在', icon: 'none' })
+    return
+  }
+  const preferred = candidates.find((module) => normalizeFlowModuleStatus(module?.status) !== 'archived') || candidates[0]
+  if (!preferred) return
+  switchDraftToModuleRef({
+    id: String(preferred.id || targetId),
+    version: Math.max(1, toInt(preferred.version || 1))
+  })
+}
+
+function createFlowLineDraft() {
+  const name = String(newFlowLineName.value || '').trim()
+  if (!name) {
+    uni.showToast({ title: '请先填写流程线名称', icon: 'none' })
+    return
+  }
+  const nextId = buildUniqueFlowLineId(`listening_choice.line.${Date.now()}`)
+  draftModuleId.value = nextId
+  draftModuleVersion.value = 1
+  draftModuleName.value = name
+  draftModuleNote.value = ''
+  listeningChoiceDraft.value = clone(toLegacyStandardModule({
+    ...listeningChoiceDraft.value,
+    id: nextId,
+    version: 1
+  }))
+  visualPreviewOverrideSteps.value = null
+  clearCommitValidationIssues()
+  flowVisualEditor.clearDirty()
+  flowVisualEditor.reloadFromQuestion()
+  newFlowLineName.value = ''
+  uni.showToast({ title: `已创建流程线草稿：${name}`, icon: 'none' })
+}
+
 function goHome() {
   page.value = 'home'
 }
 
 function openListeningChoice() {
+  ensureRegionRoutingMode(true)
   const module = getDefaultModule()
   draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   draftModuleVersion.value = Number(module.version || 1)
@@ -2672,6 +2464,11 @@ function showPublishLogs() {
 
 function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number) {
   moduleLifecycle.saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
+}
+
+function updateCurrentFlowLine(skipWarningCheck = false, skipImpactCheck = false) {
+  const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
+  saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
 }
 
 function saveStandardAsNextVersion() {
@@ -2736,52 +2533,6 @@ function applyStandardToCurrentQuestion() {
     console.error('Failed to apply standard flow', e)
     uni.showToast({ title: '套用失败', icon: 'none' })
   }
-}
-
-function applyLibraryToCurrentQuestion(moduleId: string) {
-  try {
-    const data = getCurrentQuestionSnapshot()
-    if (!data) {
-      uni.showToast({ title: '当前没有题目', icon: 'none' })
-      return
-    }
-
-    if (data?.type !== 'listening_choice') {
-      uni.showToast({ title: '当前题目不是听后选择', icon: 'none' })
-      return
-    }
-
-    const mod = flowLibrary.getById(moduleId)
-    if (!mod || !Array.isArray(mod.steps)) {
-      uni.showToast({ title: '流程模块不存在', icon: 'none' })
-      return
-    }
-
-    const steps = materializeListeningChoiceTemplateSteps(data, mod.steps, { generateId })
-    const next = patchListeningChoiceQuestionFlow(
-      data as ListeningChoiceQuestion,
-      { kind: 'library', id: mod.id },
-      steps
-    )
-
-    persistCurrentQuestion(next)
-    appShell.switchModule('editor')
-    uni.showToast({ title: '已套用自定义流程', icon: 'success' })
-  } catch (e) {
-    console.error('Failed to apply library flow', e)
-    uni.showToast({ title: '套用失败', icon: 'none' })
-  }
-}
-
-function summarizeSteps(steps: Array<{ kind?: unknown }> | unknown[]): string {
-  if (!Array.isArray(steps) || steps.length === 0) return '无步骤'
-  const kinds = steps.map((s) => {
-    if (!isObjectRecord(s)) return ''
-    return String(s.kind || '')
-  }).filter(Boolean)
-  const shown = kinds.slice(0, 10).join(' → ')
-  const more = kinds.length > 10 ? ` ...(+${kinds.length - 10})` : ''
-  return shown + more
 }
 
 function jumpToStep(index: number) {
@@ -3063,11 +2814,6 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   background: rgba(254, 242, 242, 0.88);
 }
 
-.panel--guide {
-  border-color: rgba(59, 130, 246, 0.24);
-  background: rgba(239, 246, 255, 0.72);
-}
-
 .panel__header {
   padding: 12px 14px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
@@ -3165,6 +2911,51 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(15, 23, 42, 0.56);
 }
 
+.flow-line-switch {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flow-line-switch__label {
+  display: block;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.68);
+}
+
+.flow-line-switch__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flow-line-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.flow-line-chip.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(219, 234, 254, 0.72);
+}
+
+.flow-line-chip__name {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.86);
+  font-weight: 700;
+}
+
+.flow-line-chip__meta {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+}
+
 .module-meta-grid {
   margin-top: 8px;
   display: grid;
@@ -3193,62 +2984,63 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(15, 23, 42, 0.60);
 }
 
-.onboarding {
+.region-binding {
+  margin-top: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.86);
+  padding: 10px;
+}
+
+.region-binding__head {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.region-binding__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.region-binding__desc {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+  line-height: 1.5;
+}
+
+.region-binding__chips {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.onboarding__stage {
-  font-size: 13px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.onboarding__desc {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.onboarding__list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.onboarding__item {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.68);
-  line-height: 1.55;
-}
-
-.onboarding__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.onboarding__preset {
-  border: 1px dashed rgba(59, 130, 246, 0.28);
+.region-chip {
+  border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.72);
 }
 
-.onboarding__preset-title {
+.region-chip.active {
+  border-color: rgba(33, 150, 243, 0.5);
+  background: rgba(227, 242, 253, 0.95);
+}
+
+.region-chip__name {
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: rgba(15, 23, 42, 0.74);
+  color: rgba(15, 23, 42, 0.86);
 }
 
-.onboarding__preset-actions {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+.region-chip__target {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
 }
 
 .quick-add-row {

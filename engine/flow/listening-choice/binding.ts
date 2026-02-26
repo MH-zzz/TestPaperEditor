@@ -13,7 +13,6 @@ import { flowLibrary } from '/stores/flowLibrary'
 import { standardFlows } from '/stores/standardFlows'
 import {
   LISTENING_CHOICE_STANDARD_FLOW_ID,
-  concreteListeningChoiceStepsToTemplate,
   detectListeningChoiceStandardFlowOverrides,
   materializeListeningChoiceTemplateSteps
 } from '../../../flows/listeningChoiceFlowModules.ts'
@@ -23,6 +22,8 @@ type IdFactory = () => string
 type FlowRoutingContext = { region?: string; scene?: string; grade?: string }
 type QuestionWithMetadata = ListeningChoiceQuestion & { metadata?: QuestionMetadata }
 type FlowOverrides = Record<string, Record<string, unknown>>
+const FLOW_NORMALIZATION_ISSUE_CODE = 'flow_override_not_supported'
+const FLOW_NORMALIZATION_ISSUE_MESSAGE = '当前题目流程与题型流程线不一致，且无法自动映射。请先到「题型流程」修正流程线后再保存题目。'
 
 function isObjectRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v)
@@ -42,6 +43,25 @@ function normalizeCtxValue(v: unknown): string | undefined {
 function readMetadata(question: ListeningChoiceQuestion): QuestionMetadata {
   const metadata = (question as QuestionWithMetadata).metadata
   return isObjectRecord(metadata) ? (metadata as QuestionMetadata) : {}
+}
+
+function withFlowNormalizationIssue(
+  question: ListeningChoiceQuestion,
+  issue: { code: string; message: string } | null
+): ListeningChoiceQuestion {
+  const metadata = { ...readMetadata(question) } as QuestionMetadata
+  if (issue) {
+    metadata.flowNormalizationIssue = {
+      code: issue.code,
+      message: issue.message
+    }
+  } else {
+    delete metadata.flowNormalizationIssue
+  }
+  return {
+    ...question,
+    metadata
+  } as ListeningChoiceQuestion
 }
 
 function normalizeFlowOverrides(raw: unknown): FlowOverrides {
@@ -262,7 +282,7 @@ export function normalizeListeningChoiceQuestionForSave(
   const src = resolvedQuestion.flow?.source || { kind: 'standard', id: LISTENING_CHOICE_STANDARD_FLOW_ID }
 
   if (src?.kind === 'library') {
-    return resolvedQuestion
+    return withFlowNormalizationIssue(resolvedQuestion, null)
   }
 
   const routingCtx = resolveRoutingCtx(resolvedQuestion, opts?.ctx)
@@ -279,7 +299,7 @@ export function normalizeListeningChoiceQuestionForSave(
       generateId: opts?.generateId,
       overrides
     })
-    return {
+    return withFlowNormalizationIssue({
       ...resolvedQuestion,
       flow: {
         ...resolvedQuestion.flow,
@@ -292,20 +312,10 @@ export function normalizeListeningChoiceQuestionForSave(
         },
         steps: compiled.steps
       }
-    }
+    }, null)
   }
-
-  const templateSteps = concreteListeningChoiceStepsToTemplate(resolvedQuestion, steps)
-  const mod = flowLibrary.ensureModule('listening_choice', templateSteps)
-  const materialized = materializeListeningChoiceTemplateSteps(resolvedQuestion, templateSteps, {
-    generateId: opts?.generateId
-  }) as ListeningChoiceFlowStep[]
-  return {
-    ...resolvedQuestion,
-    flow: {
-      ...resolvedQuestion.flow,
-      source: { kind: 'library', id: mod.id },
-      steps: materialized
-    }
-  }
+  return withFlowNormalizationIssue(resolvedQuestion, {
+    code: FLOW_NORMALIZATION_ISSUE_CODE,
+    message: FLOW_NORMALIZATION_ISSUE_MESSAGE
+  })
 }

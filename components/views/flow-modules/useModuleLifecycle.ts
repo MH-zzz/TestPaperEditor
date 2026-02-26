@@ -205,20 +205,18 @@ export function useModuleLifecycle(options: {
   const currentModuleExists = computed(() => Boolean(currentModule.value))
   const currentModuleStatus = computed<FlowModuleStatus>(() => normalizeModuleStatus(currentModule.value?.status))
   const currentModuleStatusLabel = computed(() => {
-    if (!currentModuleExists.value) return '新建草稿'
+    if (!currentModuleExists.value) return '未保存'
+    if (currentModuleStatus.value === 'published') return '已生效'
     if (currentModuleStatus.value === 'draft') return '草稿'
-    if (currentModuleStatus.value === 'published') return '已发布'
-    return '已归档'
+    return '已归档（可更新）'
   })
   const currentModuleStatusHint = computed(() => {
-    if (!currentModuleExists.value) return '当前版本尚未创建，保存后将作为草稿；草稿发布后才能作为稳定版本使用。'
-    if (currentModuleStatus.value === 'draft') return '草稿可持续编辑；发布后进入已发布状态。'
-    if (currentModuleStatus.value === 'published') return '已发布版本不可直接覆盖；如需修改，请“另存新版本”后编辑草稿。'
-    return '已归档版本只读且不会再命中新题；如需调整，请“另存新版本”。'
+    if (!currentModuleExists.value) return '当前流程线尚未保存，点击“更新当前流程线”后立即生效。'
+    return '本模式默认直接覆盖更新，不保留历史版本。'
   })
-  const canSaveCurrentStandard = computed(() => !currentModuleExists.value || currentModuleStatus.value === 'draft')
-  const canPublishCurrentStandard = computed(() => currentModuleExists.value && currentModuleStatus.value === 'draft')
-  const canArchiveCurrentStandard = computed(() => currentModuleExists.value && currentModuleStatus.value !== 'archived')
+  const canSaveCurrentStandard = computed(() => true)
+  const canPublishCurrentStandard = computed(() => false)
+  const canArchiveCurrentStandard = computed(() => false)
 
   const flowProfilesMigratableToCurrentVersion = computed<FlowProfileV1[]>(() => {
     const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
@@ -363,24 +361,6 @@ export function useModuleLifecycle(options: {
     }
     const existing = flowModules.getListeningChoiceByRef(targetRef)
 
-    if (existing?.status === 'archived') {
-      uni.showModal({
-        title: '归档版本只读',
-        content: '当前版本已归档，不能直接保存。请使用“另存新版本”创建草稿后再编辑。',
-        showCancel: false
-      })
-      return
-    }
-
-    if (existing?.status === 'published') {
-      uni.showModal({
-        title: '发布版本不可直接覆盖',
-        content: '当前版本已发布。为保证可回溯，请使用“另存新版本”创建草稿版本进行修改。',
-        showCancel: false
-      })
-      return
-    }
-
     const moduleFallbackName = moduleNameFallbackById(targetRef.id)
     const moduleName = normalizeModuleName(draftModuleName.value, moduleFallbackName)
     const moduleNote = normalizeModuleNote(draftModuleNote.value)
@@ -390,7 +370,7 @@ export function useModuleLifecycle(options: {
       version: effectiveVersion,
       name: moduleName,
       note: moduleNote,
-      status: 'draft',
+      status: 'published',
       ...listeningChoiceDraft.value
     }
     const validation = validateListeningChoiceStandardModule(draftPayload)
@@ -421,7 +401,7 @@ export function useModuleLifecycle(options: {
 
     if (!skipImpactCheck) {
       const impact = getFlowModuleSaveImpact({ id: draftPayload.id, version: effectiveVersion })
-      const actionLabel = impact.exists ? '覆盖草稿版本' : '创建草稿版本'
+      const actionLabel = impact.exists ? '覆盖当前流程线' : '创建流程线'
       const diffSummary = buildModuleDiffSummary({
         previousModule: existing || null,
         nextModule: draftPayload,
@@ -430,14 +410,14 @@ export function useModuleLifecycle(options: {
       const contentLines = [
         `本次将${actionLabel}：${moduleName}（${draftPayload.id} @ v${effectiveVersion}）`,
         `变更摘要：\n${formatModuleDiffSummary(diffSummary)}`,
-        '是否继续保存？'
+        '是否继续更新？'
       ]
       if (moduleNote) contentLines.splice(1, 0, `流程备注：${moduleNote}`)
       const content = contentLines.join('\n')
       uni.showModal({
-        title: '确认保存题型流程',
+        title: '确认更新题型流程',
         content,
-        confirmText: '确认保存',
+        confirmText: '确认更新',
         cancelText: '取消',
         success: (res) => {
           if (!res.confirm) return
@@ -450,6 +430,7 @@ export function useModuleLifecycle(options: {
     flowModules.upsertListeningChoice({
       ...draftPayload
     })
+    flowModules.setListeningChoiceStatus(targetRef, 'published')
     const module = flowModules.getListeningChoiceByRef({
       id: draftModuleId.value,
       version: effectiveVersion
@@ -457,123 +438,15 @@ export function useModuleLifecycle(options: {
     draftModuleVersion.value = effectiveVersion
     syncDraftModuleMeta(module || draftPayload)
     listeningChoiceDraft.value = clone(toLegacyStandardModule(module || getDefaultModule()))
-    uni.showToast({ title: `已保存草稿 v${effectiveVersion}`, icon: 'success' })
+    uni.showToast({ title: `已更新流程线 v${effectiveVersion}`, icon: 'success' })
   }
 
   function saveStandardAsNextVersion() {
-    const moduleId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-    const currentVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-    const maxVersion = flowModules.getListeningChoiceMaxVersion(moduleId)
-    const nextVersion = Math.max(currentVersion + 1, maxVersion + 1, 1)
-    saveStandard(false, false, nextVersion)
+    saveStandard()
   }
 
   function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false) {
-    const ref = {
-      id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
-      version: Math.max(1, toInt(draftModuleVersion.value || 1))
-    }
-    const hit = flowModules.getListeningChoiceByRef(ref)
-    if (hit?.status === 'archived') {
-      uni.showToast({ title: '归档版本不可发布', icon: 'none' })
-      return
-    }
-    if (hit?.status === 'published') {
-      uni.showToast({ title: '当前版本已发布', icon: 'none' })
-      return
-    }
-
-    const moduleFallbackName = moduleNameFallbackById(ref.id)
-    const moduleName = normalizeModuleName(draftModuleName.value, moduleFallbackName)
-    const moduleNote = normalizeModuleNote(draftModuleNote.value)
-    const publishPayload: ListeningChoiceFlowModuleV1 = {
-      kind: 'listening_choice',
-      id: ref.id,
-      version: ref.version,
-      name: moduleName,
-      note: moduleNote,
-      status: 'draft',
-      ...listeningChoiceDraft.value
-    }
-    const validation = validateListeningChoiceStandardModule(publishPayload)
-    if (validation.errors.length > 0) {
-      uni.showModal({
-        title: '题型流程校验失败',
-        content: formatFlowModuleValidationIssues(validation.errors),
-        showCancel: false
-      })
-      return
-    }
-
-    if (!skipWarningCheck && validation.warnings.length > 0) {
-      uni.showModal({
-        title: '题型流程校验提醒',
-        content: `${formatFlowModuleValidationIssues(validation.warnings)}\n\n是否仍然发布？`,
-        confirmText: '仍然发布',
-        cancelText: '取消',
-        success: (res) => {
-          if (!res.confirm) return
-          publishCurrentStandard(true, skipImpactCheck)
-        }
-      })
-      return
-    }
-
-    if (!checkModuleCommitGuard('publish', publishPayload, ref)) return
-
-    if (!skipImpactCheck) {
-      const impact = getFlowModuleSaveImpact(ref)
-      const previousPublished = flowModules.getListeningChoiceLatestPublished(ref.id)
-      const diffSummary = buildModuleDiffSummary({
-        previousModule: previousPublished || null,
-        nextModule: publishPayload,
-        impactRules: impact.matchedRules
-      })
-      const contentLines = [
-        `将发布版本：${moduleName}（${ref.id} @ v${ref.version}）`,
-        `对比基线：${previousPublished ? formatModuleDisplayRef(previousPublished) : '无已发布基线'}`,
-        `变更摘要：\n${formatModuleDiffSummary(diffSummary)}`,
-        '发布后该版本可用于路由规则。是否继续？'
-      ]
-      if (moduleNote) contentLines.splice(1, 0, `流程备注：${moduleNote}`)
-      const content = contentLines.join('\n')
-      uni.showModal({
-        title: '确认发布题型流程',
-        content,
-        confirmText: '确认发布',
-        cancelText: '取消',
-        success: (res) => {
-          if (!res.confirm) return
-          publishCurrentStandard(true, true)
-        }
-      })
-      return
-    }
-
-    const publishImpact = getFlowModuleSaveImpact(ref)
-    const previousPublished = flowModules.getListeningChoiceLatestPublished(ref.id)
-    const publishDiffSummary = buildModuleDiffSummary({
-      previousModule: previousPublished || null,
-      nextModule: publishPayload,
-      impactRules: publishImpact.matchedRules
-    })
-
-    flowModules.upsertListeningChoice(publishPayload)
-    const ok = flowModules.setListeningChoiceStatus(ref, 'published')
-    if (!ok) {
-      uni.showToast({ title: '发布失败', icon: 'none' })
-      return
-    }
-    const latest = flowModules.getListeningChoiceByRef(ref)
-    syncDraftModuleMeta(latest || publishPayload)
-    if (latest) listeningChoiceDraft.value = clone(toLegacyStandardModule(latest))
-    appendFlowModulePublishLog({
-      moduleId: ref.id,
-      moduleVersion: ref.version,
-      moduleDisplayRef: `${moduleName} @ v${ref.version}`,
-      summaryLines: publishDiffSummary.summaryLines
-    })
-    uni.showToast({ title: `已发布 v${ref.version}`, icon: 'success' })
+    saveStandard(skipWarningCheck, skipImpactCheck)
   }
 
   function archiveCurrentStandard() {

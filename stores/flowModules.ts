@@ -79,6 +79,35 @@ const DEFAULT_LISTENING_CHOICE_FLOW_MODULE = normalizeListeningChoiceModule({
   status: 'published'
 })
 
+function ensurePublishedStandardBaseline(modules: ListeningChoiceFlowModuleV1[]): ListeningChoiceFlowModuleV1[] {
+  const list = Array.isArray(modules) ? modules : []
+  if (list.length <= 0) return [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+
+  const hasPublishedStandard = list.some((m) => {
+    const id = String(m?.id || '')
+    const status = normalizeStatus(m?.status)
+    return id === LISTENING_CHOICE_STANDARD_FLOW_ID && status === 'published'
+  })
+  if (hasPublishedStandard) return list
+
+  const maxStandardVersion = list.reduce((max, m) => {
+    const id = String(m?.id || '')
+    if (id !== LISTENING_CHOICE_STANDARD_FLOW_ID) return max
+    const version = Number(m?.version || 0)
+    return Number.isFinite(version) ? Math.max(max, Math.floor(version)) : max
+  }, 0)
+
+  const baseline = normalizeListeningChoiceModule({
+    ...DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+    kind: 'listening_choice',
+    id: LISTENING_CHOICE_STANDARD_FLOW_ID,
+    version: Math.max(1, maxStandardVersion + 1),
+    name: DEFAULT_LISTENING_CHOICE_MODULE_NAME,
+    status: 'published'
+  })
+  return [baseline, ...list]
+}
+
 class FlowModulesStore {
   state = reactive({
     listeningChoice: [DEFAULT_LISTENING_CHOICE_FLOW_MODULE] as ListeningChoiceFlowModuleV1[]
@@ -96,7 +125,9 @@ class FlowModulesStore {
       const parsed = JSON.parse(stored)
       const list = Array.isArray(parsed?.listeningChoice) ? parsed.listeningChoice : []
       const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
-      this.state.listeningChoice = normalized.length ? normalized : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+      this.state.listeningChoice = normalized.length
+        ? ensurePublishedStandardBaseline(normalized)
+        : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
     } catch (e) {
       console.error('Failed to load flow modules', e)
       this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]

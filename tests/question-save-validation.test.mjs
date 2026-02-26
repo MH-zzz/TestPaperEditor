@@ -82,6 +82,20 @@ test('validateQuestionBeforeSave should return field-level errors for invalid li
   assert.ok(result.errors.some(e => e.path === 'content.groups[0].subQuestions[0].answer'))
 })
 
+test('validateQuestionBeforeSave should block save when flow normalization issue exists', async () => {
+  const { validateQuestionBeforeSave } = await import('../domain/question/validators/listeningChoiceValidator.ts')
+
+  const question = createValidListeningChoiceQuestion()
+  question.metadata.flowNormalizationIssue = {
+    code: 'flow_override_not_supported',
+    message: '当前题目流程与题型流程线不一致，且无法自动映射。请先到「题型流程」修正流程线后再保存题目。'
+  }
+
+  const result = validateQuestionBeforeSave(question)
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some(e => e.path === 'metadata.flowNormalizationIssue'))
+})
+
 test('saveQuestionDraft should validate, enrich metadata, and persist both draft and recent list', async () => {
   const { saveQuestionDraft } = await import('../domain/question/usecases/saveQuestionDraft.ts')
 

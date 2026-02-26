@@ -222,6 +222,39 @@ class FlowProfilesStore {
     return this.removeWithDiagnostics(id).ok
   }
 
+  replaceQuestionTypeProfiles(questionType: QuestionType, profileInputs: unknown[]) {
+    const normalized = (Array.isArray(profileInputs) ? profileInputs : [])
+      .map((item) => normalizeProfile({
+        ...(isObjectRecord(item) ? item : {}),
+        questionType
+      }))
+      .filter((profile) => profile.questionType === questionType)
+
+    const nextTypeProfiles = normalized.length > 0
+      ? normalized
+      : questionType === 'listening_choice'
+        ? [DEFAULT_LISTENING_CHOICE_PROFILE]
+        : []
+
+    if (nextTypeProfiles.length <= 0) {
+      return {
+        ok: false as const,
+        reason: 'must_keep_one_per_type'
+      }
+    }
+
+    const next = [
+      ...this.state.profiles.filter(profile => profile.questionType !== questionType),
+      ...nextTypeProfiles
+    ]
+    this.commitProfiles(next, { questionType, replaced: true })
+    return {
+      ok: true as const,
+      reason: '',
+      profiles: nextTypeProfiles
+    }
+  }
+
   resolve(questionType: QuestionType, ctx?: { region?: string; scene?: string; grade?: string }) {
     const scored = this.score(questionType, ctx || {}, { topN: 1 })
     if (scored.bestCandidate?.profile) return scored.bestCandidate.profile

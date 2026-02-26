@@ -498,6 +498,10 @@ export interface QuestionMetadata {
     scene?: string
     grade?: string
   }
+  flowNormalizationIssue?: {
+    code?: string
+    message?: string
+  }
   createdAt?: string
   updatedAt?: string
 }

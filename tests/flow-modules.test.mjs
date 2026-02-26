@@ -87,6 +87,8 @@ test('flow module store should expose max-version and archive helpers', async ()
   assert.ok(content.includes('canTransitionListeningChoiceStatus(ref: FlowModuleRef | null | undefined, nextStatus: FlowModuleStatus)'))
   assert.ok(content.includes('setListeningChoiceStatus(ref: FlowModuleRef | null | undefined, nextStatus: FlowModuleStatus)'))
   assert.ok(content.includes('canListeningChoiceStatusTransition'))
+  assert.ok(content.includes('function ensurePublishedStandardBaseline(modules: ListeningChoiceFlowModuleV1[])'))
+  assert.ok(content.includes('ensurePublishedStandardBaseline(normalized)'))
 })
 
 test('flow module store should support business display name + optional note fields', async () => {

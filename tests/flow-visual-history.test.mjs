@@ -27,6 +27,14 @@ test('editable flow graph should provide history stack and undo/redo APIs', asyn
   assert.ok(src.includes('linearConstraintChecks'))
 })
 
+test('editable flow graph should avoid no-op dirty marks and expose debug info', async () => {
+  const src = await readFile('components/views/flow-modules/useEditableFlowGraph.ts')
+  assert.ok(src.includes('if (!changed) return'))
+  assert.ok(src.includes('markDirty('))
+  assert.ok(src.includes('markClean('))
+  assert.ok(src.includes('debugInfo'))
+})
+
 test('flow center should expose visual undo/redo buttons and keyboard shortcuts', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   const propertySrc = await readFile('components/editor/flow-visual/PropertyPanel.vue')
@@ -48,6 +56,8 @@ test('flow center should expose visual undo/redo buttons and keyboard shortcuts'
   assert.ok(src.includes('readFlowVisualIssueNodeId'))
   assert.ok(src.includes('locateReadonlyFlowVisualIssue'))
   assert.ok(src.includes('readonlyFlowLinearChecks'))
+  assert.ok(src.includes('flowVisualDebugInfo'))
+  assert.ok(src.includes('最近动作'))
   assert.ok(propertySrc.includes('Ctrl/Cmd+D'))
   assert.ok(canvasSrc.includes('onPointerDragStart'))
   assert.ok(canvasSrc.includes('onPointerDragDrop'))

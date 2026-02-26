@@ -39,6 +39,7 @@ function hasRichTextContent(value: unknown): value is RichTextContent {
 function validateListeningChoice(question: ListeningChoiceQuestion): QuestionValidationResult {
   const errors: ValidationIssue[] = []
   const warnings: ValidationIssue[] = []
+  const metadata = (question as { metadata?: Record<string, unknown> })?.metadata
 
   const intro = question.content?.intro
   if (!String(intro.title || '').trim()) {
@@ -128,6 +129,21 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
       }
     })
   })
+
+  const flowIssueRaw = metadata && typeof metadata === 'object'
+    ? (metadata as Record<string, unknown>).flowNormalizationIssue
+    : null
+  const flowIssue = flowIssueRaw && typeof flowIssueRaw === 'object'
+    ? (flowIssueRaw as Record<string, unknown>)
+    : null
+  const flowIssueMessage = flowIssue ? String(flowIssue.message || '').trim() : ''
+  if (flowIssueMessage) {
+    errors.push({
+      code: String(flowIssue.code || 'flow_normalization_issue'),
+      path: 'metadata.flowNormalizationIssue',
+      message: flowIssueMessage
+    })
+  }
 
   return {
     ok: errors.length === 0,

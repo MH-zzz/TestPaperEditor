@@ -377,11 +377,27 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
   const selectedNodeId = ref('')
   const recentlyMovedNodeId = ref('')
   const dirty = ref(false)
+  const lastDirtyAction = ref('')
+  const lastDirtyAt = ref(0)
+  const lastCleanReason = ref('')
+  const lastCleanAt = ref(0)
   const lastQuestionSignature = ref('')
   const historyPast = ref<FlowVisualNode<EditableFlowNodePayload>[][]>([])
   const historyFuture = ref<FlowVisualNode<EditableFlowNodePayload>[][]>([])
   const HISTORY_LIMIT = 40
   let movedTimer: ReturnType<typeof setTimeout> | null = null
+
+  function markDirty(action: string) {
+    dirty.value = true
+    lastDirtyAction.value = String(action || 'unknown')
+    lastDirtyAt.value = Date.now()
+  }
+
+  function markClean(reason: string) {
+    dirty.value = false
+    lastCleanReason.value = String(reason || 'unknown')
+    lastCleanAt.value = Date.now()
+  }
 
   function markRecentlyMoved(nodeId: string) {
     const id = String(nodeId || '')
@@ -424,7 +440,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     const nextNodes = (graph.nodes || []).map((item, index) => createEditableNodeFromReadonly(item, index))
     nodes.value = relayoutNodes(nextNodes)
     resetHistory()
-    dirty.value = false
+    markClean('load_from_question')
     ensureSelectedNode()
   }
 
@@ -432,6 +448,10 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     const question = questionRef.value
     lastQuestionSignature.value = buildStepSignature(question)
     loadFromQuestion(question)
+  }
+
+  function clearDirty() {
+    markClean('clear_dirty')
   }
 
   watch(() => buildStepSignature(questionRef.value), (signature) => {
@@ -452,7 +472,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = next[next.length - 1]?.id || ''
     markRecentlyMoved(selectedNodeId.value)
-    dirty.value = true
+    markDirty('append_node')
   }
 
   function insertNodeNearTarget(kind: string, targetNodeId: string, position: FlowNodeDropPosition = 'after') {
@@ -470,29 +490,41 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = node.id
     markRecentlyMoved(node.id)
-    dirty.value = true
+    markDirty('insert_node_near_target')
   }
 
   function patchSelectedNode(patch: FlowVisualNodePatch) {
     const nodeId = selectedNodeId.value
     if (!nodeId) return
-    pushHistorySnapshot()
-    nodes.value = relayoutNodes(nodes.value.map((item) => {
+    let changed = false
+    const nextNodes = nodes.value.map((item) => {
       if (item.id !== nodeId) return item
       const stepKind = patch.stepKind !== undefined ? String(patch.stepKind || '').trim() : item.data.stepKind
       const autoNext = patch.autoNext !== undefined ? String(patch.autoNext || '').trim() : item.data.autoNext
       const groupId = patch.groupId !== undefined ? String(patch.groupId || '').trim() : item.data.groupId
+      const nextStepKind = stepKind || item.data.stepKind
+      if (
+        nextStepKind === item.data.stepKind
+        && autoNext === item.data.autoNext
+        && groupId === item.data.groupId
+      ) {
+        return item
+      }
+      changed = true
       return {
         ...item,
         data: {
           ...item.data,
-          stepKind: stepKind || item.data.stepKind,
+          stepKind: nextStepKind,
           autoNext,
           groupId
         }
       }
-    }))
-    dirty.value = true
+    })
+    if (!changed) return
+    pushHistorySnapshot()
+    nodes.value = relayoutNodes(nextNodes)
+    markDirty('patch_selected_node')
   }
 
   function removeSelectedNode() {
@@ -500,7 +532,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     if (!nodeId) return
     pushHistorySnapshot()
     nodes.value = relayoutNodes(nodes.value.filter((item) => item.id !== nodeId))
-    dirty.value = true
+    markDirty('remove_selected_node')
     ensureSelectedNode()
   }
 
@@ -526,7 +558,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = next[currentIndex + 1]?.id || ''
     markRecentlyMoved(selectedNodeId.value)
-    dirty.value = true
+    markDirty('duplicate_selected_node')
   }
 
   function selectAdjacentNode(step: -1 | 1) {
@@ -553,7 +585,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = currentNode.id
     markRecentlyMoved(currentNode.id)
-    dirty.value = true
+    markDirty('move_selected_node')
   }
 
   function reorderNodes(sourceNodeId: string, targetNodeId: string, position: FlowNodeDropPosition = 'before') {
@@ -577,7 +609,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = moved.id
     markRecentlyMoved(moved.id)
-    dirty.value = true
+    markDirty('reorder_nodes')
   }
 
   const canUndo = computed(() => historyPast.value.length > 0)
@@ -591,7 +623,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(cloneNodes(previous))
     ensureSelectedNode()
     markRecentlyMoved(selectedNodeId.value)
-    dirty.value = true
+    markDirty('undo')
   }
 
   function redo() {
@@ -602,7 +634,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     nodes.value = relayoutNodes(cloneNodes(next))
     ensureSelectedNode()
     markRecentlyMoved(selectedNodeId.value)
-    dirty.value = true
+    markDirty('redo')
   }
 
   const graph = computed<FlowVisualGraph<EditableFlowNodePayload>>(() => {
@@ -673,6 +705,13 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     if (!node) return []
     return buildPropertyFieldsByStepKind(node.data.stepKind)
   })
+  const debugInfo = computed(() => ({
+    dirty: dirty.value,
+    lastDirtyAction: lastDirtyAction.value,
+    lastDirtyAt: lastDirtyAt.value,
+    lastCleanReason: lastCleanReason.value,
+    lastCleanAt: lastCleanAt.value
+  }))
 
   return {
     stencilItems: STENCIL_ITEMS,
@@ -687,6 +726,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     canRedo,
     recentlyMovedNodeId,
     dirty,
+    debugInfo,
     selectNode,
     appendNode,
     insertNodeNearTarget,
@@ -700,6 +740,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     reorderNodes,
     undo,
     redo,
-    reloadFromQuestion
+    reloadFromQuestion,
+    clearDirty
   }
 }
