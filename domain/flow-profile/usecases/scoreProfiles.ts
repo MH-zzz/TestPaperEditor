@@ -6,6 +6,8 @@ export type FlowRoutingCtx = {
   grade?: string
 }
 
+export const FLOW_REGION_GENERIC_LABEL = '通用'
+
 export type FlowProfileScoreDetail = {
   profile: FlowProfileV1
   regionScore: number
@@ -85,7 +87,21 @@ function dimScore(profileValue: string | undefined, requestValue: string | undef
   const p = normalizeNullableText(profileValue) || ''
   const r = normalizeNullableText(requestValue) || ''
   if (!p) return 1
-  if (!r) return 0
+  if (!r) return -999
+  if (p === r) return 3
+  return -999
+}
+
+function regionDimScore(profileValue: string | undefined, requestValue: string | undefined): number {
+  const p = normalizeNullableText(profileValue) || ''
+  const r = normalizeNullableText(requestValue) || ''
+  if (!p) return 1
+  if (p === FLOW_REGION_GENERIC_LABEL) {
+    if (!r) return -999
+    if (r === FLOW_REGION_GENERIC_LABEL) return 3
+    return 2
+  }
+  if (!r) return -999
   if (p === r) return 3
   return -999
 }
@@ -115,7 +131,7 @@ export function scoreSingleProfile(
   profile: FlowProfileV1,
   ctx: FlowRoutingCtx
 ): FlowProfileScoreDetail | null {
-  const regionScore = dimScore(profile.region, ctx.region)
+  const regionScore = regionDimScore(profile.region, ctx.region)
   const sceneScore = dimScore(profile.scene, ctx.scene)
   const gradeScore = dimScore(profile.grade, ctx.grade)
 

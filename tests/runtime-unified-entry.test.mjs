@@ -32,9 +32,11 @@ test('editor workspace should run preview flow via unified runtime usecase', asy
   assert.ok(src.includes('reduceQuestionFlowRuntimeState('))
   assert.ok(src.includes(':data="runtimeQuestion"'))
   assert.ok(src.includes(':runtime-meta="runtimeMeta"'))
-  assert.ok(src.includes('flow-context-bar__runtime'))
-  assert.ok(src.includes('来源：{{ runtimeMeta.sourceKind || \'-\' }}'))
-  assert.ok(src.includes('规则：{{ runtimeMeta.profileId || \'默认规则\' }}'))
+  assert.ok(src.includes('flow-route-hint'))
+  assert.ok(src.includes('匹配规则'))
+  assert.ok(src.includes('流程线：{{ runtimeMeta.moduleDisplayRef || \'标准流程\' }}'))
+  assert.ok(!src.includes('来源：{{ runtimeMeta.sourceKind || \'-\' }}'))
+  assert.ok(!src.includes('规则：{{ runtimeMeta.profileId || \'默认规则（标准）\' }}'))
 })
 
 test('learning workspace should run exam flow via unified runtime usecase', async () => {

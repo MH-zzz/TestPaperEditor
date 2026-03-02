@@ -353,7 +353,7 @@ export function useModuleLifecycle(options: {
     return false
   }
 
-  function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number) {
+  function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number): boolean {
     const effectiveVersion = Math.max(1, toInt(targetVersion || draftModuleVersion.value || 1))
     const targetRef = {
       id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
@@ -380,7 +380,7 @@ export function useModuleLifecycle(options: {
         content: formatFlowModuleValidationIssues(validation.errors),
         showCancel: false
       })
-      return
+      return false
     }
 
     if (!skipWarningCheck && validation.warnings.length > 0) {
@@ -394,10 +394,10 @@ export function useModuleLifecycle(options: {
           saveStandard(true, skipImpactCheck, targetVersion)
         }
       })
-      return
+      return false
     }
 
-    if (!checkModuleCommitGuard('save', draftPayload, targetRef)) return
+    if (!checkModuleCommitGuard('save', draftPayload, targetRef)) return false
 
     if (!skipImpactCheck) {
       const impact = getFlowModuleSaveImpact({ id: draftPayload.id, version: effectiveVersion })
@@ -424,7 +424,7 @@ export function useModuleLifecycle(options: {
           saveStandard(true, true, targetVersion)
         }
       })
-      return
+      return false
     }
 
     flowModules.upsertListeningChoice({
@@ -439,14 +439,15 @@ export function useModuleLifecycle(options: {
     syncDraftModuleMeta(module || draftPayload)
     listeningChoiceDraft.value = clone(toLegacyStandardModule(module || getDefaultModule()))
     uni.showToast({ title: `已更新流程线 v${effectiveVersion}`, icon: 'success' })
+    return true
   }
 
-  function saveStandardAsNextVersion() {
-    saveStandard()
+  function saveStandardAsNextVersion(): boolean {
+    return saveStandard()
   }
 
-  function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false) {
-    saveStandard(skipWarningCheck, skipImpactCheck)
+  function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false): boolean {
+    return saveStandard(skipWarningCheck, skipImpactCheck)
   }
 
   function archiveCurrentStandard() {

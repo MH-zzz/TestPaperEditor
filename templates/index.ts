@@ -12,7 +12,7 @@ import type {
 } from '/types'
 import { LISTENING_CHOICE_STANDARD_FLOW_ID } from '../flows/listeningChoiceFlowModules'
 import { resolveListeningChoiceQuestion } from '../engine/flow/listening-choice/binding.ts'
-import { contentTemplates } from '/stores/contentTemplates'
+import { contentTemplates, DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE } from '/stores/contentTemplates'
 import { flowProfiles } from '/stores/flowProfiles'
 
 // 生成唯一 ID
@@ -39,8 +39,12 @@ export function createRichText(text: string): RichTextContent {
 // ==================== 题目模板 ====================
 
 // 听力选择题模板
-export function createListeningChoiceTemplate(): ListeningChoiceQuestion {
-  const storedTpl: any = contentTemplates?.state?.listeningChoice
+export function createListeningChoiceTemplate(
+  options?: { useStoredTemplate?: boolean }
+): ListeningChoiceQuestion {
+  const storedTpl: any = options?.useStoredTemplate === false
+    ? DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE
+    : contentTemplates?.state?.listeningChoice
   const tpl = storedTpl && typeof storedTpl === 'object' ? storedTpl : {}
   const optionStyle = tpl.optionStyle === '1234' ? '1234' : 'ABCD'
   const rawContent = tpl.content && typeof tpl.content === 'object' ? tpl.content : {}

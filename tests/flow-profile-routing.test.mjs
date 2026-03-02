@@ -27,6 +27,11 @@ test('listening-choice binding should derive routing context from opts + metadat
   assert.ok(src.includes('resolveRoutingCtx(question, opts?.ctx)'))
   assert.ok(src.includes('resolveStandardModule(question, source, routingCtx)'))
   assert.ok(src.includes('resolveStandardModule(resolvedQuestion, src, routingCtx)'))
+  assert.ok(src.includes('const hasRoutingCtx = Boolean('))
+  assert.ok(src.includes('prefer profile routing over stale source refs'))
+  const ctxBlock = src.indexOf('if (hasRoutingCtx)')
+  const explicitBlock = src.indexOf('if (explicitId && explicitVersion > 0)')
+  assert.ok(ctxBlock > -1 && explicitBlock > -1 && ctxBlock < explicitBlock, 'Expected routing ctx branch before explicit source branch')
 })
 
 test('listening-choice normalization should no longer auto-write flow library on save fallback', async () => {
@@ -54,16 +59,22 @@ test('flow center should provide region-binding checklist in listening-choice fl
 
   assert.ok(src.includes('地区匹配'))
   assert.ok(src.includes('一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线'))
+  assert.ok(src.includes("const REGION_GENERAL_LABEL = '通用'"))
+  assert.ok(src.includes('听后选择通用流程'))
+  assert.ok(src.includes('「通用」就是默认/标准流程'))
   assert.ok(src.includes('toggleRegionBindingForCurrentFlowLine'))
   assert.ok(src.includes('formatRegionBindingTarget'))
   assert.ok(!src.includes('题型流程路由'))
 })
 
-test('flow center should support flow-line switching and creating regional line drafts', async () => {
+test('flow center should support flow-line switching and wizard-based create/publish', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('流程线切换'))
-  assert.ok(src.includes('新建流程线'))
-  assert.ok(src.includes('createFlowLineDraft'))
+  assert.ok(src.includes('新建流程线（向导）'))
+  assert.ok(src.includes('flowLineWizardVisible'))
+  assert.ok(src.includes('openFlowLineCreateWizard'))
+  assert.ok(src.includes('confirmCreateFlowLineFromWizard'))
+  assert.ok(src.includes('创建并发布'))
   assert.ok(src.includes('switchToFlowLine'))
 })
 
@@ -88,6 +99,8 @@ test('flow profile domain usecase should provide scoring, diagnostics and submit
   assert.ok(src.includes('export function diagnoseFlowProfileRules('))
   assert.ok(src.includes('export function buildFlowProfileFixSuggestions('))
   assert.ok(src.includes('export function canSubmitFlowProfiles('))
+  assert.ok(src.includes('FLOW_REGION_GENERIC_LABEL'))
+  assert.ok(src.includes('regionDimScore'))
   assert.ok(src.includes('weakCoverage'))
 })
 
@@ -109,6 +122,15 @@ test('flow center should enforce one-region-one-flow via canonical binding repla
   assert.ok(src.includes("flowProfiles.replaceQuestionTypeProfiles('listening_choice', nextProfiles)"))
 })
 
+test('flow center should treat 通用 as default profile binding instead of region rule', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  assert.ok(src.includes('if (isGeneralRegion(region)) return'))
+  assert.ok(src.includes('defaultRoutingModuleRef'))
+  assert.ok(src.includes('defaultModuleRef: targetModuleRef'))
+  assert.ok(src.includes('defaultNote: currentlyBound ? \'听后选择默认流程\' : \'听后选择通用流程\''))
+  assert.ok(src.includes('const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))'))
+})
+
 test('route simulator util should support loading context from current question metadata', async () => {
   const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
   assert.ok(sim.includes('loadRouteSimFromCurrentQuestion'))
@@ -122,14 +144,27 @@ test('route simulator util should support writing context back to current questi
   assert.ok(sim.includes('persistCurrentQuestion(next)'))
 })
 
-test('editor workspace should allow editing flow context and trigger listening-choice flow resolve', async () => {
+test('editor workspace should display route matching summary without editable flow context bar', async () => {
   const src = await readFile('components/views/EditorWorkspace.vue')
-  assert.ok(src.includes('流程上下文'))
+  assert.ok(src.includes('匹配规则'))
+  assert.ok(src.includes('flow-route-hint'))
+  assert.ok(src.includes('flowRouteRegionLabel'))
+  assert.ok(src.includes('flowRouteResolutionHint'))
   assert.ok(src.includes('地区'))
-  assert.ok(src.includes('场景'))
-  assert.ok(src.includes('年级'))
-  assert.ok(src.includes('function updateFlowContext('))
-  assert.ok(src.includes('resolveListeningChoiceFlowSource('))
+  assert.ok(!src.includes('流程上下文'))
+  assert.ok(!src.includes('function updateFlowContext('))
+})
+
+test('side navigation should derive question region metadata from selected 地区 tags', async () => {
+  const src = await readFile('components/layout/SideNavigation.vue')
+  const draftSrc = await readFile('stores/questionDraft.ts')
+  assert.ok(src.includes("const SINGLE_ROOTS = new Set(['教材版本', '学期', '年级', '年份', '难度', '地区'])"))
+  assert.ok(src.includes('resolveRegionFromTags(tags)'))
+  assert.ok(src.includes('tagStore.getRootCategory(id) !== \'地区\''))
+  assert.ok(src.includes('questionDraft.updateMetadata({'))
+  assert.ok(src.includes('region'))
+  assert.ok(draftSrc.includes('updateMetadata(patch: { tags?: string[]; source?: string; region?: string })'))
+  assert.ok(draftSrc.includes('current.metadata.region'))
 })
 
 test('editor workspace should map 听说-听后选择 to listening_choice template', async () => {
@@ -143,6 +178,7 @@ test('flow center should auto-normalize legacy routing rules into region-only mo
   assert.ok(src.includes('isLegacyRegionRoutingModel'))
   assert.ok(src.includes('ensureRegionRoutingMode'))
   assert.ok(src.includes('replaceRegionRoutingBindings'))
+  assert.ok(src.includes('if (isGeneralRegion(region)) return true'))
   assert.ok(src.includes('已切换为地区匹配模式'))
 })
 
@@ -150,7 +186,8 @@ test('flow center should show region binding target summary per chip', async () 
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('region-chip__target'))
   assert.ok(src.includes('function formatRegionBindingTarget('))
-  assert.ok(src.includes("if (!binding) return '标准流程'"))
+  assert.ok(src.includes('defaultRoutingModuleRef'))
+  assert.ok(src.includes('if (!binding) return `通用：${formatModuleDisplayRef(defaultRoutingModuleRef.value)}`'))
   assert.ok(src.includes("if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'"))
 })
 
@@ -174,7 +211,7 @@ test('flow center should provide read-only visual graph modal from steps', async
   const mapperSrc = await readFile('domain/flow-visual/usecases/buildListeningChoiceModuleFromLinearSteps.ts')
   const typeSrc = await readFile('types/flow-visual.ts')
   assert.ok(src.includes('查看流程图'))
-  assert.ok(src.includes('线性流程可视编辑'))
+  assert.ok(src.includes('线性流程可视新建'))
   assert.ok(src.includes('openReadonlyFlowVisual'))
   assert.ok(src.includes('readonlyFlowVisualActiveNode'))
   assert.ok(src.includes('ReadonlyFlowCanvas'))

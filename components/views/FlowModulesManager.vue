@@ -71,7 +71,7 @@
               <view class="panel__header">
                 <view class="panel__header-left">
                   <text class="panel__title">题型模板数据</text>
-                  <text class="panel__desc">左侧编辑题型模板数据（自动同步到「题型模板」），中间按流程规则解析，右侧预览执行效果</text>
+                  <text class="panel__desc">左侧新建题型模板数据（自动同步到「题型模板」），中间按流程规则解析，右侧预览执行效果</text>
                 </view>
                 <button class="btn btn-outline btn-xs" @click="reloadDemoBaseFromTemplate">重新加载模板</button>
               </view>
@@ -133,17 +133,8 @@
                         @input="(e) => draftModuleNote = e.detail.value"
                       />
                     </view>
-                    <view class="form-item">
-                      <text class="form-item__label">新流程线名称</text>
-                      <input
-                        class="text-input"
-                        :value="newFlowLineName"
-                        placeholder="例如：听后选择北京 / 听后选择成都"
-                        @input="(e) => newFlowLineName = String(e.detail.value || '')"
-                      />
-                    </view>
                     <view class="form-item form-item--full">
-                      <button class="btn btn-outline btn-sm" @click="createFlowLineDraft">新建流程线</button>
+                      <button class="btn btn-outline btn-sm" @click="openFlowLineCreateWizard">新建流程线（向导）</button>
                     </view>
                   </view>
                   <text class="module-state__hint">{{ currentModuleStatusHint }}</text>
@@ -391,7 +382,7 @@
                 <view class="region-binding">
                   <view class="region-binding__head">
                     <text class="region-binding__title">地区匹配</text>
-                    <text class="region-binding__desc">一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线。未勾选地区走标准流程。</text>
+                    <text class="region-binding__desc">一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线。「通用」就是默认/标准流程，未命中地区走「通用」。</text>
                   </view>
                   <view v-if="regionBindingOptions.length === 0" class="empty-tip">暂无地区标签，请先在标签管理补充“地区”。</view>
                   <view v-else class="region-binding__chips">
@@ -466,8 +457,8 @@
       <view class="flow-visual-modal__panel">
         <view class="flow-visual-modal__header">
           <view class="flow-visual-modal__title-wrap">
-            <text class="flow-visual-modal__title">线性流程可视编辑</text>
-            <text class="flow-visual-modal__desc">拖拽重排、编辑属性并实时编译校验，再回写到预览或流程草稿</text>
+            <text class="flow-visual-modal__title">线性流程可视新建</text>
+            <text class="flow-visual-modal__desc">拖拽重排、配置属性并实时编译校验，再回写到预览或流程草稿</text>
           </view>
           <view class="flow-visual-modal__actions">
             <button
@@ -598,6 +589,94 @@
                 </view>
               </template>
             </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="flowLineWizardVisible" class="flow-line-wizard-modal">
+      <view class="flow-line-wizard-modal__mask" @click="closeFlowLineCreateWizard" />
+      <view class="flow-line-wizard-modal__panel">
+        <view class="flow-line-wizard-modal__header">
+          <view class="flow-line-wizard-modal__title-wrap">
+            <text class="flow-line-wizard-modal__title">新建流程线（向导）</text>
+            <text class="flow-line-wizard-modal__desc">基于模板创建并可直接绑定地区，一次完成创建与发布。</text>
+          </view>
+          <button class="btn btn-outline btn-xs" @click="closeFlowLineCreateWizard">关闭</button>
+        </view>
+
+        <view class="flow-line-wizard-modal__body">
+          <view class="wizard-section">
+            <text class="wizard-section__title">1. 选择基线</text>
+            <view class="wizard-baseline">
+              <view
+                class="wizard-baseline__chip"
+                :class="{ active: flowLineWizardBaseline === 'current' }"
+                @click="flowLineWizardBaseline = 'current'"
+              >
+                <text class="wizard-baseline__name">复制当前流程线</text>
+                <text class="wizard-baseline__desc">保留当前配置再微调</text>
+              </view>
+              <view
+                class="wizard-baseline__chip"
+                :class="{ active: flowLineWizardBaseline === 'standard' }"
+                @click="flowLineWizardBaseline = 'standard'"
+              >
+                <text class="wizard-baseline__name">基于标准创建</text>
+                <text class="wizard-baseline__desc">从标准流程线开始</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="wizard-section">
+            <text class="wizard-section__title">2. 填写信息</text>
+            <view class="wizard-form">
+              <view class="form-item">
+                <text class="form-item__label">流程线名称</text>
+                <input
+                  class="text-input"
+                  :value="flowLineWizardName"
+                  placeholder="例如：听后选择-北京"
+                  @input="(e) => flowLineWizardName = String(e.detail.value || '')"
+                />
+              </view>
+              <view class="form-item form-item--full">
+                <text class="form-item__label">流程线备注（可选）</text>
+                <textarea
+                  class="textarea-input"
+                  :value="flowLineWizardNote"
+                  placeholder="例如：北京地区听后选择流程"
+                  maxlength="200"
+                  @input="(e) => flowLineWizardNote = String(e.detail.value || '')"
+                />
+              </view>
+            </view>
+          </view>
+
+          <view class="wizard-section">
+            <text class="wizard-section__title">3. 绑定地区（可多选）</text>
+            <text class="wizard-section__desc">一个地区只能绑定 1 个流程线，勾选后会自动改绑到新流程线；勾选「通用」将设置默认/标准流程。</text>
+            <view v-if="regionBindingOptions.length === 0" class="empty-tip">暂无地区标签，请先在标签管理补充“地区”。</view>
+            <view v-else class="wizard-region">
+              <view
+                v-for="region in regionBindingOptions"
+                :key="`wizard:${region}`"
+                class="wizard-region__chip"
+                :class="{ active: isFlowLineWizardRegionSelected(region) }"
+                @click="toggleFlowLineWizardRegion(region)"
+              >
+                <text class="wizard-region__name">{{ region }}</text>
+                <text class="wizard-region__desc">{{ isFlowLineWizardRegionSelected(region) ? '将绑定到新流程线' : '点击绑定' }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="flow-line-wizard-modal__footer">
+          <text class="flow-line-wizard-modal__summary">已选择地区：{{ flowLineWizardRegions.length }} 个</text>
+          <view class="flow-line-wizard-modal__actions">
+            <button class="btn btn-outline btn-sm" @click="closeFlowLineCreateWizard">取消</button>
+            <button class="btn btn-primary btn-sm" :disabled="!canCreateFlowLineFromWizard" @click="confirmCreateFlowLineFromWizard">创建并发布</button>
           </view>
         </view>
       </view>
@@ -917,7 +996,12 @@ const draftModuleId = ref(String(defaultModule.id || LISTENING_CHOICE_STANDARD_F
 const draftModuleVersion = ref(Number(defaultModule.version || 1))
 const draftModuleName = ref(normalizeModuleName(defaultModule.name, DEFAULT_LISTENING_CHOICE_MODULE_NAME))
 const draftModuleNote = ref(normalizeModuleNote(defaultModule?.note))
-const newFlowLineName = ref('')
+type FlowLineWizardBaseline = 'current' | 'standard'
+const flowLineWizardVisible = ref(false)
+const flowLineWizardBaseline = ref<FlowLineWizardBaseline>('current')
+const flowLineWizardName = ref('')
+const flowLineWizardNote = ref('')
+const flowLineWizardRegions = ref<string[]>([])
 const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toLegacyStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
   const id = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
@@ -979,6 +1063,7 @@ const flowLineOptions = computed<FlowLineOption[]>(() => {
   return result.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
 })
 const REGION_FLOW_PROFILE_PRIORITY = 10
+const REGION_GENERAL_LABEL = '通用'
 
 type RegionRoutingBinding = {
   region: string
@@ -996,6 +1081,10 @@ const currentFlowLineRef = computed<FlowModuleRef>(() => ({
 
 function buildRegionProfileId(region: string): string {
   return `profile:listening_choice:region:${encodeURIComponent(region)}`
+}
+
+function isGeneralRegion(region: string): boolean {
+  return normalizeNullableText(region) === REGION_GENERAL_LABEL
 }
 
 function readRegionTagOptions(): string[] {
@@ -1047,6 +1136,7 @@ function collectRegionRoutingBindings(profiles: FlowProfileV1[]): RegionRoutingB
   sorted.forEach((profile) => {
     const region = normalizeNullableText(profile?.region)
     if (!region) return
+    if (isGeneralRegion(region)) return
     if (map.has(region)) return
     map.set(region, {
       region,
@@ -1066,12 +1156,21 @@ function collectRegionRoutingBindings(profiles: FlowProfileV1[]): RegionRoutingB
 
 function buildRegionOnlyProfiles(
   currentProfiles: FlowProfileV1[],
-  bindings: RegionRoutingBinding[]
+  bindings: RegionRoutingBinding[],
+  options: {
+    defaultModuleRef?: FlowModuleRef
+    defaultNote?: string
+  } = {}
 ): FlowProfileV1[] {
   const now = new Date().toISOString()
   const fallbackModuleRef = getPublishedFallbackModuleRef()
-  const defaultCandidate = (currentProfiles || []).find((profile) => !normalizeNullableText(profile?.region))
-  const defaultModuleRef = resolveActiveModuleRef(defaultCandidate?.module, fallbackModuleRef)
+  const defaultCandidate = (currentProfiles || []).find((profile) => {
+    const region = normalizeNullableText(profile?.region)
+    return !region || isGeneralRegion(region)
+  })
+  const defaultModuleRef = options.defaultModuleRef
+    ? resolveActiveModuleRef(options.defaultModuleRef, fallbackModuleRef)
+    : resolveActiveModuleRef(defaultCandidate?.module, fallbackModuleRef)
 
   const defaultProfile: FlowProfileV1 = {
     id: String(defaultCandidate?.id || 'profile:listening_choice:default'),
@@ -1082,7 +1181,7 @@ function buildRegionOnlyProfiles(
     module: defaultModuleRef,
     priority: 0,
     enabled: true,
-    note: normalizeNullableText(defaultCandidate?.note) || '听后选择默认流程',
+    note: normalizeNullableText(options.defaultNote) || normalizeNullableText(defaultCandidate?.note) || '听后选择默认流程',
     createdAt: defaultCandidate?.createdAt || now,
     updatedAt: now
   }
@@ -1099,7 +1198,7 @@ function buildRegionOnlyProfiles(
       module: moduleRef,
       priority: REGION_FLOW_PROFILE_PRIORITY,
       enabled: true,
-      note: normalizeNullableText(binding?.note) || `${region}地区流程`,
+      note: normalizeNullableText(binding?.note) || (isGeneralRegion(region) ? '地区未命中通用流程' : `${region}地区流程`),
       createdAt: binding?.createdAt || now,
       updatedAt: now
     } as FlowProfileV1
@@ -1122,6 +1221,7 @@ function isLegacyRegionRoutingModel(profiles: FlowProfileV1[]): boolean {
       if (scene || grade) return true
       continue
     }
+    if (isGeneralRegion(region)) return true
     if (scene || grade) return true
     if (seenRegions.has(region)) return true
     seenRegions.add(region)
@@ -1129,8 +1229,14 @@ function isLegacyRegionRoutingModel(profiles: FlowProfileV1[]): boolean {
   return !hasDefault
 }
 
-function replaceRegionRoutingBindings(bindings: RegionRoutingBinding[]): boolean {
-  const nextProfiles = buildRegionOnlyProfiles(flowProfileRules.value || [], bindings || [])
+function replaceRegionRoutingBindings(
+  bindings: RegionRoutingBinding[],
+  options: {
+    defaultModuleRef?: FlowModuleRef
+    defaultNote?: string
+  } = {}
+): boolean {
+  const nextProfiles = buildRegionOnlyProfiles(flowProfileRules.value || [], bindings || [], options)
   const result = flowProfiles.replaceQuestionTypeProfiles('listening_choice', nextProfiles)
   if (!result.ok) {
     uni.showToast({ title: '地区匹配更新失败', icon: 'none' })
@@ -1162,16 +1268,91 @@ const regionBindingMap = computed(() => {
   return map
 })
 
+const defaultRoutingProfile = computed<FlowProfileV1 | null>(() => {
+  const profiles = flowProfileRules.value || []
+  for (const profile of profiles) {
+    if (profile?.enabled === false) continue
+    const region = normalizeNullableText(profile?.region)
+    if (!region || isGeneralRegion(region)) return profile
+  }
+  return null
+})
+
+const defaultRoutingModuleRef = computed<FlowModuleRef>(() => {
+  return resolveActiveModuleRef(defaultRoutingProfile.value?.module, getPublishedFallbackModuleRef())
+})
+
 const regionBindingOptions = computed<string[]>(() => {
   const fromTags = readRegionTagOptions()
   const fromBindings = regionRoutingBindings.value.map((item) => item.region)
-  const unique = new Set<string>([...fromTags, ...fromBindings])
-  return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+  const unique = new Set<string>([REGION_GENERAL_LABEL, ...fromTags, ...fromBindings])
+  return Array.from(unique.values()).sort((a, b) => {
+    if (a === REGION_GENERAL_LABEL) return -1
+    if (b === REGION_GENERAL_LABEL) return 1
+    return a.localeCompare(b, 'zh-Hans-CN')
+  })
 })
+
+const canCreateFlowLineFromWizard = computed(() => {
+  return String(flowLineWizardName.value || '').trim().length > 0
+})
+
+function suggestFlowLineNameByRegions(regions: string[]): string {
+  if (regions.length === 1) return `听后选择-${regions[0]}`
+  if (regions.length > 1) return '听后选择-多地区'
+  return '听后选择-新流程线'
+}
+
+function getStandardBaselineModule(): ListeningChoiceFlowModuleV1 {
+  const standard = flowModules.getListeningChoiceLatestPublished(LISTENING_CHOICE_STANDARD_FLOW_ID)
+  return standard || getDefaultModule()
+}
+
+function openFlowLineCreateWizard() {
+  ensureRegionRoutingMode(true)
+  flowLineWizardVisible.value = true
+  flowLineWizardBaseline.value = 'current'
+  flowLineWizardRegions.value = []
+  const currentName = normalizeModuleName(draftModuleName.value, DEFAULT_LISTENING_CHOICE_MODULE_NAME)
+  flowLineWizardName.value = `${currentName}-副本`
+  flowLineWizardNote.value = ''
+}
+
+function closeFlowLineCreateWizard() {
+  flowLineWizardVisible.value = false
+}
+
+function isFlowLineWizardRegionSelected(rawRegion: string): boolean {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return false
+  return flowLineWizardRegions.value.includes(region)
+}
+
+function toggleFlowLineWizardRegion(rawRegion: string) {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return
+  const list = [...flowLineWizardRegions.value]
+  const idx = list.indexOf(region)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(region)
+  flowLineWizardRegions.value = list
+
+  const hasManualName = String(flowLineWizardName.value || '').trim().length > 0
+  if (!hasManualName) {
+    flowLineWizardName.value = suggestFlowLineNameByRegions(list)
+  }
+}
 
 function isRegionBoundToCurrentFlowLine(rawRegion: string): boolean {
   const region = normalizeNullableText(rawRegion)
   if (!region) return false
+  if (isGeneralRegion(region)) {
+    const ref = defaultRoutingModuleRef.value
+    return (
+      String(ref.id || '') === String(currentFlowLineRef.value.id || '') &&
+      Number(ref.version || 0) === Number(currentFlowLineRef.value.version || 0)
+    )
+  }
   const binding = regionBindingMap.value.get(region)
   if (!binding) return false
   return (
@@ -1183,8 +1364,12 @@ function isRegionBoundToCurrentFlowLine(rawRegion: string): boolean {
 function formatRegionBindingTarget(rawRegion: string): string {
   const region = normalizeNullableText(rawRegion)
   if (!region) return '未绑定'
+  if (isGeneralRegion(region)) {
+    if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'
+    return formatModuleDisplayRef(defaultRoutingModuleRef.value)
+  }
   const binding = regionBindingMap.value.get(region)
-  if (!binding) return '标准流程'
+  if (!binding) return `通用：${formatModuleDisplayRef(defaultRoutingModuleRef.value)}`
   if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'
   return formatModuleDisplayRef(binding.module)
 }
@@ -1193,6 +1378,24 @@ function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
   const region = normalizeNullableText(rawRegion)
   if (!region) return
   ensureRegionRoutingMode(true)
+
+  if (isGeneralRegion(region)) {
+    const currentlyBound = isRegionBoundToCurrentFlowLine(region)
+    const targetModuleRef = currentlyBound
+      ? getPublishedFallbackModuleRef()
+      : currentFlowLineRef.value
+    const ok = replaceRegionRoutingBindings(regionRoutingBindings.value, {
+      defaultModuleRef: targetModuleRef,
+      defaultNote: currentlyBound ? '听后选择默认流程' : '听后选择通用流程'
+    })
+    if (!ok) return
+    uni.showToast({
+      title: currentlyBound ? '已恢复标准默认流程' : '已设置通用流程',
+      icon: 'success'
+    })
+    return
+  }
+
   const nextMap = new Map<string, RegionRoutingBinding>()
   regionRoutingBindings.value.forEach((item) => {
     nextMap.set(item.region, item)
@@ -1206,7 +1409,7 @@ function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
     nextMap.set(region, {
       region,
       module: currentFlowLineRef.value,
-      note: previous?.note || `${region}地区流程`,
+      note: previous?.note || (isGeneralRegion(region) ? '地区未命中通用流程' : `${region}地区流程`),
       id: previous?.id || buildRegionProfileId(region),
       createdAt: previous?.createdAt,
       updatedAt: previous?.updatedAt
@@ -1219,6 +1422,83 @@ function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
     title: currentlyBound ? `已取消 ${region} 绑定` : `已绑定 ${region}`,
     icon: 'success'
   })
+}
+
+function buildWizardBaselineDraft(): ListeningChoiceStandardFlowModuleV1 {
+  if (flowLineWizardBaseline.value === 'standard') {
+    return clone(toLegacyStandardModule(getStandardBaselineModule()))
+  }
+  return clone(toLegacyStandardModule({
+    ...listeningChoiceDraft.value,
+    id: draftModuleId.value,
+    version: draftModuleVersion.value
+  }))
+}
+
+function confirmCreateFlowLineFromWizard() {
+  const name = String(flowLineWizardName.value || '').trim()
+  if (!name) {
+    uni.showToast({ title: '请先填写流程线名称', icon: 'none' })
+    return
+  }
+  const note = String(flowLineWizardNote.value || '').trim()
+  const nextId = buildUniqueFlowLineId(`listening_choice.line.${Date.now()}`)
+  const baselineDraft = buildWizardBaselineDraft()
+
+  draftModuleId.value = nextId
+  draftModuleVersion.value = 1
+  draftModuleName.value = name
+  draftModuleNote.value = note
+  listeningChoiceDraft.value = clone(toLegacyStandardModule({
+    ...baselineDraft,
+    id: nextId,
+    version: 1
+  }))
+  visualPreviewOverrideSteps.value = null
+  clearCommitValidationIssues()
+  flowVisualEditor.clearDirty()
+  flowVisualEditor.reloadFromQuestion()
+
+  const saved = saveStandard(true, true, 1)
+  if (!saved) return
+
+  const regions = (flowLineWizardRegions.value || [])
+    .map((item) => normalizeNullableText(item))
+    .filter((item): item is string => Boolean(item))
+  if (regions.length > 0) {
+    ensureRegionRoutingMode(true)
+    const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))
+    const specificRegions = regions.filter((region) => !isGeneralRegion(region))
+    const nextMap = new Map<string, RegionRoutingBinding>()
+    regionRoutingBindings.value.forEach((item) => {
+      nextMap.set(item.region, item)
+    })
+    specificRegions.forEach((region) => {
+      const previous = nextMap.get(region)
+      nextMap.set(region, {
+        region,
+        module: {
+          id: nextId,
+          version: 1
+        },
+        note: previous?.note || (isGeneralRegion(region) ? '地区未命中通用流程' : `${region}地区流程`),
+        id: previous?.id || buildRegionProfileId(region),
+        createdAt: previous?.createdAt,
+        updatedAt: previous?.updatedAt
+      })
+    })
+    replaceRegionRoutingBindings(Array.from(nextMap.values()), hasGeneralRegion
+      ? {
+          defaultModuleRef: {
+            id: nextId,
+            version: 1
+          },
+          defaultNote: '听后选择通用流程'
+        }
+      : {})
+  }
+
+  closeFlowLineCreateWizard()
 }
 
 const routeSimulator = useRouteSimulator({
@@ -2405,36 +2685,14 @@ function switchToFlowLine(lineId: string) {
   })
 }
 
-function createFlowLineDraft() {
-  const name = String(newFlowLineName.value || '').trim()
-  if (!name) {
-    uni.showToast({ title: '请先填写流程线名称', icon: 'none' })
-    return
-  }
-  const nextId = buildUniqueFlowLineId(`listening_choice.line.${Date.now()}`)
-  draftModuleId.value = nextId
-  draftModuleVersion.value = 1
-  draftModuleName.value = name
-  draftModuleNote.value = ''
-  listeningChoiceDraft.value = clone(toLegacyStandardModule({
-    ...listeningChoiceDraft.value,
-    id: nextId,
-    version: 1
-  }))
-  visualPreviewOverrideSteps.value = null
-  clearCommitValidationIssues()
-  flowVisualEditor.clearDirty()
-  flowVisualEditor.reloadFromQuestion()
-  newFlowLineName.value = ''
-  uni.showToast({ title: `已创建流程线草稿：${name}`, icon: 'none' })
-}
-
 function goHome() {
   page.value = 'home'
+  flowLineWizardVisible.value = false
 }
 
 function openListeningChoice() {
   ensureRegionRoutingMode(true)
+  flowLineWizardVisible.value = false
   const module = getDefaultModule()
   draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   draftModuleVersion.value = Number(module.version || 1)
@@ -2462,21 +2720,21 @@ function showPublishLogs() {
   moduleLifecycle.showPublishLogs()
 }
 
-function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number) {
-  moduleLifecycle.saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
+function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number): boolean {
+  return moduleLifecycle.saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
 }
 
-function updateCurrentFlowLine(skipWarningCheck = false, skipImpactCheck = false) {
+function updateCurrentFlowLine(skipWarningCheck = false, skipImpactCheck = false): boolean {
   const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-  saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
+  return saveStandard(skipWarningCheck, skipImpactCheck, targetVersion)
 }
 
-function saveStandardAsNextVersion() {
-  moduleLifecycle.saveStandardAsNextVersion()
+function saveStandardAsNextVersion(): boolean {
+  return moduleLifecycle.saveStandardAsNextVersion()
 }
 
-function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false) {
-  moduleLifecycle.publishCurrentStandard(skipWarningCheck, skipImpactCheck)
+function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false): boolean {
+  return moduleLifecycle.publishCurrentStandard(skipWarningCheck, skipImpactCheck)
 }
 
 function archiveCurrentStandard() {
@@ -3737,6 +3995,188 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   grid-template-columns: 240px minmax(0, 1fr) 300px;
 }
 
+.flow-line-wizard-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 360;
+}
+
+.flow-line-wizard-modal__mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.44);
+}
+
+.flow-line-wizard-modal__panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, 92vw);
+  max-height: min(720px, 88vh);
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.flow-line-wizard-modal__header {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.flow-line-wizard-modal__title-wrap {
+  min-width: 0;
+}
+
+.flow-line-wizard-modal__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.flow-line-wizard-modal__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.flow-line-wizard-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.flow-line-wizard-modal__footer {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.flow-line-wizard-modal__summary {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+.flow-line-wizard-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-section {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px;
+}
+
+.wizard-section__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.wizard-section__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+}
+
+.wizard-baseline {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wizard-baseline__chip {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.86);
+  padding: 8px 10px;
+}
+
+.wizard-baseline__chip.active {
+  border-color: rgba(59, 130, 246, 0.48);
+  background: rgba(219, 234, 254, 0.72);
+}
+
+.wizard-baseline__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.wizard-baseline__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+}
+
+.wizard-form {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wizard-region {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wizard-region__chip {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.86);
+  padding: 8px 10px;
+}
+
+.wizard-region__chip.active {
+  border-color: rgba(59, 130, 246, 0.48);
+  background: rgba(219, 234, 254, 0.72);
+}
+
+.wizard-region__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.wizard-region__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+}
+
 .flow-visual-stencil-pane {
   border-right: 1px solid rgba(15, 23, 42, 0.1);
   padding: 12px;
@@ -3960,6 +4400,17 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   .flow-visual-detail {
     border-left: 0;
     border-top: 1px solid rgba(15, 23, 42, 0.1);
+  }
+
+  .flow-line-wizard-modal__panel {
+    width: min(760px, 94vw);
+    max-height: min(760px, 92vh);
+  }
+
+  .wizard-baseline,
+  .wizard-form,
+  .wizard-region {
+    grid-template-columns: 1fr;
   }
 
 }

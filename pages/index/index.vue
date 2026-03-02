@@ -3,6 +3,7 @@
     <!-- 左侧导航 -->
     <SideNavigation 
       v-model:module="currentModule"
+      @create-new="onCreateFromSidebar"
     />
 
     <!-- 右侧内容区 -->
@@ -11,6 +12,7 @@
       <EditorWorkspace 
         v-if="currentModule === 'editor'" 
         v-model:type="currentType"
+        @create-by-type="createQuestionByType"
       />
 
       <LearningWorkspace v-else-if="currentModule === 'learning'" />
@@ -31,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import SideNavigation from '/components/layout/SideNavigation.vue'
 import EditorWorkspace from '/components/views/EditorWorkspace.vue'
 import LearningWorkspace from '/components/views/LearningWorkspace.vue'
@@ -48,8 +50,6 @@ const currentModule = computed({
   set: (mod: string) => appShell.switchModule(mod)
 })
 const currentType = ref('listening_choice')
-const suppressTypeCreate = ref(false)
-const canCreateByType = ref(false)
 
 // 监听从题库加载题目的事件
 const onSwitchToEditor = () => {
@@ -57,30 +57,33 @@ const onSwitchToEditor = () => {
   syncTypeFromCurrentDraft()
 }
 
+function onCreateFromSidebar() {
+  currentModule.value = 'editor'
+  createQuestionByType(currentType.value || 'listening_choice')
+}
+
 function syncTypeFromCurrentDraft() {
   const nextType = String(questionDraft.state.currentQuestion?.type || '').trim()
   if (!nextType || !(questionTemplates as any)[nextType]) return
-  suppressTypeCreate.value = true
   currentType.value = nextType
-  suppressTypeCreate.value = false
 }
 
-// 监听题型切换 -> 创建新题目
-watch(currentType, (newType) => {
-  if (suppressTypeCreate.value || !canCreateByType.value) return
+function createQuestionByType(newType: string) {
   if (currentModule.value !== 'editor') return
 
   const template = questionTemplates[newType as TemplateKey]
   if (!template) return
 
-  questionDraft.createByType(newType as TemplateKey)
+  currentType.value = newType
+  questionDraft.createByType(newType as TemplateKey, {
+    useStoredTemplate: false
+  })
   uni.showToast({ title: `已创建新${template.name}`, icon: 'none' })
-})
+}
 
 onMounted(() => {
   questionDraft.loadFromStorage()
   syncTypeFromCurrentDraft()
-  canCreateByType.value = true
 })
 </script>
 

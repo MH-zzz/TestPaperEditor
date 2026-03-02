@@ -115,11 +115,32 @@ test('index page should sync currentType from questionDraft store on mount', asy
   assert.ok(src.includes('syncTypeFromCurrentDraft()'))
 })
 
+test('selecting the same question type should still create a fresh draft', async () => {
+  const pageSrc = await readFile('pages/index/index.vue')
+  const editorSrc = await readFile('components/views/EditorWorkspace.vue')
+  assert.ok(pageSrc.includes('@create-by-type="createQuestionByType"'))
+  assert.ok(pageSrc.includes('function createQuestionByType'))
+  assert.ok(pageSrc.includes('questionDraft.createByType(newType as TemplateKey, {'))
+  assert.ok(pageSrc.includes('useStoredTemplate: false'))
+  assert.ok(editorSrc.includes("(e: 'create-by-type', type: string): void"))
+  assert.ok(editorSrc.includes("emit('create-by-type', nextType)"))
+})
+
 test('side navigation should expose learning module entry', async () => {
   const src = await readFile('components/layout/SideNavigation.vue')
   assert.ok(src.includes("currentModule === 'learning'"))
   assert.ok(src.includes("switchModule('learning')"))
   assert.ok(src.includes('学习'))
+})
+
+test('new entry in side navigation should trigger create flow instead of simple module switch', async () => {
+  const sideSrc = await readFile('components/layout/SideNavigation.vue')
+  const pageSrc = await readFile('pages/index/index.vue')
+  assert.ok(sideSrc.includes('@click="createNewQuestion"'))
+  assert.ok(sideSrc.includes("(e: 'create-new'): void"))
+  assert.ok(sideSrc.includes("emit('create-new')"))
+  assert.ok(pageSrc.includes('@create-new="onCreateFromSidebar"'))
+  assert.ok(pageSrc.includes('function onCreateFromSidebar()'))
 })
 
 test('index page should route learning module to LearningWorkspace', async () => {

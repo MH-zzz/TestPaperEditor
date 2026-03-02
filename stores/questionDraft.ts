@@ -1,6 +1,12 @@
 import { reactive } from 'vue'
 import type { Question, ListeningChoiceQuestion, QuestionMetadata } from '/types'
-import { questionTemplates, migrateListeningChoiceFlowSplitIntro, type TemplateKey, generateId } from '/templates'
+import {
+  questionTemplates,
+  migrateListeningChoiceFlowSplitIntro,
+  createListeningChoiceTemplate,
+  type TemplateKey,
+  generateId
+} from '/templates'
 import { resolveListeningChoiceQuestion } from '../engine/flow/listening-choice/binding.ts'
 import { createPersistenceScheduler } from './persistence'
 import {
@@ -120,10 +126,12 @@ class QuestionDraftStore {
     return this.state.currentQuestion
   }
 
-  createByType(type: TemplateKey) {
+  createByType(type: TemplateKey, options: { useStoredTemplate?: boolean } = {}) {
     const template = questionTemplates[type]
     if (!template) return null
-    const created = template.create() as Question
+    const created = (type === 'listening_choice' && options.useStoredTemplate === false)
+      ? createListeningChoiceTemplate({ useStoredTemplate: false })
+      : template.create() as Question
     this.setCurrentQuestion(created, {
       snapshot: true,
       normalizeFlow: true,
@@ -171,13 +179,26 @@ class QuestionDraftStore {
     this.state.dirty = false
   }
 
-  updateMetadata(patch: { tags?: string[]; source?: string }) {
+  updateMetadata(patch: { tags?: string[]; source?: string; region?: string }) {
     const current = this.state.currentQuestion
     if (!current) return
 
     ensureMetadata(current)
     if (patch.tags !== undefined) current.metadata.tags = [...patch.tags]
     if (patch.source !== undefined) current.metadata.source = patch.source
+    if (patch.region !== undefined) {
+      const region = String(patch.region || '').trim()
+      if (region) current.metadata.region = region
+      else delete current.metadata.region
+
+      const flowContext = isObjectRecord(current.metadata.flowContext)
+        ? { ...current.metadata.flowContext }
+        : {}
+      if (region) flowContext.region = region
+      else delete flowContext.region
+      if (Object.keys(flowContext).length > 0) current.metadata.flowContext = flowContext
+      else delete current.metadata.flowContext
+    }
     this.draftPersistence.schedule()
     this.state.dirty = true
   }

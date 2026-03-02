@@ -17,49 +17,6 @@
       </view>
     </view>
 
-    <view v-if="listeningChoice" class="flow-context-bar">
-      <text class="flow-context-bar__title">流程上下文</text>
-      <view class="flow-context-bar__fields">
-        <view class="flow-context-bar__field">
-          <text class="flow-context-bar__label">地区</text>
-          <input
-            class="flow-context-bar__input"
-            :value="getFlowContextValue('region')"
-            placeholder="例如：广东"
-            @input="(e) => updateFlowContext('region', e.detail.value)"
-          />
-        </view>
-
-        <view class="flow-context-bar__field">
-          <text class="flow-context-bar__label">场景</text>
-          <input
-            class="flow-context-bar__input"
-            :value="getFlowContextValue('scene')"
-            placeholder="例如：中考"
-            @input="(e) => updateFlowContext('scene', e.detail.value)"
-          />
-        </view>
-
-        <view class="flow-context-bar__field">
-          <text class="flow-context-bar__label">年级</text>
-          <input
-            class="flow-context-bar__input"
-            :value="getFlowContextValue('grade')"
-            placeholder="例如：九年级"
-            @input="(e) => updateFlowContext('grade', e.detail.value)"
-          />
-        </view>
-
-        <button class="btn btn-outline btn-xs" @click="clearFlowContext">清空</button>
-      </view>
-      <view class="flow-context-bar__runtime">
-        <text class="flow-context-bar__runtime-item">来源：{{ runtimeMeta.sourceKind || '-' }}</text>
-        <text class="flow-context-bar__runtime-item">规则：{{ runtimeMeta.profileId || '默认规则' }}</text>
-        <text class="flow-context-bar__runtime-item">模块：{{ runtimeMeta.moduleDisplayRef || '-' }}</text>
-        <text class="flow-context-bar__runtime-item">版本：{{ runtimeMeta.moduleVersionText || '-' }}</text>
-      </view>
-    </view>
-
     <!-- 下部：编辑 + 预览 -->
     <view class="workspace-body">
       <!-- 左侧：编辑表单 -->
@@ -80,6 +37,12 @@
 
       <!-- 中间：引导流程（听力选择题） -->
       <view v-if="listeningChoice" class="flow-area">
+        <view class="flow-route-hint">
+          <text class="flow-route-hint__title">匹配规则</text>
+          <text class="flow-route-hint__line">地区标签：{{ flowRouteRegionLabel }}</text>
+          <text class="flow-route-hint__line">流程线：{{ runtimeMeta.moduleDisplayRef || '标准流程' }}</text>
+          <text class="flow-route-hint__line">结论：{{ flowRouteResolutionHint }}</text>
+        </view>
         <ListeningChoiceFlowPanel
           :model-value="listeningChoice"
           :active-step-index="currentStepIndex"
@@ -247,6 +210,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:type', type: string): void
+  (e: 'create-by-type', type: string): void
 }>()
 
 // 状态
@@ -519,6 +483,7 @@ function getTypeName(type?: string) {
 function selectType(nextType: string) {
   typeSelectorVisible.value = false
   emit('update:type', nextType)
+  emit('create-by-type', nextType)
 }
 
 function selectInteractionLeaf(item: InteractionLeaf) {
@@ -538,54 +503,23 @@ function resolveListeningChoiceFlowSource(data: Question): Question {
   return resolveListeningChoiceQuestion(data, { generateId })
 }
 
-function normalizeFlowContextText(v: unknown): string | undefined {
+function normalizeRouteText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
 }
 
-function getFlowContextValue(key: 'region' | 'scene' | 'grade'): string {
+const flowRouteRegionLabel = computed(() => {
   const metadata = readQuestionMetadata(questionData.value)
-  const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
-  const flowValue = normalizeFlowContextText(flowContext[key])
-  const metadataValue = normalizeFlowContextText(metadata[key])
-  return flowValue || metadataValue || ''
-}
+  const region = normalizeRouteText(metadata.region)
+  return region || '未打地区标签'
+})
 
-function updateFlowContext(key: 'region' | 'scene' | 'grade', rawValue: string) {
-  const current = questionData.value
-  if (!current || current.type !== 'listening_choice') return
-
-  const nextValue = normalizeFlowContextText(rawValue)
-  const metadata = readQuestionMetadata(current)
-  const flowContext = isObjectRecord(metadata.flowContext)
-    ? { ...metadata.flowContext }
-    : {}
-
-  if (nextValue) {
-    flowContext[key] = nextValue
-    metadata[key] = nextValue
-  } else {
-    delete flowContext[key]
-    delete metadata[key]
-  }
-
-  if (Object.keys(flowContext).length > 0) metadata.flowContext = flowContext
-  else delete metadata.flowContext
-
-  const nextQuestion = {
-    ...current,
-    metadata
-  }
-  questionData.value = resolveListeningChoiceFlowSource(nextQuestion)
-  clampPreviewStepIndex()
-}
-
-function clearFlowContext() {
-  updateFlowContext('region', '')
-  updateFlowContext('scene', '')
-  updateFlowContext('grade', '')
-}
+const flowRouteResolutionHint = computed(() => {
+  const metadata = readQuestionMetadata(questionData.value)
+  const region = normalizeRouteText(metadata.region)
+  return region ? '按地区标签匹配；未命中走通用（默认/标准）流程' : '未打地区标签，走通用（默认/标准）流程'
+})
 
 function formatValidationIssues(list: Array<{ path?: string; message: string }>) {
   return list
@@ -1168,69 +1102,6 @@ watch(typeSelectorVisible, (open) => {
   overflow: hidden;
 }
 
-.flow-context-bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 18px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.flow-context-bar__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.72);
-  flex-shrink: 0;
-}
-
-.flow-context-bar__fields {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.flow-context-bar__field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.flow-context-bar__label {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.62);
-  flex-shrink: 0;
-}
-
-.flow-context-bar__input {
-  width: 120px;
-  height: 30px;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(248, 250, 252, 0.95);
-  padding: 0 10px;
-  font-size: 12px;
-}
-
-.flow-context-bar__runtime {
-  width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-}
-
-.flow-context-bar__runtime-item {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-}
-
 // 左侧编辑
 .editor-area {
   flex: 1;
@@ -1270,6 +1141,27 @@ watch(typeSelectorVisible, (open) => {
   flex-direction: column;
   flex-shrink: 0;
   overflow: hidden;
+}
+
+.flow-route-hint {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.flow-route-hint__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.78);
+}
+
+.flow-route-hint__line {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.62);
+  line-height: 1.45;
 }
 
 // 右侧预览

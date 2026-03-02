@@ -9,10 +9,10 @@
       <view 
         class="nav-item" 
         :class="{ active: currentModule === 'editor' }"
-        @click="switchModule('editor')"
+        @click="createNewQuestion"
       >
         <text class="nav-icon">✏️</text>
-        <text class="nav-label">编辑</text>
+        <text class="nav-label">新建</text>
       </view>
 
       <view
@@ -130,6 +130,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:module', module: string): void
+  (e: 'create-new'): void
 }>()
 
 const currentModule = computed<string>({
@@ -140,11 +141,16 @@ const selectedTags = ref<string[]>([])
 const sourceText = ref('')
 const expandedIds = ref<string[]>([])
 
-const SINGLE_ROOTS = new Set(['教材版本', '学期', '年级', '年份', '难度'])
-const MULTI_ROOTS = new Set(['知识点', '地区', '场景'])
+const SINGLE_ROOTS = new Set(['教材版本', '学期', '年级', '年份', '难度', '地区'])
+const MULTI_ROOTS = new Set(['知识点', '场景'])
 
 function switchModule(mod: string) {
   currentModule.value = mod
+}
+
+function createNewQuestion() {
+  currentModule.value = 'editor'
+  emit('create-new')
 }
 
 function loadCurrentQuestion() {
@@ -160,10 +166,24 @@ function loadCurrentQuestion() {
   sourceText.value = data.metadata.source || ''
 }
 
+function resolveRegionFromTags(tags: string[]): string {
+  const list = Array.isArray(tags) ? tags : []
+  for (const id of list) {
+    if (tagStore.getRootCategory(id) !== '地区') continue
+    const path = String(tagStore.getPath(id) || '')
+    const parts = path.split('/').map(p => p.trim()).filter(Boolean)
+    const leaf = parts[parts.length - 1] || ''
+    if (leaf && leaf !== '地区') return leaf
+  }
+  return ''
+}
+
 function saveCurrentQuestion(tags: string[], source?: string) {
+  const region = resolveRegionFromTags(tags)
   questionDraft.updateMetadata({
     tags,
-    source
+    source,
+    region
   })
 }
 

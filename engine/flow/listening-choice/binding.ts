@@ -147,6 +147,21 @@ function resolveStandardModule(
     ? Math.max(1, toInt(standardSource?.version, 1))
     : 0
   const profileId = normalizeCtxValue(standardSource?.profileId) || ''
+  const hasRoutingCtx = Boolean(
+    normalizeCtxValue(ctx?.region) ||
+    normalizeCtxValue(ctx?.scene) ||
+    normalizeCtxValue(ctx?.grade)
+  )
+  let matchedProfile = null as ReturnType<typeof flowProfiles.resolve>
+
+  // When routing context exists (e.g. region tag), prefer profile routing over stale source refs.
+  if (hasRoutingCtx) {
+    matchedProfile = flowProfiles.resolve('listening_choice', ctx)
+    if (matchedProfile?.module) {
+      const hit = flowModules.getListeningChoiceByRef(matchedProfile.module)
+      if (isActiveModule(hit)) return { module: hit, profileId: matchedProfile.id }
+    }
+  }
 
   if (explicitId && explicitVersion > 0) {
     const hit = flowModules.getListeningChoiceByRef({ id: explicitId, version: explicitVersion })
@@ -166,7 +181,7 @@ function resolveStandardModule(
     if (latest) return { module: latest, profileId: profileId || undefined }
   }
 
-  const matchedProfile = flowProfiles.resolve('listening_choice', ctx)
+  if (!matchedProfile) matchedProfile = flowProfiles.resolve('listening_choice', ctx)
   if (matchedProfile?.module) {
     const hit = flowModules.getListeningChoiceByRef(matchedProfile.module)
     if (isActiveModule(hit)) return { module: hit, profileId: matchedProfile.id }
