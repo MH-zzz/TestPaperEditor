@@ -60,6 +60,10 @@ test('ListeningChoiceRenderer countdown labels should reflect what happens next'
   assert.ok(src.includes('播放描述音频前-倒计时'))
   assert.ok(src.includes('播放正文音频前-倒计时'))
   assert.ok(src.includes('答题前-倒计时'))
+  assert.ok(src.includes('正文重播前-倒计时'))
+  assert.ok(src.includes('resolveReplayGapSeconds'))
+  assert.ok(src.includes('startAudioReplayGap'))
+  assert.ok(src.includes('repeatGapSeconds'))
 })
 
 test('FlowModulesManager should support template-data + flow-rule + preview workflow', async () => {
@@ -76,6 +80,11 @@ test('FlowModulesManager should support template-data + flow-rule + preview work
   assert.ok(src.includes(':sortable="true"'))
   assert.ok(src.includes('@reorder="reorderPerGroupStepByFlowIndex"'))
   assert.ok(src.includes('function reorderPerGroupStepByFlowIndex'))
+  assert.ok(src.includes('间隔倒计时'))
+  assert.ok(src.includes('setPerGroupRepeatGapSeconds'))
+  assert.ok(src.includes(':display-total-steps="previewDisplayTotalSteps"'))
+  assert.ok(src.includes(':nav-step-index="previewVirtualIndex"'))
+  assert.ok(src.includes('setPreviewVirtualIndex(previewVirtualIndex.value + 1)'))
 })
 
 test('ListeningChoiceRenderer answerChoice should not render early-next button', async () => {
@@ -106,6 +115,24 @@ test('hear-answer renderer should show order + stem in preview', async () => {
   assert.ok(rendererSrc.includes('if (isHearAnswerVariant.value) return \'\''))
 })
 
+test('rich text intro/prompt images should support full-row rendering with natural ratio', async () => {
+  const richTextSrc = await readFile('components/renderer/RichTextRenderer.vue')
+  const introSrc = await readFile('components/renderer/listening-choice/ListeningChoiceIntroBody.vue')
+  const stepContextSrc = await readFile('components/renderer/listening-choice/ListeningChoiceStepContext.vue')
+  const countdownSrc = await readFile('components/renderer/listening-choice/ListeningChoiceCountdownBody.vue')
+  const groupPromptSrc = await readFile('components/renderer/listening-choice/ListeningChoiceGroupPromptBody.vue')
+
+  assert.ok(richTextSrc.includes("imageLayout?: 'inline' | 'full-row'"))
+  assert.ok(richTextSrc.includes("imageLayout: 'inline'"))
+  assert.ok(richTextSrc.includes('rich-text-renderer--image-full-row'))
+  assert.ok(richTextSrc.includes('width: 100%'))
+  assert.ok(richTextSrc.includes('height: auto'))
+  assert.ok(introSrc.includes('image-layout="full-row"'))
+  assert.ok(stepContextSrc.includes('image-layout="full-row"'))
+  assert.ok(countdownSrc.includes('image-layout="full-row"'))
+  assert.ok(groupPromptSrc.includes('image-layout="full-row"'))
+})
+
 test('ListeningChoiceRenderer promptTone should reuse previous view instead of standalone page', async () => {
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
   assert.ok(src.includes('function resolveDisplayStepIndex'))
@@ -116,6 +143,7 @@ test('ListeningChoiceFlowDiagram should expose drag handle and reorder emit', as
   const src = await readFile('components/editor/ListeningChoiceFlowDiagram.vue')
   assert.ok(src.includes("draggable=\"true\""))
   assert.ok(src.includes("(e: 'reorder', fromIndex: number, toIndex: number): void"))
+  assert.ok(src.includes('每次间隔倒计时'))
 })
 
 test('quick add step buttons should be shared by a reusable component', async () => {
@@ -207,6 +235,10 @@ test('phone preview panel should support configurable render mode', async () => 
   assert.ok(src.includes(':mode=\"renderMode\"'))
   assert.ok(src.includes('runtimeMeta?: RuntimeMetaInfo | null'))
   assert.ok(src.includes('来源：{{ runtimeMeta?.sourceKind || \'-\' }}'))
+  assert.ok(src.includes('displayStepIndex?: number'))
+  assert.ok(src.includes('resolvedDisplayTotalSteps'))
+  assert.ok(src.includes('navStepIndex?: number'))
+  assert.ok(src.includes('effectiveNavStepIndex'))
 })
 
 test('ListeningChoiceEditor sub-questions should support collapse and expand', async () => {

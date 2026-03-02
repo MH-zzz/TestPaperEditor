@@ -1,5 +1,5 @@
 <template>
-  <view class="rich-text-renderer">
+  <view class="rich-text-renderer" :class="{ 'rich-text-renderer--image-full-row': imageLayout === 'full-row' }">
     <template v-if="content?.content?.length">
       <template v-for="(node, index) in content.content" :key="index">
         <!-- 图片节点 -->
@@ -26,8 +26,10 @@ import type { RichTextContent, TextMark, RichTextTextNode } from '/types'
 const props = withDefaults(defineProps<{
   content: RichTextContent | null | undefined
   placeholder?: string
+  imageLayout?: 'inline' | 'full-row'
 }>(), {
-  placeholder: ''
+  placeholder: '',
+  imageLayout: 'inline'
 })
 
 // 根据 marks 生成样式
@@ -87,6 +89,21 @@ function getNodeClass(marks?: TextMark[]): Record<string, boolean> {
     height: auto;
     border-radius: 4px;
     vertical-align: middle;
+    object-fit: contain;
+  }
+}
+
+.rich-text-renderer--image-full-row {
+  display: block;
+
+  .rich-text-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    height: auto;
+    margin: 6px 0;
+    border-radius: 8px;
     object-fit: contain;
   }
 }

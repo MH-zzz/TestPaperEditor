@@ -6,7 +6,7 @@ export const listeningChoicePlayAudioStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-播放音频步骤',
     requiredFields: ['kind', 'groupId', 'audioSource'],
-    optionalFields: ['showTitle', 'showQuestionTitle', 'showQuestionTitleDescription', 'showGroupPrompt', 'autoNext']
+    optionalFields: ['showTitle', 'repeatGapSeconds', 'showQuestionTitle', 'showQuestionTitleDescription', 'showGroupPrompt', 'autoNext']
   },
   renderer: {
     view: 'playAudio',

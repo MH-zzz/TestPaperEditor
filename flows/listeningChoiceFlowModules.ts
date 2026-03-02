@@ -13,11 +13,12 @@ export type ListeningChoiceStandardPerGroupStepDef =
       kind: 'playAudio'
       showTitle?: boolean
       audioSource: ListeningChoiceAudioSource
+      repeatGapSeconds?: number
       showQuestionTitle?: boolean
       showQuestionTitleDescription?: boolean
       showGroupPrompt?: boolean
     }
-  | { kind: 'countdown'; showTitle?: boolean; seconds?: number; label?: string }
+  | { kind: 'countdown'; showTitle?: boolean; showQuestionTitle?: boolean; seconds?: number; label?: string }
   | { kind: 'promptTone'; showTitle?: boolean; url?: string }
   | {
       kind: 'answerChoice'
@@ -67,7 +68,7 @@ export const DEFAULT_LISTENING_CHOICE_STANDARD_MODULE: ListeningChoiceStandardFl
   introCountdownLabel: '准备',
   perGroupSteps: [
     { kind: 'playAudio', showTitle: true, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
-    { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' },
+    { kind: 'countdown', showTitle: true, showQuestionTitle: true, seconds: 3, label: '准备' },
     { kind: 'playAudio', showTitle: true, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
     { kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
   ]
@@ -85,7 +86,7 @@ export const DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE: ListeningChoiceStand
   introCountdownLabel: '准备',
   perGroupSteps: [
     { kind: 'playAudio', showTitle: false, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
-    { kind: 'countdown', showTitle: false, seconds: 5, label: '答题准备' },
+    { kind: 'countdown', showTitle: false, showQuestionTitle: true, seconds: 5, label: '答题准备' },
     { kind: 'playAudio', showTitle: false, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
     { kind: 'promptTone', showTitle: false, url: '/static/audio/small_time.mp3' },
     { kind: 'answerChoice', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
@@ -121,6 +122,13 @@ function nonEmptyString(v: any): string | undefined {
 
 function normalizeAudioSource(v: any): ListeningChoiceAudioSource {
   return v === 'description' ? 'description' : 'content'
+}
+
+function normalizeRepeatGapSeconds(v: any): number | undefined {
+  if (v === '' || v == null) return undefined
+  const n = toInt(v, -1)
+  if (!Number.isFinite(n)) return undefined
+  return Math.max(0, n)
 }
 
 function isHearAnswerVariant(question: any): boolean {
@@ -179,6 +187,11 @@ function applyStandardOverride(step: any, override: any | undefined): any {
 
   if (kind === 'playAudio') {
     if (typeof override.showTitle === 'boolean') next.showTitle = override.showTitle
+    if (Object.prototype.hasOwnProperty.call(override, 'repeatGapSeconds')) {
+      const repeatGapSeconds = normalizeRepeatGapSeconds(override.repeatGapSeconds)
+      if (repeatGapSeconds == null) delete next.repeatGapSeconds
+      else next.repeatGapSeconds = repeatGapSeconds
+    }
     if (typeof override.showQuestionTitle === 'boolean') next.showQuestionTitle = override.showQuestionTitle
     if (typeof override.showQuestionTitleDescription === 'boolean') next.showQuestionTitleDescription = override.showQuestionTitleDescription
     if (typeof override.showGroupPrompt === 'boolean') next.showGroupPrompt = override.showGroupPrompt
@@ -187,6 +200,7 @@ function applyStandardOverride(step: any, override: any | undefined): any {
 
   if (kind === 'countdown') {
     if (typeof override.showTitle === 'boolean') next.showTitle = override.showTitle
+    if (typeof override.showQuestionTitle === 'boolean') next.showQuestionTitle = override.showQuestionTitle
     if (typeof override.label === 'string') next.label = override.label
     return next
   }
@@ -229,15 +243,27 @@ export function normalizeListeningChoiceStandardModule(input: any): ListeningCho
         const showTitle = typeof s.showTitle === 'boolean' ? s.showTitle : true
         if (kind === 'playAudio') {
           const audioSource = normalizeAudioSource(s.audioSource)
+          const repeatGapSeconds = audioSource === 'content'
+            ? normalizeRepeatGapSeconds(s.repeatGapSeconds)
+            : undefined
           const showQuestionTitle = typeof s.showQuestionTitle === 'boolean' ? s.showQuestionTitle : true
           const showQuestionTitleDescription = typeof s.showQuestionTitleDescription === 'boolean' ? s.showQuestionTitleDescription : true
           const showGroupPrompt = typeof s.showGroupPrompt === 'boolean' ? s.showGroupPrompt : true
-          return { kind: 'playAudio', showTitle, audioSource, showQuestionTitle, showQuestionTitleDescription, showGroupPrompt }
+          return {
+            kind: 'playAudio',
+            showTitle,
+            audioSource,
+            ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
+            showQuestionTitle,
+            showQuestionTitleDescription,
+            showGroupPrompt
+          }
         }
         if (kind === 'countdown') {
+          const showQuestionTitle = typeof s.showQuestionTitle === 'boolean' ? s.showQuestionTitle : true
           const seconds = Math.max(0, toInt(s.seconds, 3))
           const label = typeof s.label === 'string' ? s.label : '准备'
-          return { kind: 'countdown', showTitle, seconds, label }
+          return { kind: 'countdown', showTitle, showQuestionTitle, seconds, label }
         }
         if (kind === 'promptTone') {
           const url = typeof s.url === 'string' ? s.url : '/static/audio/small_time.mp3'
@@ -406,12 +432,17 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         const key = `g${idx}.${kind}${suffix}`
 
         if (kind === 'playAudio') {
+          const audioSource = normalizeAudioSource(def?.audioSource)
+          const repeatGapSeconds = audioSource === 'content'
+            ? normalizeRepeatGapSeconds((def as any)?.repeatGapSeconds)
+            : undefined
           plan.push({
             key,
             step: {
               kind: 'playAudio',
               showTitle: getBool(def, 'showTitle', true),
-              audioSource: normalizeAudioSource(def?.audioSource),
+              audioSource,
+              ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
               showQuestionTitle: getBool(def, 'showQuestionTitle', true),
               showQuestionTitleDescription: getBool(def, 'showQuestionTitleDescription', true),
               showGroupPrompt: getBool(def, 'showGroupPrompt', true),
@@ -425,7 +456,17 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
       if (kind === 'countdown') {
         const seconds = Math.max(0, toInt(g?.prepareSeconds, Math.max(0, toInt(def?.seconds, 3))))
         const label = typeof def?.label === 'string' ? def.label : '准备'
-        plan.push({ key, step: { kind: 'countdown', showTitle: getBool(def, 'showTitle', true), seconds, label, autoNext: 'countdownEnded' } })
+        plan.push({
+          key,
+          step: {
+            kind: 'countdown',
+            showTitle: getBool(def, 'showTitle', true),
+            showQuestionTitle: getBool(def, 'showQuestionTitle', true),
+            seconds,
+            label,
+            autoNext: 'countdownEnded'
+          }
+        })
         return
       }
 
@@ -575,6 +616,10 @@ export function detectListeningChoiceStandardFlowOverrides(question: any, curren
     }
 
     if (expected.kind === 'countdown') {
+      const expectedShowQuestionTitle = getBool(expected, 'showQuestionTitle', true)
+      const actualShowQuestionTitle = getBool(actual, 'showQuestionTitle', true)
+      if (actualShowQuestionTitle !== expectedShowQuestionTitle) patch.showQuestionTitle = actualShowQuestionTitle
+
       const expectedLabel = typeof expected.label === 'string' ? expected.label : ''
       const actualLabel = typeof actual.label === 'string' ? actual.label : expectedLabel
       if (actualLabel !== expectedLabel) patch.label = actualLabel
@@ -595,6 +640,12 @@ export function detectListeningChoiceStandardFlowOverrides(question: any, curren
     }
 
     if (expected.kind === 'playAudio') {
+      const expectedRepeatGapSeconds = normalizeRepeatGapSeconds((expected as any).repeatGapSeconds)
+      const actualRepeatGapSeconds = normalizeRepeatGapSeconds((actual as any).repeatGapSeconds)
+      if (actualRepeatGapSeconds !== expectedRepeatGapSeconds) {
+        patch.repeatGapSeconds = actualRepeatGapSeconds
+      }
+
       const expectedShowQuestionTitle = getBool(expected, 'showQuestionTitle', true)
       const actualShowQuestionTitle = getBool(actual, 'showQuestionTitle', true)
       if (actualShowQuestionTitle !== expectedShowQuestionTitle) patch.showQuestionTitle = actualShowQuestionTitle
@@ -640,6 +691,7 @@ export function concreteListeningChoiceStepsToTemplate(question: any, steps: any
     }
 
     if (s.kind === 'countdown') {
+      if (typeof s.showQuestionTitle === 'boolean') base.showQuestionTitle = s.showQuestionTitle
       if (typeof s.seconds === 'number') base.seconds = Math.max(0, Math.floor(s.seconds))
       if (typeof s.label === 'string') base.label = s.label
 
@@ -658,6 +710,10 @@ export function concreteListeningChoiceStepsToTemplate(question: any, steps: any
       const gi = groupIndexById[String(s.groupId || '')]
       if (typeof gi === 'number') base.groupIndex = gi
       if (s.kind === 'playAudio') base.audioSource = normalizeAudioSource((s as any).audioSource)
+      if (s.kind === 'playAudio') {
+        const repeatGapSeconds = normalizeRepeatGapSeconds((s as any).repeatGapSeconds)
+        if (repeatGapSeconds != null) base.repeatGapSeconds = repeatGapSeconds
+      }
       if (s.kind === 'promptTone' && typeof (s as any).url === 'string') base.url = (s as any).url
     }
 
@@ -714,6 +770,7 @@ export function materializeListeningChoiceTemplateSteps(question: any, templateS
     }
 
     if (s.kind === 'countdown') {
+      if (typeof s.showQuestionTitle === 'boolean') step.showQuestionTitle = s.showQuestionTitle
       if (typeof s.seconds === 'number') step.seconds = Math.max(0, Math.floor(s.seconds))
       if (typeof s.label === 'string') step.label = s.label
     }
@@ -723,6 +780,10 @@ export function materializeListeningChoiceTemplateSteps(question: any, templateS
       const groupId = gi >= 0 && groups[gi]?.id ? String(groups[gi].id) : undefined
       if (groupId) step.groupId = groupId
       if (s.kind === 'playAudio') step.audioSource = normalizeAudioSource((s as any).audioSource)
+      if (s.kind === 'playAudio') {
+        const repeatGapSeconds = normalizeRepeatGapSeconds((s as any).repeatGapSeconds)
+        if (repeatGapSeconds != null) step.repeatGapSeconds = repeatGapSeconds
+      }
       if (s.kind === 'promptTone' && typeof s.url === 'string') step.url = s.url
     }
 

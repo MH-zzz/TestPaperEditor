@@ -3,10 +3,10 @@
     <view class="preview-header">
       <text class="preview-header__title">{{ title }}</text>
 
-      <view v-if="totalSteps > 0" class="preview-stepper">
-        <button class="btn btn-outline btn-xs" :disabled="stepIndex <= 0" @click="emit('prev')">上一步</button>
-        <text class="preview-stepper__text">{{ stepIndex + 1 }} / {{ totalSteps }}</text>
-        <button class="btn btn-outline btn-xs" :disabled="stepIndex >= totalSteps - 1" @click="emit('next')">下一步</button>
+      <view v-if="effectiveNavTotalSteps > 0" class="preview-stepper">
+        <button class="btn btn-outline btn-xs" :disabled="effectiveNavStepIndex <= 0" @click="emit('prev')">上一步</button>
+        <text class="preview-stepper__text">{{ resolvedDisplayStepIndex }} / {{ resolvedDisplayTotalSteps }}</text>
+        <button class="btn btn-outline btn-xs" :disabled="effectiveNavStepIndex >= effectiveNavTotalSteps - 1" @click="emit('next')">下一步</button>
       </view>
 
       <view v-if="showAnswerToggle" class="toggle-answer" @click="emit('toggle-answer')">
@@ -62,6 +62,10 @@ const props = withDefaults(defineProps<{
   showAnswer?: boolean
   stepIndex?: number
   totalSteps?: number
+  navStepIndex?: number
+  navTotalSteps?: number
+  displayStepIndex?: number
+  displayTotalSteps?: number
   showAnswerToggle?: boolean
   renderMode?: RenderMode
   runtimeMeta?: RuntimeMetaInfo | null
@@ -72,6 +76,10 @@ const props = withDefaults(defineProps<{
   showAnswer: false,
   stepIndex: 0,
   totalSteps: 0,
+  navStepIndex: undefined,
+  navTotalSteps: undefined,
+  displayStepIndex: undefined,
+  displayTotalSteps: undefined,
   showAnswerToggle: true,
   renderMode: 'preview',
   runtimeMeta: null,
@@ -87,6 +95,26 @@ const emit = defineEmits<{
 }>()
 
 const isSpeakingSteps = computed(() => props.data?.type === 'speaking_steps')
+const effectiveNavStepIndex = computed(() => {
+  const explicit = Number(props.navStepIndex)
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit)
+  return Math.max(0, props.stepIndex)
+})
+const effectiveNavTotalSteps = computed(() => {
+  const explicit = Number(props.navTotalSteps)
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit)
+  return Math.max(0, props.totalSteps)
+})
+const resolvedDisplayStepIndex = computed(() => {
+  const explicit = Number(props.displayStepIndex)
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
+  return effectiveNavStepIndex.value + 1
+})
+const resolvedDisplayTotalSteps = computed(() => {
+  const explicit = Number(props.displayTotalSteps)
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
+  return effectiveNavTotalSteps.value
+})
 const hasRuntimeMeta = computed(() => {
   const meta = props.runtimeMeta || {}
   return Boolean(meta.sourceKind || meta.profileId || meta.moduleDisplayRef || meta.moduleVersionText)

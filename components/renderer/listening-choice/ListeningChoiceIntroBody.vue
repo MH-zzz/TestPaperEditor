@@ -3,6 +3,7 @@
     <RichTextRenderer
       v-if="showDescription"
       :content="introText"
+      image-layout="full-row"
       placeholder="请输入说明"
     />
 

@@ -73,7 +73,7 @@ function createPerGroupStep(kind: QuickAddPerGroupKind): ListeningChoiceStandard
     }
   }
   if (kind === 'countdown') {
-    return { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' }
+    return { kind: 'countdown', showTitle: true, showQuestionTitle: true, seconds: 3, label: '准备' }
   }
   if (kind === 'promptTone') {
     return { kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' }
@@ -228,6 +228,26 @@ export function usePerGroupStepEditor(options: {
     return getAudioSource(step)
   }
 
+  function resolvePerGroupRepeatGapFallback(): number {
+    const firstGroup = demoQuestion.value?.content?.groups?.[0]
+    const seconds = Math.max(0, toInt(firstGroup?.prepareSeconds ?? 3))
+    return seconds
+  }
+
+  function getPerGroupRepeatGapSeconds(index: number): number {
+    const step = listeningChoiceDraft.value?.perGroupSteps?.[index]
+    if (!step || step.kind !== 'playAudio' || getAudioSource(step) !== 'content') return 0
+    const raw = (step as unknown as Record<string, unknown>).repeatGapSeconds
+    if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.floor(raw))
+    return resolvePerGroupRepeatGapFallback()
+  }
+
+  function isPerGroupReplayGapEnabled(index: number): boolean {
+    const step = listeningChoiceDraft.value?.perGroupSteps?.[index]
+    if (!step || step.kind !== 'playAudio' || getAudioSource(step) !== 'content') return false
+    return getPerGroupRepeatGapSeconds(index) > 0
+  }
+
   function getPerGroupBool(index: number, key: string, defaultValue: boolean): boolean {
     const v = getPerGroupRaw(index, key)
     if (typeof v === 'boolean') return v
@@ -246,7 +266,27 @@ export function usePerGroupStepEditor(options: {
   }
 
   function setPerGroupAudioSource(index: number, audioSource: AudioSource) {
-    patchPerGroupStep(index, { audioSource })
+    if (audioSource === 'description') {
+      patchPerGroupStep(index, { audioSource, repeatGapSeconds: undefined })
+      return
+    }
+    const current = getPerGroupRepeatGapSeconds(index)
+    const fallback = Math.max(1, resolvePerGroupRepeatGapFallback() || 3)
+    patchPerGroupStep(index, { audioSource, repeatGapSeconds: Math.max(1, current || fallback) })
+  }
+
+  function setPerGroupRepeatGapSeconds(index: number, value: unknown) {
+    const seconds = Math.max(0, toInt(value))
+    patchPerGroupStep(index, { repeatGapSeconds: seconds })
+  }
+
+  function togglePerGroupReplayGap(index: number) {
+    if (isPerGroupReplayGapEnabled(index)) {
+      patchPerGroupStep(index, { repeatGapSeconds: 0 })
+      return
+    }
+    const fallback = Math.max(1, resolvePerGroupRepeatGapFallback() || 3)
+    patchPerGroupStep(index, { repeatGapSeconds: fallback })
   }
 
   function togglePerGroupBool(index: number, key: string, defaultValue: boolean) {
@@ -347,9 +387,13 @@ export function usePerGroupStepEditor(options: {
     disableIntroCountdown,
     getPerGroupRaw,
     getPerGroupAudioSource,
+    getPerGroupRepeatGapSeconds,
+    isPerGroupReplayGapEnabled,
     getPerGroupBool,
     patchPerGroupStep,
     setPerGroupAudioSource,
+    setPerGroupRepeatGapSeconds,
+    togglePerGroupReplayGap,
     togglePerGroupBool,
     quickAddPerGroupStep,
     removePerGroupStep,

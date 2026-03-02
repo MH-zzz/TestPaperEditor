@@ -4,6 +4,7 @@
       <RichTextRenderer
         v-if="introShowDescription && introText"
         :content="introText"
+        image-layout="full-row"
         placeholder="请输入说明"
       />
     </template>
@@ -19,6 +20,7 @@
       <RichTextRenderer
         v-else-if="groupPrompt"
         :content="groupPrompt"
+        image-layout="full-row"
         placeholder="请输入题组说明"
       />
 

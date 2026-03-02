@@ -39,6 +39,17 @@ function normalizeAudioSource(v: unknown): 'description' | 'content' {
   return v === 'description' ? 'description' : 'content'
 }
 
+function normalizeOptionalNonNegativeInt(v: unknown): number | undefined {
+  if (v === '' || v == null) return undefined
+  const n = toInt(v, -1)
+  if (!Number.isFinite(n)) return undefined
+  return Math.max(0, n)
+}
+
+function hasOwn(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key)
+}
+
 type QuestionWithMetadata = ListeningChoiceCompileQuestion & {
   metadata?: QuestionMetadata
 }
@@ -84,10 +95,15 @@ function applyOverride(step: ListeningChoiceFlowStep, override: unknown): Listen
   if (step.kind === 'playAudio') {
     const next = { ...step }
     const showTitle = readOverrideBool(override, 'showTitle')
+    const repeatGapSeconds = normalizeOptionalNonNegativeInt(override.repeatGapSeconds)
     const showQuestionTitle = readOverrideBool(override, 'showQuestionTitle')
     const showQuestionTitleDescription = readOverrideBool(override, 'showQuestionTitleDescription')
     const showGroupPrompt = readOverrideBool(override, 'showGroupPrompt')
     if (typeof showTitle === 'boolean') next.showTitle = showTitle
+    if (hasOwn(override, 'repeatGapSeconds')) {
+      if (typeof repeatGapSeconds === 'number') next.repeatGapSeconds = repeatGapSeconds
+      else delete (next as Record<string, unknown>).repeatGapSeconds
+    }
     if (typeof showQuestionTitle === 'boolean') next.showQuestionTitle = showQuestionTitle
     if (typeof showQuestionTitleDescription === 'boolean') next.showQuestionTitleDescription = showQuestionTitleDescription
     if (typeof showGroupPrompt === 'boolean') next.showGroupPrompt = showGroupPrompt
@@ -97,8 +113,10 @@ function applyOverride(step: ListeningChoiceFlowStep, override: unknown): Listen
   if (step.kind === 'countdown') {
     const next = { ...step }
     const showTitle = readOverrideBool(override, 'showTitle')
+    const showQuestionTitle = readOverrideBool(override, 'showQuestionTitle')
     const label = readOverrideString(override, 'label')
     if (typeof showTitle === 'boolean') next.showTitle = showTitle
+    if (typeof showQuestionTitle === 'boolean') next.showQuestionTitle = showQuestionTitle
     if (typeof label === 'string') next.label = label
     return next
   }
@@ -180,12 +198,18 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       const key = `g${gIndex}.${kind}${suffix}`
 
       if (def.kind === 'playAudio') {
+        const audioSource = normalizeAudioSource(def?.audioSource)
+        const repeatGapRaw = (def as { repeatGapSeconds?: unknown }).repeatGapSeconds
+        const repeatGapSeconds = audioSource === 'content'
+          ? normalizeOptionalNonNegativeInt(repeatGapRaw)
+          : undefined
         plan.push({
           key,
           step: {
             kind: 'playAudio',
             groupId,
-            audioSource: normalizeAudioSource(def?.audioSource),
+            audioSource,
+            ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
             showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : true,
             showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
             showQuestionTitleDescription: typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true,
@@ -204,6 +228,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
           step: {
             kind: 'countdown',
             showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : true,
+            showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
             seconds,
             label,
             autoNext: 'countdownEnded'

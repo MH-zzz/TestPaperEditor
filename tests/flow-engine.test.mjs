@@ -59,13 +59,14 @@ test('flow engine compiler should compile listening-choice module', async () => 
     perGroupSteps: [
       { kind: 'playAudio', audioSource: 'description', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
       { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' },
-      { kind: 'playAudio', audioSource: 'content', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+      { kind: 'playAudio', audioSource: 'content', repeatGapSeconds: 4, showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
       { kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
     ]
   }
   const out = engine.compileListeningChoiceFlow(question, module, { generateId: makeIdFactory('s') })
   assert.deepEqual(out.steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
   assert.equal(out.steps[2].seconds, 5)
+  assert.equal(out.steps[3].repeatGapSeconds, 4)
   assert.equal(out.steps[4].autoNext, 'timeEnded')
 })
 

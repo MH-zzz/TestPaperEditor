@@ -148,6 +148,8 @@ const audioKey = ref(0)
 const audioRemaining = ref(0)
 const countdownLeft = ref(0)
 const introCountdownLeft = ref(0)
+const audioRepeatGapActive = ref(false)
+const audioRepeatGapSeconds = ref(0)
 
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
@@ -335,18 +337,24 @@ const activeTitle = computed(() => {
   if (isHearAnswerVariant.value) return buildIntroTitle(true)
   const step = displayStep.value
   if (!step) return ''
-  if (!stepShowTitle(step)) return ''
 
   if (displayStepRenderView.value === 'intro') return buildIntroTitle(stepShowTitleDescription(step))
+
+  if (displayStepRenderView.value === 'playAudio' || displayStepRenderView.value === 'answerChoice') {
+    // Keep question title at a fixed top position across steps.
+    return activeContextTitle.value
+  }
+
+  if (!stepShowTitle(step)) return ''
 
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
   if (displayStepRenderView.value === 'groupPrompt' || carrier === 'promptTone') {
     return getGroupDisplayName(resolveStepGroupId(step))
   }
 
-  if (displayStepRenderView.value === 'playAudio' || displayStepRenderView.value === 'answerChoice') return ''
-
   if (displayStepRenderView.value === 'countdown') {
+    if (stepShowQuestionTitle(step)) return buildIntroTitle(true)
+
     const ctx = countdownContext.value
     if (ctx?.kind === 'intro') {
       const introStep = resolveIntroStepForCountdown(displayStepIndex.value)
@@ -537,7 +545,7 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
   if (displayStepRenderView.value === 'playAudio') {
     return {
       ...shared,
-      contextTitle: activeContextTitle.value,
+      contextTitle: '',
       contextGroupTitle: activeContextGroupTitle.value,
       contextShowPrompt: activeContextShowPrompt.value,
       prompt: activeGroup.value?.prompt,
@@ -555,7 +563,7 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
       isHearAnswer: isHearAnswerVariant.value,
       isRecording: isRecording.value,
       recordingSecondsLeft: countdownLeft.value,
-      contextTitle: activeContextTitle.value,
+      contextTitle: '',
       contextGroupTitle: activeContextGroupTitle.value,
       contextShowPrompt: activeContextShowPrompt.value,
       prompt: activeGroup.value?.prompt,
@@ -621,6 +629,18 @@ const bottomCountdown = computed(() => {
     else if (ctx?.kind === 'group') label = `${getGroupDisplayName(ctx.groupId)}-${label}`
     else label = `切换页面-${label}`
 
+    return {
+      label,
+      seconds: countdownLeft.value
+    }
+  }
+
+  if (renderView === 'playAudio' && audioRepeatGapActive.value && countdownLeft.value > 0) {
+    const groupId = resolveStepGroupId(step)
+    const groupLabel = getGroupDisplayName(groupId)
+    const gapSeconds = Math.max(0, audioRepeatGapSeconds.value || 0)
+    const baseLabel = gapSeconds > 0 ? `正文重播前-倒计时 (${gapSeconds}s)` : '正文重播前-倒计时'
+    const label = groupLabel ? `${groupLabel}-${baseLabel}` : baseLabel
     return {
       label,
       seconds: countdownLeft.value
@@ -793,11 +813,50 @@ function startAudioLoop(playCount: number, onDone: () => void) {
   }
 }
 
+function shouldAddReplayGap(step: RendererStep | null | undefined): boolean {
+  if (!step) return false
+  if (!isStepKind(step, 'playAudio')) return false
+  // Only add interval countdown for content-audio replay.
+  return step.audioSource === 'content'
+}
+
+function resolveReplayGapSeconds(step: RendererStep | null | undefined): number {
+  if (!shouldAddReplayGap(step)) return 0
+  const explicit = (step as any)?.repeatGapSeconds
+  if (typeof explicit === 'number' && Number.isFinite(explicit)) {
+    return Math.max(0, Math.floor(explicit))
+  }
+  const groupId = step?.groupId ? String(step.groupId) : ''
+  const group = groupId ? groupsById.value[groupId] : null
+  const seconds = Math.floor(Number(group?.prepareSeconds || 3))
+  return Number.isFinite(seconds) ? Math.max(0, seconds) : 3
+}
+
+function startAudioReplayGap(seconds: number, onDone: () => void) {
+  const duration = Math.max(0, Math.floor(Number(seconds || 0)))
+  if (duration <= 0) {
+    audioRepeatGapActive.value = false
+    audioRepeatGapSeconds.value = 0
+    onDone()
+    return
+  }
+
+  audioRepeatGapActive.value = true
+  audioRepeatGapSeconds.value = duration
+  startCountdown(duration, () => {
+    audioRepeatGapActive.value = false
+    audioRepeatGapSeconds.value = 0
+    onDone()
+  })
+}
+
 function enterActiveStep() {
   stopHearAnswerRecording()
   clearTickTimer()
   countdownLeft.value = 0
   introCountdownLeft.value = 0
+  audioRepeatGapActive.value = false
+  audioRepeatGapSeconds.value = 0
   audioRemaining.value = 0
   activeRecordingQuestionId.value = ''
 
@@ -913,6 +972,14 @@ function onAudioEnded() {
   if (audioRemaining.value <= 0) return
   audioRemaining.value -= 1
   if (audioRemaining.value > 0) {
+    const step = activeStep.value
+    const gapSeconds = resolveReplayGapSeconds(step)
+    if (!isPreview.value && gapSeconds > 0) {
+      startAudioReplayGap(gapSeconds, () => {
+        if (audioRemaining.value > 0) audioKey.value += 1
+      })
+      return
+    }
     audioKey.value += 1
     return
   }

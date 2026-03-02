@@ -230,6 +230,24 @@ test('standard flow should use group template timing for countdown and answer st
   assert.equal(steps[4].autoNext, 'timeEnded')
 })
 
+test('standard flow should carry repeat gap config on content audio step', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const q = makeListeningChoiceQuestion({ groupCount: 1, qsPerGroup: 1, prepareSeconds: 8, answerSeconds: 0 })
+  const module = {
+    ...mod.DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+    perGroupSteps: [
+      { kind: 'playAudio', audioSource: 'description', showTitle: true },
+      { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' },
+      { kind: 'playAudio', audioSource: 'content', repeatGapSeconds: 6, showTitle: true },
+      { kind: 'answerChoice', showTitle: true }
+    ]
+  }
+  const steps = mod.materializeListeningChoiceStandardSteps(q, { generateId: makeIdFactory('s'), overrides: {}, module })
+  assert.equal(steps[3].kind, 'playAudio')
+  assert.equal(steps[3].audioSource, 'content')
+  assert.equal(steps[3].repeatGapSeconds, 6)
+})
+
 test('standard flow override detection should return overrides for whitelisted param changes', async () => {
   const mod = await import('../flows/listeningChoiceFlowModules.ts')
   const q = makeListeningChoiceQuestion({ introCountdownSeconds: 3, groupCount: 2, qsPerGroup: 1 })

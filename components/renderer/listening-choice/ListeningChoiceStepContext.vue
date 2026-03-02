@@ -5,6 +5,7 @@
     <RichTextRenderer
       v-if="showPrompt && prompt"
       :content="prompt"
+      image-layout="full-row"
       placeholder="请输入题组说明"
     />
   </view>

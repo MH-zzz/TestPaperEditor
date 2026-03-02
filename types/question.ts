@@ -135,6 +135,7 @@ export interface FlowGroupPromptStep extends FlowStepBase {
 
 export interface FlowCountdownStep extends FlowStepBase {
   kind: 'countdown'
+  showQuestionTitle?: boolean
   seconds: number
   label?: string
 }
@@ -143,6 +144,7 @@ export interface FlowPlayAudioStep extends FlowStepBase {
   kind: 'playAudio'
   groupId: string
   audioSource: 'description' | 'content'
+  repeatGapSeconds?: number
   showQuestionTitle?: boolean
   showQuestionTitleDescription?: boolean
   showGroupPrompt?: boolean

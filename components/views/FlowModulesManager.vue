@@ -319,12 +319,46 @@
                                 {{ getPerGroupBool(selectedConfig.index, 'showGroupPrompt', true) ? '是' : '否' }}
                               </view>
                             </view>
+
+                            <template v-if="getPerGroupAudioSource(selectedConfig.index) === 'content'">
+                              <view class="form-item">
+                                <text class="form-item__label">间隔倒计时</text>
+                                <view
+                                  class="toggle"
+                                  :class="{ active: isPerGroupReplayGapEnabled(selectedConfig.index) }"
+                                  @click="togglePerGroupReplayGap(selectedConfig.index)"
+                                >
+                                  {{ isPerGroupReplayGapEnabled(selectedConfig.index) ? '开' : '关' }}
+                                </view>
+                              </view>
+
+                              <view v-if="isPerGroupReplayGapEnabled(selectedConfig.index)" class="form-item form-item--full">
+                                <text class="form-item__label">间隔秒数</text>
+                                <input
+                                  class="text-input"
+                                  type="number"
+                                  :value="getPerGroupRepeatGapSeconds(selectedConfig.index)"
+                                  @input="(e) => setPerGroupRepeatGapSeconds(selectedConfig.index, e.detail.value)"
+                                />
+                              </view>
+                            </template>
                           </template>
 
                           <template v-if="selectedConfig.kind === 'countdown'">
+                            <view class="form-item">
+                              <text class="form-item__label">显示题目标题</text>
+                              <view
+                                class="toggle"
+                                :class="{ active: getPerGroupBool(selectedConfig.index, 'showQuestionTitle', true) }"
+                                @click="togglePerGroupBool(selectedConfig.index, 'showQuestionTitle', true)"
+                              >
+                                {{ getPerGroupBool(selectedConfig.index, 'showQuestionTitle', true) ? '是' : '否' }}
+                              </view>
+                            </view>
+
                             <view class="form-item form-item--full">
                               <text class="form-item__label">倒计时来源</text>
-                              <text class="form-item__value-hint">秒数来自左侧题型模板的「题组准备时间（秒）」。此处只控制是否显示标题。</text>
+                              <text class="form-item__value-hint">秒数来自左侧题型模板的「题组准备时间（秒）」。此处可控制是否显示题目标题/步骤标题。</text>
                             </view>
                           </template>
 
@@ -454,11 +488,15 @@
         <view class="col col--preview">
           <PhonePreviewPanel
             title="预览"
-            :data="demoQuestion"
+            :data="previewRenderQuestion"
             :answers="previewAnswers"
             :show-answer="showAnswer"
-            :step-index="currentStepIndex"
-            :total-steps="previewTotalSteps"
+            :step-index="previewVirtualIndex"
+            :total-steps="previewDisplayTotalSteps"
+            :nav-step-index="previewVirtualIndex"
+            :nav-total-steps="previewDisplayTotalSteps"
+            :display-step-index="previewDisplayStepIndex"
+            :display-total-steps="previewDisplayTotalSteps"
             :show-runtime-meta="false"
             @prev="previewPrevStep"
             @next="previewNextStep"
@@ -2595,11 +2633,148 @@ function applyReadonlyFlowVisualToDraft() {
 
 const previewAnswers = ref<Record<string, string | string[]>>({})
 const showAnswer = ref(false)
+const previewVirtualIndex = ref(0)
 const currentStepIndex = ref(0)
 const configStepIndex = ref(0)
 
-const previewTotalSteps = computed(() => Number(demoQuestion.value.flow?.steps?.length || 0))
 type ListeningChoiceFlowStep = ListeningChoiceQuestion['flow']['steps'][number]
+type FlowPreviewGroup = ListeningChoiceContent['groups'][number] | SpeakingHearAnswerContent['groups'][number]
+
+function buildPreviewGroupMap(groups: FlowPreviewGroup[]): Map<string, FlowPreviewGroup> {
+  return new Map(groups.map((g) => [String(g.id || ''), g] as const))
+}
+
+function normalizePreviewReplayGapSeconds(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {
+  if (step.kind !== 'playAudio' || step.audioSource !== 'content') return 0
+  const rawGap = step.repeatGapSeconds
+  if (typeof rawGap === 'number' && Number.isFinite(rawGap)) return Math.max(0, Math.floor(rawGap))
+  const group = groupById.get(String(step.groupId || ''))
+  return Math.max(0, toInt(group?.prepareSeconds || 3))
+}
+
+function resolvePreviewAudioPlayCount(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {
+  if (step.kind === 'intro') {
+    return Math.max(1, toInt(demoQuestion.value.content?.intro?.audio?.playCount || 1))
+  }
+  if (step.kind !== 'playAudio') return 1
+  const group = groupById.get(String(step.groupId || ''))
+  if (step.audioSource === 'description') {
+    return Math.max(1, toInt(group?.descriptionAudio?.playCount || 1))
+  }
+  return Math.max(1, toInt(group?.audio?.playCount || 1))
+}
+
+function buildPreviewReplayGapStep(baseStep: ListeningChoiceFlowStep, replayIndex: number, seconds: number): ListeningChoiceFlowStep {
+  if (baseStep.kind !== 'playAudio') return baseStep
+  return {
+    id: `${String(baseStep.id || 'step')}_gap_${replayIndex}`,
+    kind: 'countdown',
+    showTitle: false,
+    seconds: Math.max(0, seconds),
+    label: '正文重播间隔',
+    autoNext: 'countdownEnded'
+  }
+}
+
+function clonePreviewStepForReplay(step: ListeningChoiceFlowStep, replayIndex: number): ListeningChoiceFlowStep {
+  return {
+    ...step,
+    id: `${String(step.id || 'step')}_rep_${replayIndex}`
+  }
+}
+
+const previewTotalSteps = computed(() => Number(demoQuestion.value.flow?.steps?.length || 0))
+const previewExpandedSegments = computed<Array<number>>(() => {
+  const steps = demoQuestion.value.flow?.steps || []
+  const groups = (demoQuestion.value.content?.groups || []) as FlowPreviewGroup[]
+  const groupById = buildPreviewGroupMap(groups)
+  const out: number[] = []
+  steps.forEach((step, logicalIndex) => {
+    const playCount = resolvePreviewAudioPlayCount(step, groupById)
+    if (playCount <= 1 || (step.kind !== 'intro' && step.kind !== 'playAudio')) {
+      out.push(logicalIndex)
+      return
+    }
+
+    if (step.kind === 'intro') {
+      for (let i = 1; i <= playCount; i += 1) out.push(logicalIndex)
+      return
+    }
+
+    const gapSeconds = normalizePreviewReplayGapSeconds(step, groupById)
+    for (let i = 1; i <= playCount; i += 1) {
+      out.push(logicalIndex)
+      if (i < playCount && gapSeconds > 0) out.push(logicalIndex)
+    }
+  })
+  return out
+})
+
+const previewRenderQuestion = computed<ListeningChoiceQuestion>(() => {
+  const base = demoQuestion.value
+  const steps = base.flow?.steps || []
+  const groups = (base.content?.groups || []) as FlowPreviewGroup[]
+  const groupById = buildPreviewGroupMap(groups)
+  const expandedSteps: ListeningChoiceQuestion['flow']['steps'] = []
+  steps.forEach((step) => {
+    const playCount = resolvePreviewAudioPlayCount(step, groupById)
+    if (playCount <= 1 || (step.kind !== 'intro' && step.kind !== 'playAudio')) {
+      expandedSteps.push({ ...step })
+      return
+    }
+
+    if (step.kind === 'intro') {
+      for (let i = 1; i <= playCount; i += 1) {
+        expandedSteps.push(clonePreviewStepForReplay(step, i))
+      }
+      return
+    }
+
+    const gapSeconds = normalizePreviewReplayGapSeconds(step, groupById)
+    for (let i = 1; i <= playCount; i += 1) {
+      expandedSteps.push(clonePreviewStepForReplay(step, i))
+      if (i < playCount && gapSeconds > 0) {
+        expandedSteps.push(buildPreviewReplayGapStep(step, i, gapSeconds))
+      }
+    }
+  })
+
+  return {
+    ...base,
+    flow: {
+      ...base.flow,
+      steps: expandedSteps
+    }
+  }
+})
+
+function firstVirtualIndexOfLogicalStep(logicalIndex: number): number {
+  const segments = previewExpandedSegments.value
+  const hit = segments.findIndex((item) => item === logicalIndex)
+  return hit >= 0 ? hit : 0
+}
+
+function setPreviewVirtualIndex(nextIndex: number) {
+  const total = previewExpandedSegments.value.length
+  if (total <= 0) {
+    previewVirtualIndex.value = 0
+    currentStepIndex.value = 0
+    return
+  }
+  const safe = Math.max(0, Math.min(total - 1, nextIndex))
+  previewVirtualIndex.value = safe
+  const logicalIndex = previewExpandedSegments.value[safe]
+  if (typeof logicalIndex === 'number' && Number.isFinite(logicalIndex)) {
+    currentStepIndex.value = Math.max(0, Math.min(logicalIndex, Math.max(0, previewTotalSteps.value - 1)))
+  }
+}
+
+const previewDisplayTotalSteps = computed(() => previewExpandedSegments.value.length)
+const previewDisplayStepIndex = computed(() => {
+  if (previewDisplayTotalSteps.value <= 0) return 0
+  const safe = Math.max(0, Math.min(previewVirtualIndex.value, previewDisplayTotalSteps.value - 1))
+  return safe + 1
+})
 const flowCenterDebugSessionId = 'flow_center:listening_choice'
 const flowCenterTraceEvents = computed<RuntimeDebugEvent[]>(() => {
   return runtimeDebug.getSession(flowCenterDebugSessionId)?.events || []
@@ -2612,8 +2787,8 @@ const flowCenterCurrentStep = computed<ListeningChoiceFlowStep | null>(() => {
 })
 const flowCenterCurrentStepKind = computed(() => String(flowCenterCurrentStep.value?.kind || '-'))
 const flowCenterCurrentStepText = computed(() => {
-  if (previewTotalSteps.value <= 0) return '-'
-  return `${currentStepIndex.value + 1}/${previewTotalSteps.value}（${flowCenterCurrentStepKind.value}）`
+  if (previewDisplayTotalSteps.value <= 0) return '-'
+  return `${previewDisplayStepIndex.value}/${previewDisplayTotalSteps.value}（${flowCenterCurrentStepKind.value}）`
 })
 const flowCenterAutoNextCode = computed(() => String(flowCenterCurrentStep.value?.autoNext || ''))
 const flowCenterAutoNextReasonText = computed(() => formatAutoNextReason(flowCenterAutoNextCode.value))
@@ -2640,7 +2815,8 @@ const flowCenterStepSignature = computed(() => {
     String(currentStepIndex.value),
     flowCenterCurrentStepKind.value,
     flowCenterAutoNextCode.value,
-    String(previewTotalSteps.value)
+    String(previewDisplayTotalSteps.value),
+    String(previewDisplayStepIndex.value)
   ].join('|')
 })
 
@@ -2715,13 +2891,30 @@ watch(flowCenterStepSignature, (next, prev) => {
 
 watch(previewTotalSteps, (n) => {
   if (!Number.isFinite(n) || n <= 0) {
+    previewVirtualIndex.value = 0
     currentStepIndex.value = 0
     configStepIndex.value = -1
     return
   }
+
   if (currentStepIndex.value > n - 1) currentStepIndex.value = n - 1
   if (configStepIndex.value > n - 1) configStepIndex.value = n - 1
+  previewVirtualIndex.value = firstVirtualIndexOfLogicalStep(currentStepIndex.value)
 })
+
+watch(previewExpandedSegments, (segments) => {
+  const total = segments.length
+  if (total <= 0) {
+    previewVirtualIndex.value = 0
+    currentStepIndex.value = 0
+    return
+  }
+
+  if (previewVirtualIndex.value >= total) {
+    previewVirtualIndex.value = total - 1
+  }
+  setPreviewVirtualIndex(previewVirtualIndex.value)
+}, { immediate: true })
 
 const perGroupEditor = usePerGroupStepEditor({
   demoQuestion,
@@ -2745,9 +2938,13 @@ const {
   patchIntroCountdown,
   getPerGroupRaw,
   getPerGroupAudioSource,
+  getPerGroupRepeatGapSeconds,
+  isPerGroupReplayGapEnabled,
   getPerGroupBool,
   patchPerGroupStep,
   setPerGroupAudioSource,
+  setPerGroupRepeatGapSeconds,
+  togglePerGroupReplayGap,
   togglePerGroupBool
 } = perGroupEditor
 
@@ -2990,6 +3187,7 @@ function applyStandardToCurrentQuestion() {
 function jumpToStep(index: number) {
   const next = Math.max(0, Math.min(previewTotalSteps.value - 1, index))
   currentStepIndex.value = next
+  previewVirtualIndex.value = firstVirtualIndexOfLogicalStep(next)
   if (configStepIndex.value === next) {
     configStepIndex.value = -1
     return
@@ -2998,15 +3196,18 @@ function jumpToStep(index: number) {
 }
 
 function previewPrevStep() {
-  jumpToStep(currentStepIndex.value - 1)
+  setPreviewVirtualIndex(previewVirtualIndex.value - 1)
+  configStepIndex.value = currentStepIndex.value
 }
 
 function previewNextStep() {
-  jumpToStep(currentStepIndex.value + 1)
+  setPreviewVirtualIndex(previewVirtualIndex.value + 1)
+  configStepIndex.value = currentStepIndex.value
 }
 
 function onPreviewStepChange(step: number) {
-  jumpToStep(step)
+  setPreviewVirtualIndex(step)
+  configStepIndex.value = currentStepIndex.value
 }
 
 function findSubQuestionById(q: ListeningChoiceQuestion, id: string): SubQuestion | null {

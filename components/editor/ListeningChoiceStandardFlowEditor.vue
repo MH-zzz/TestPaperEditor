@@ -70,7 +70,33 @@
             </view>
           </view>
 
+          <template v-if="step.kind === 'playAudio' && getAudioSource(step) === 'content'">
+            <view class="form-item">
+              <text class="form-item__label">间隔倒计时</text>
+              <view class="toggle" :class="{ active: isReplayGapEnabled(step) }" @click="toggleReplayGap(sIndex)">
+                {{ isReplayGapEnabled(step) ? '开' : '关' }}
+              </view>
+            </view>
+
+            <view v-if="isReplayGapEnabled(step)" class="form-item">
+              <text class="form-item__label">间隔秒数</text>
+              <input
+                class="text-input"
+                type="number"
+                :value="repeatGapSeconds(step)"
+                @input="(e) => updateStep(sIndex, { repeatGapSeconds: Math.max(0, toInt(e.detail.value)) })"
+              />
+            </view>
+          </template>
+
           <view v-if="step.kind === 'countdown'" class="form-item">
+            <view class="form-item">
+              <text class="form-item__label">显示题目标题</text>
+              <view class="toggle" :class="{ active: getBool(step, 'showQuestionTitle', true) }" @click="toggleStepBoolWithDefault(sIndex, 'showQuestionTitle', true)">
+                {{ getBool(step, 'showQuestionTitle', true) ? '是' : '否' }}
+              </view>
+            </view>
+
             <view class="grid">
               <view>
                 <text class="form-item__label">秒数</text>
@@ -195,6 +221,11 @@ function stepKindLabel(step: ListeningChoiceStandardPerGroupStepDef): string {
 function stepSummary(step: ListeningChoiceStandardPerGroupStepDef): string {
   if (!step) return ''
   if (step.kind === 'countdown') return `${kindLabel('countdown')} ${Number(step.seconds || 0)}s`
+  if (step.kind === 'playAudio' && getAudioSource(step) === 'content') {
+    return isReplayGapEnabled(step)
+      ? `每次间隔倒计时 ${repeatGapSeconds(step)}s`
+      : '连续重播'
+  }
   if (step.kind === 'promptTone') return '提示音'
   if (step.kind === 'answerChoice') return kindLabel('answerChoice')
   return ''
@@ -270,11 +301,22 @@ function toggleStepBoolWithDefault(index: number, key: string, defaultValue: boo
 }
 
 function createPlayAudioStep(audioSource: 'description' | 'content'): ListeningChoiceStandardPerGroupStepDef {
+  if (audioSource === 'content') {
+    return {
+      kind: 'playAudio',
+      showTitle: true,
+      audioSource,
+      repeatGapSeconds: 3,
+      showQuestionTitle: true,
+      showQuestionTitleDescription: true,
+      showGroupPrompt: true
+    }
+  }
   return { kind: 'playAudio', showTitle: true, audioSource, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
 }
 
 function createCountdownStep(): ListeningChoiceStandardPerGroupStepDef {
-  return { kind: 'countdown', showTitle: true, seconds: 3, label: '准备' }
+  return { kind: 'countdown', showTitle: true, showQuestionTitle: true, seconds: 3, label: '准备' }
 }
 
 function createPromptToneStep(): ListeningChoiceStandardPerGroupStepDef {
@@ -305,6 +347,27 @@ function addStep(kind: string) {
 function toInt(v: unknown): number {
   const n = parseInt(String(v || '0'), 10)
   return Number.isFinite(n) ? n : 0
+}
+
+function repeatGapSeconds(step: ListeningChoiceStandardPerGroupStepDef): number {
+  if (step.kind !== 'playAudio' || getAudioSource(step) !== 'content') return 0
+  const raw = (step as unknown as Record<string, unknown>).repeatGapSeconds
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.floor(raw))
+  return 3
+}
+
+function isReplayGapEnabled(step: ListeningChoiceStandardPerGroupStepDef): boolean {
+  return repeatGapSeconds(step) > 0
+}
+
+function toggleReplayGap(index: number) {
+  const step = perGroupSteps.value[index]
+  if (!step || step.kind !== 'playAudio' || getAudioSource(step) !== 'content') return
+  if (isReplayGapEnabled(step)) {
+    updateStep(index, { repeatGapSeconds: 0 })
+    return
+  }
+  updateStep(index, { repeatGapSeconds: Math.max(1, repeatGapSeconds(step) || 3) })
 }
 </script>
 

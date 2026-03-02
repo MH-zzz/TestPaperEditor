@@ -249,7 +249,17 @@ const nodes = computed(() => {
         ? Number(g?.descriptionAudio?.playCount || 1)
         : Number(g?.audio?.playCount || 1)
       const label = source === 'description' ? '描述音频' : '正文音频'
-      desc = cnt > 1 ? `${label} x${cnt}` : label
+      if (cnt > 1 && source === 'content') {
+        const rawRepeatGapSeconds = (step as FlowPlayAudioStep).repeatGapSeconds
+        const gapSeconds = typeof rawRepeatGapSeconds === 'number' && Number.isFinite(rawRepeatGapSeconds)
+          ? Math.max(0, Math.floor(rawRepeatGapSeconds))
+          : Math.max(0, Number(g?.prepareSeconds || 3))
+        desc = gapSeconds > 0
+          ? `${label} x${cnt}（每次间隔倒计时 ${gapSeconds}s）`
+          : `${label} x${cnt}`
+      } else {
+        desc = cnt > 1 ? `${label} x${cnt}` : label
+      }
     } else if (step.kind === 'promptTone') {
       desc = '提示音'
     } else if (step.kind === 'finish') {

@@ -63,6 +63,8 @@ export type ListeningChoiceFlowModulePerGroupStepV1 =
       kind: 'playAudio'
       showTitle?: boolean
       audioSource: ListeningChoiceAudioSource
+      // For content-audio replay loop: countdown seconds between plays.
+      repeatGapSeconds?: number
       showQuestionTitle?: boolean
       showQuestionTitleDescription?: boolean
       showGroupPrompt?: boolean
@@ -70,6 +72,7 @@ export type ListeningChoiceFlowModulePerGroupStepV1 =
   | {
       kind: 'countdown'
       showTitle?: boolean
+      showQuestionTitle?: boolean
       // Runtime seconds are sourced from group.prepareSeconds in template data.
       // This field acts as fallback only.
       seconds?: number
