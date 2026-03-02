@@ -4,7 +4,7 @@
     <view class="workspace-nav">
       <view class="q-type-badge" @click="typeSelectorVisible = true">
         <text class="type-icon">📝</text>
-        <text class="type-name">{{ getTypeName(questionData?.type) }}</text>
+        <text class="type-name">{{ getTypeName(questionData) }}</text>
         <text class="type-caret">▼</text>
       </view>
       <view class="workspace-actions">
@@ -166,7 +166,8 @@ import type {
   ListeningChoiceQuestion,
   MatchMode,
   Question,
-  QuestionMetadata
+  QuestionMetadata,
+  SpeakingHearAnswerQuestion
 } from '/types'
 import type { FlowRuntimeEvent } from '/engine/flow/runtime.ts'
 import { questionTemplates, type TemplateKey, generateId } from '/templates'
@@ -201,6 +202,7 @@ type InteractionLeaf = {
 type QuestionWithMetadata = Question & {
   metadata?: QuestionMetadata
 }
+type ListeningLikeQuestion = ListeningChoiceQuestion | SpeakingHearAnswerQuestion
 
 import interactionTypeRoots from '../../交互类型.json'
 
@@ -260,6 +262,20 @@ function getQuestionTemplateMeta(templateKey?: TemplateKey) {
   return questionTemplates[templateKey] || null
 }
 
+function resolveTemplateKeyByQuestion(question: Question | null): TemplateKey | undefined {
+  if (!question) return undefined
+  if (question.type === 'speaking_hear_answer') return 'speaking_hear_answer'
+  const metadata = (question as QuestionWithMetadata)?.metadata
+  const variant = isObjectRecord(metadata) ? String((metadata as any).questionVariant || '').trim() : ''
+  if (question.type === 'listening_choice' && variant === 'hear_answer') return 'speaking_hear_answer'
+  if (question.type === 'speaking_steps') {
+    const partType = Number((question as any).partType || 0)
+    if (partType === 3) return 'speaking_hear_answer'
+    if (partType === 2) return 'speaking_hear_choice'
+  }
+  return question.type as TemplateKey
+}
+
 function readQuestionMetadata(question: Question | null): QuestionMetadata {
   if (!question) return {}
   const metadata = (question as QuestionWithMetadata).metadata
@@ -314,7 +330,7 @@ function clampPreviewStepIndex() {
 function getPreviewStepKind(index: number): string {
   const question = runtimeQuestion.value
   if (!question) return '-'
-  if (question.type === 'listening_choice') {
+  if (question.type === 'listening_choice' || question.type === 'speaking_hear_answer') {
     return String(question.flow?.steps?.[index]?.kind || '-')
   }
   if (question.type === 'speaking_steps') {
@@ -354,8 +370,22 @@ function previewNextStep() {
 
 const listeningChoice = computed<ListeningChoiceQuestion | null>(() => {
   if (!questionData.value) return null
-  if (questionData.value.type !== 'listening_choice') return null
-  return questionData.value as ListeningChoiceQuestion
+  if (questionData.value.type === 'listening_choice') {
+    return questionData.value as ListeningChoiceQuestion
+  }
+  if (questionData.value.type === 'speaking_hear_answer') {
+    const source = questionData.value as SpeakingHearAnswerQuestion
+    const metadata = readQuestionMetadata(questionData.value)
+    return {
+      ...(source as unknown as Record<string, unknown>),
+      type: 'listening_choice',
+      metadata: {
+        ...metadata,
+        questionVariant: 'hear_answer'
+      }
+    } as ListeningChoiceQuestion
+  }
+  return null
 })
 
 const selectedInteractionId = ref<string>('')
@@ -366,24 +396,24 @@ function resolveTemplate(path: string[]): { templateKey?: TemplateKey; enabled: 
 
   if (root === '听力') {
     if (['单项选择', '多项选择', '情景选择'].includes(leaf)) {
-      return { templateKey: 'listening_choice', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
+      return { templateKey: 'listening_choice', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
     }
-    if (['连线', '图文匹配'].includes(leaf)) return { templateKey: 'listening_match', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    if (leaf === '填空') return { templateKey: 'listening_fill', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    if (leaf === '排序') return { templateKey: 'listening_order', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
+    if (['连线', '图文匹配'].includes(leaf)) return { templateKey: 'listening_match', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    if (leaf === '填空') return { templateKey: 'listening_fill', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    if (leaf === '排序') return { templateKey: 'listening_order', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
   }
 
   if (root === '听说') {
     // "听后选择"在当前项目中统一走 listening_choice（题型模板 + 题型流程）链路。
     if (leaf === '听后选择') return { templateKey: 'listening_choice', enabled: true, reason: '' }
-    if (leaf === '短文朗读') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    if (leaf === '听后回答') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    if (leaf === '听后转述') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
-    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
+    if (leaf === '听后回答') return { templateKey: 'speaking_hear_answer', enabled: true, reason: '' }
+    if (leaf === '短文朗读') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    if (leaf === '听后转述') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
   }
 
-  if (root === '笔试') return { enabled: false, reason: '暂未开放（当前仅支持：听后选择）' }
+  if (root === '笔试') return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
 
   return { enabled: false, reason: '暂不支持' }
 }
@@ -474,10 +504,19 @@ const interactionSections = computed(() => {
     .map(r => ({ id: r, title: r, items: byRoot[r] }))
 })
 
-function getTypeName(type?: string) {
-  if (!type) return '编辑器'
-  const template = getQuestionTemplateMeta(type as TemplateKey)
-  return template?.name || type
+function getTypeName(question?: Question | null) {
+  if (!question) return '编辑器'
+  if (question.type === 'speaking_hear_answer') return '听后回答'
+  const metadata = (question as QuestionWithMetadata)?.metadata
+  const variant = isObjectRecord(metadata) ? String((metadata as any).questionVariant || '').trim() : ''
+  if (question.type === 'listening_choice' && variant === 'hear_answer') return '听后回答'
+  if (question.type === 'speaking_steps') {
+    const partType = Number((question as any).partType || 0)
+    if (partType === 3) return '听后回答'
+    if (partType === 2) return '听后选择'
+  }
+  const template = getQuestionTemplateMeta(question.type as TemplateKey)
+  return template?.name || question.type
 }
 
 function selectType(nextType: string) {
@@ -499,8 +538,9 @@ function selectInteractionLeaf(item: InteractionLeaf) {
 }
 
 function resolveListeningChoiceFlowSource(data: Question): Question {
-  if (!data || data.type !== 'listening_choice') return data
-  return resolveListeningChoiceQuestion(data, { generateId })
+  if (!data) return data
+  if (data.type !== 'listening_choice' && data.type !== 'speaking_hear_answer') return data
+  return resolveListeningChoiceQuestion(data as ListeningLikeQuestion, { generateId }) as Question
 }
 
 function normalizeRouteText(v: unknown): string | undefined {
@@ -537,8 +577,8 @@ function saveQuestion() {
   const result = saveQuestionDraft(questionData.value, {
     defaultTags: globalSettings.state.defaultTags,
     normalizeQuestion: (question) => {
-      if (question.type !== 'listening_choice') return question
-      return normalizeListeningChoiceQuestionForSave(question, { generateId })
+      if (question.type !== 'listening_choice' && question.type !== 'speaking_hear_answer') return question
+      return normalizeListeningChoiceQuestionForSave(question as ListeningLikeQuestion, { generateId }) as Question
     }
   })
 
@@ -578,6 +618,17 @@ function toggleRuntimeDebug() {
 }
 
 function updateListeningChoice(next: ListeningChoiceQuestion) {
+  if (!questionData.value) return
+  if (questionData.value.type === 'speaking_hear_answer') {
+    const source = questionData.value as SpeakingHearAnswerQuestion
+    questionData.value = {
+      ...(source as unknown as Record<string, unknown>),
+      type: 'speaking_hear_answer',
+      content: next.content as SpeakingHearAnswerQuestion['content'],
+      flow: next.flow
+    } as SpeakingHearAnswerQuestion
+    return
+  }
   questionData.value = next
 }
 
@@ -740,7 +791,7 @@ watch(typeSelectorVisible, (open) => {
   interactionQuery.value = ''
 
   // Default to the current question's root tab for quicker access.
-  const current = questionData.value?.type
+  const current = resolveTemplateKeyByQuestion(questionData.value)
   const preferred =
     interactionLeaves.value.find(r => r.enabled && r.templateKey === current) ||
     interactionLeaves.value.find(r => r.templateKey === current)

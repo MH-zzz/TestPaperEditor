@@ -1,7 +1,9 @@
 import { reactive } from 'vue'
 import type { FlowModuleRef, FlowModuleStatus, ListeningChoiceFlowModuleV1 } from '/types'
 import {
+  DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE,
   DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+  LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   normalizeListeningChoiceStandardModule
 } from '../flows/listeningChoiceFlowModules'
@@ -9,6 +11,7 @@ import { createPersistenceScheduler } from './persistence'
 
 const STORAGE_KEY = 'editor_flow_modules_v2'
 const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'
+const DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME = '听后回答标准'
 
 function nowIso() {
   return new Date().toISOString()
@@ -29,6 +32,9 @@ function normalizeListeningChoiceModuleName(src: Record<string, unknown>): strin
   const raw = normalizeText(src?.name)
   if (id === LISTENING_CHOICE_STANDARD_FLOW_ID) {
     if (!raw || raw === '听后选择题型流程') return DEFAULT_LISTENING_CHOICE_MODULE_NAME
+  }
+  if (id === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) {
+    if (!raw || raw === '听后回答题型流程') return DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME
   }
   return raw || id
 }
@@ -70,6 +76,47 @@ function normalizeListeningChoiceModule(input: unknown): ListeningChoiceFlowModu
   }
 }
 
+function isLegacyHearAnswerStandardTitleConfig(module: ListeningChoiceFlowModuleV1): boolean {
+  if (String(module?.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return false
+  const steps = Array.isArray(module?.perGroupSteps) ? module.perGroupSteps : []
+  if (steps.length !== 5) return false
+  const kinds = steps.map((step) => String((step as { kind?: unknown })?.kind || ''))
+  if (kinds.join(',') !== 'playAudio,countdown,playAudio,promptTone,answerChoice') return false
+
+  const allShowTitleTrue = steps.every((step) => (step as { showTitle?: unknown })?.showTitle === true)
+  if (!allShowTitleTrue) return false
+
+  const first = steps[0] as { audioSource?: unknown; showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
+  const second = steps[1] as { seconds?: unknown; label?: unknown }
+  const third = steps[2] as { audioSource?: unknown; showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
+  const fourth = steps[3] as { url?: unknown }
+  const fifth = steps[4] as { showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
+
+  return first.audioSource === 'description'
+    && first.showQuestionTitle === true
+    && first.showQuestionTitleDescription === true
+    && first.showGroupPrompt === true
+    && Number(second.seconds || 0) === 5
+    && String(second.label || '') === '答题准备'
+    && third.audioSource === 'content'
+    && third.showQuestionTitle === true
+    && third.showQuestionTitleDescription === true
+    && third.showGroupPrompt === true
+    && String(fourth.url || '') === '/static/audio/small_time.mp3'
+    && fifth.showQuestionTitle === true
+    && fifth.showQuestionTitleDescription === true
+    && fifth.showGroupPrompt === true
+}
+
+function applyHearAnswerDefaultTitleConfig(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
+  const perGroupSteps = (module.perGroupSteps || []).map((step) => ({ ...step, showTitle: false }))
+  return normalizeListeningChoiceModule({
+    ...module,
+    perGroupSteps,
+    updatedAt: nowIso()
+  })
+}
+
 const DEFAULT_LISTENING_CHOICE_FLOW_MODULE = normalizeListeningChoiceModule({
   ...DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
   kind: 'listening_choice',
@@ -79,38 +126,71 @@ const DEFAULT_LISTENING_CHOICE_FLOW_MODULE = normalizeListeningChoiceModule({
   status: 'published'
 })
 
+const DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE = normalizeListeningChoiceModule({
+  ...DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE,
+  kind: 'listening_choice',
+  id: LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
+  version: 1,
+  name: DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME,
+  status: 'published'
+})
+
 function ensurePublishedStandardBaseline(modules: ListeningChoiceFlowModuleV1[]): ListeningChoiceFlowModuleV1[] {
   const list = Array.isArray(modules) ? modules : []
-  if (list.length <= 0) return [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+  if (list.length <= 0) {
+    return [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
+  }
 
-  const hasPublishedStandard = list.some((m) => {
-    const id = String(m?.id || '')
-    const status = normalizeStatus(m?.status)
-    return id === LISTENING_CHOICE_STANDARD_FLOW_ID && status === 'published'
-  })
-  if (hasPublishedStandard) return list
+  const ensureBaselineById = (
+    input: ListeningChoiceFlowModuleV1[],
+    baselineId: string,
+    baselineName: string,
+    baselineSource: unknown
+  ) => {
+    const hasPublishedBaseline = input.some((m) => {
+      const id = String(m?.id || '')
+      const status = normalizeStatus(m?.status)
+      return id === baselineId && status === 'published'
+    })
+    if (hasPublishedBaseline) return input
 
-  const maxStandardVersion = list.reduce((max, m) => {
-    const id = String(m?.id || '')
-    if (id !== LISTENING_CHOICE_STANDARD_FLOW_ID) return max
-    const version = Number(m?.version || 0)
-    return Number.isFinite(version) ? Math.max(max, Math.floor(version)) : max
-  }, 0)
+    const maxVersion = input.reduce((max, m) => {
+      const id = String(m?.id || '')
+      if (id !== baselineId) return max
+      const version = Number(m?.version || 0)
+      return Number.isFinite(version) ? Math.max(max, Math.floor(version)) : max
+    }, 0)
 
-  const baseline = normalizeListeningChoiceModule({
-    ...DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
-    kind: 'listening_choice',
-    id: LISTENING_CHOICE_STANDARD_FLOW_ID,
-    version: Math.max(1, maxStandardVersion + 1),
-    name: DEFAULT_LISTENING_CHOICE_MODULE_NAME,
-    status: 'published'
-  })
-  return [baseline, ...list]
+    const baseline = normalizeListeningChoiceModule({
+      ...(isObjectRecord(baselineSource) ? baselineSource : {}),
+      kind: 'listening_choice',
+      id: baselineId,
+      version: Math.max(1, maxVersion + 1),
+      name: baselineName,
+      status: 'published'
+    })
+    return [baseline, ...input]
+  }
+
+  let next = [...list]
+  next = ensureBaselineById(
+    next,
+    LISTENING_CHOICE_STANDARD_FLOW_ID,
+    DEFAULT_LISTENING_CHOICE_MODULE_NAME,
+    DEFAULT_LISTENING_CHOICE_STANDARD_MODULE
+  )
+  next = ensureBaselineById(
+    next,
+    LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
+    DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME,
+    DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  )
+  return next
 }
 
 class FlowModulesStore {
   state = reactive({
-    listeningChoice: [DEFAULT_LISTENING_CHOICE_FLOW_MODULE] as ListeningChoiceFlowModuleV1[]
+    listeningChoice: [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE] as ListeningChoiceFlowModuleV1[]
   })
   private readonly persistence = createPersistenceScheduler(() => this.save(), 300)
 
@@ -125,12 +205,21 @@ class FlowModulesStore {
       const parsed = JSON.parse(stored)
       const list = Array.isArray(parsed?.listeningChoice) ? parsed.listeningChoice : []
       const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
-      this.state.listeningChoice = normalized.length
-        ? ensurePublishedStandardBaseline(normalized)
-        : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+      let migrated = false
+      const migratedList = normalized.map((module) => {
+        if (!isLegacyHearAnswerStandardTitleConfig(module)) return module
+        migrated = true
+        return applyHearAnswerDefaultTitleConfig(module)
+      })
+      this.state.listeningChoice = migratedList.length
+        ? ensurePublishedStandardBaseline(migratedList)
+        : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
+      if (migrated) {
+        this.save()
+      }
     } catch (e) {
       console.error('Failed to load flow modules', e)
-      this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+      this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
     }
   }
 
@@ -161,7 +250,12 @@ class FlowModulesStore {
     return list[0] || null
   }
 
-  getListeningChoiceDefault() {
+  getListeningChoiceDefault(preferredModuleId?: string) {
+    const preferredId = normalizeText(preferredModuleId)
+    if (preferredId) {
+      const preferred = this.getListeningChoiceLatestPublished(preferredId)
+      if (preferred) return preferred
+    }
     const published = this.getListeningChoiceLatestPublished(LISTENING_CHOICE_STANDARD_FLOW_ID)
     return published || this.getListeningChoiceLatestPublished() || this.state.listeningChoice[0] || null
   }
@@ -238,7 +332,7 @@ class FlowModulesStore {
   }
 
   resetListeningChoiceToDefault() {
-    this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE]
+    this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
     this.persistence.schedule()
   }
 }

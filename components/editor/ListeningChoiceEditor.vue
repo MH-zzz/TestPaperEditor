@@ -184,7 +184,17 @@
             <view class="sub-card__header" @click="toggleSubQuestion(sq.id)">
               <view class="sub-card__header-left">
                 <text class="sub-card__chev">{{ isSubQuestionExpanded(sq.id) ? '▾' : '▸' }}</text>
-                <text class="sub-card__title">第 {{ sq.order }} 题</text>
+                <view class="sub-card__order" @click.stop>
+                  <text class="sub-card__order-label">序号</text>
+                  <input
+                    class="sub-card__order-input"
+                    type="number"
+                    :value="String(Number(sq.order || 0) || '')"
+                    placeholder="例如：4"
+                    @click.stop
+                    @input="(e) => updateSubOrder(gIndex, sqIndex, e.detail.value)"
+                  />
+                </view>
               </view>
               <button class="btn btn-text danger" @click.stop="removeSubQuestion(gIndex, sqIndex)">删除</button>
             </view>
@@ -199,7 +209,19 @@
                 />
               </view>
 
-              <view class="form-item">
+              <view v-if="isHearAnswerMode" class="form-item">
+                <text class="form-item__label">小题音频 URL (可选)</text>
+                <view class="row">
+                  <input
+                    class="text-input"
+                    :value="sq.audio?.url || ''"
+                    placeholder="https://..."
+                    @input="(e) => updateSubAudioUrl(gIndex, sqIndex, e.detail.value)"
+                  />
+                </view>
+              </view>
+
+              <view v-if="!isHearAnswerMode" class="form-item">
                 <text class="form-item__label">选项</text>
                 <view class="options">
                   <view v-for="(opt, optIndex) in sq.options" :key="optIndex" class="opt-row">
@@ -226,7 +248,7 @@
                 </view>
               </view>
 
-              <view class="form-item">
+              <view v-if="!isHearAnswerMode" class="form-item">
                 <view class="form-item__label-row">
                   <text class="form-item__label">正确答案</text>
                   <view class="mode-toggle">
@@ -265,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ListeningChoiceQuestion, RichTextContent, SubQuestion } from '/types'
 import { generateId, createEmptyRichText, createRichText } from '/templates'
 import {
@@ -278,14 +300,18 @@ const props = withDefaults(defineProps<{
   previewStepIndex?: number
   templateMode?: boolean
   focusPath?: string
+  questionMode?: 'choice' | 'hearAnswer'
 }>(), {
   templateMode: false,
-  focusPath: ''
+  focusPath: '',
+  questionMode: 'choice'
 })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ListeningChoiceQuestion): void
 }>()
+
+const isHearAnswerMode = computed(() => props.questionMode === 'hearAnswer')
 
 // null means "default: expanded (no user toggles yet)"
 // [] means "all collapsed"
@@ -432,12 +458,15 @@ function expandAllGroups() {
   expandedGroupIds.value = props.modelValue.content.groups.map(g => g.id)
 }
 
-function normalizeOrders(groups: ListeningChoiceQuestion['content']['groups']) {
-  let counter = 1
-  return groups.map((g) => ({
-    ...g,
-    subQuestions: (g.subQuestions || []).map((q) => ({ ...q, order: counter++ }))
-  }))
+function getNextSubQuestionOrder(groups: ListeningChoiceQuestion['content']['groups']): number {
+  let maxOrder = 0
+  ;(groups || []).forEach((group) => {
+    ;(group.subQuestions || []).forEach((sq) => {
+      const order = Math.floor(Number(sq?.order || 0))
+      if (Number.isFinite(order) && order > maxOrder) maxOrder = order
+    })
+  })
+  return Math.max(1, maxOrder + 1)
 }
 
 function getSubMode(sq: any): 'single' | 'multiple' {
@@ -445,6 +474,7 @@ function getSubMode(sq: any): 'single' | 'multiple' {
 }
 
 function setSubMode(gIndex: number, sqIndex: number, mode: 'single' | 'multiple') {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
@@ -535,7 +565,7 @@ function removeGroup(index: number) {
 
   const next = regenerateFlowStepsFromSource({
     ...props.modelValue,
-    content: { ...props.modelValue.content, groups: normalizeOrders(groups) }
+    content: { ...props.modelValue.content, groups }
   })
   update(next)
 }
@@ -619,24 +649,32 @@ function setGroupDescriptionDemoAudio(gIndex: number) {
 function addSubQuestion(gIndex: number) {
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
-  const newQ: SubQuestion = {
-    id: generateId(),
-    order: 0,
-    stem: createEmptyRichText(),
-    options: [
-      { key: 'A', content: createEmptyRichText() },
-      { key: 'B', content: createEmptyRichText() },
-      { key: 'C', content: createEmptyRichText() }
-    ],
-    answerMode: 'single',
-    answer: ['A']
-  }
+  const nextOrder = getNextSubQuestionOrder(groups)
+  const newQ: any = isHearAnswerMode.value
+    ? {
+      id: generateId(),
+      order: nextOrder,
+      stem: createEmptyRichText(),
+      audio: { url: '', position: 'above' }
+    }
+    : {
+      id: generateId(),
+      order: nextOrder,
+      stem: createEmptyRichText(),
+      options: [
+        { key: 'A', content: createEmptyRichText() },
+        { key: 'B', content: createEmptyRichText() },
+        { key: 'C', content: createEmptyRichText() }
+      ],
+      answerMode: 'single',
+      answer: ['A']
+    }
   const nextG = { ...g, subQuestions: [...(g.subQuestions || []), newQ] }
   groups[gIndex] = nextG
   if (expandedSubQuestionIds.value !== null) {
     expandedSubQuestionIds.value = Array.from(new Set([...expandedSubQuestionIds.value, newQ.id]))
   }
-  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups: normalizeOrders(groups) } })
+  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
   update(next)
 }
 
@@ -649,7 +687,22 @@ function removeSubQuestion(gIndex: number, sqIndex: number) {
   if (removedId && expandedSubQuestionIds.value !== null) {
     expandedSubQuestionIds.value = expandedSubQuestionIds.value.filter(id => id !== String(removedId))
   }
-  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups: normalizeOrders(groups) } })
+  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+  update(next)
+}
+
+function updateSubOrder(gIndex: number, sqIndex: number, rawValue: any) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const list = [...(g.subQuestions || [])]
+  const current = list[sqIndex]
+  if (!current) return
+  const parsed = Math.floor(Number(rawValue))
+  const fallback = Math.max(1, Math.floor(Number(current.order || 1)))
+  const nextOrder = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  list[sqIndex] = { ...current, order: nextOrder }
+  groups[gIndex] = { ...g, subQuestions: list }
+  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
   update(next)
 }
 
@@ -662,11 +715,29 @@ function updateSubStem(gIndex: number, sqIndex: number, stem: RichTextContent) {
   update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
 }
 
+function updateSubAudioUrl(gIndex: number, sqIndex: number, url: string) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const list = [...(g.subQuestions || [])]
+  const curr: any = list[sqIndex] || {}
+  list[sqIndex] = {
+    ...curr,
+    audio: {
+      ...(curr.audio || { position: 'above' }),
+      url
+    }
+  } as any
+  groups[gIndex] = { ...g, subQuestions: list }
+  update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+}
+
 function updateOptionKey(gIndex: number, sqIndex: number, optIndex: number, newKey: string) {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
   const q = list[sqIndex]
+  if (!q || !Array.isArray(q.options)) return
   const options = [...q.options]
   const oldKey = options[optIndex].key
   options[optIndex] = { ...options[optIndex], key: newKey }
@@ -678,10 +749,12 @@ function updateOptionKey(gIndex: number, sqIndex: number, optIndex: number, newK
 }
 
 function updateOptionContent(gIndex: number, sqIndex: number, optIndex: number, content: RichTextContent) {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
   const q = list[sqIndex]
+  if (!q || !Array.isArray(q.options)) return
   const options = [...q.options]
   options[optIndex] = { ...options[optIndex], content }
   list[sqIndex] = { ...q, options }
@@ -690,10 +763,12 @@ function updateOptionContent(gIndex: number, sqIndex: number, optIndex: number, 
 }
 
 function addOption(gIndex: number, sqIndex: number) {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
   const q = list[sqIndex]
+  if (!q || !Array.isArray(q.options)) return
   const options = [...q.options]
   const nextKey = String.fromCharCode(65 + options.length)
   options.push({ key: nextKey, content: createEmptyRichText() })
@@ -703,10 +778,12 @@ function addOption(gIndex: number, sqIndex: number) {
 }
 
 function removeOption(gIndex: number, sqIndex: number, optIndex: number) {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
   const q = list[sqIndex]
+  if (!q || !Array.isArray(q.options)) return
   const deletedKey = q.options[optIndex].key
   const options = q.options.filter((_, i) => i !== optIndex)
   let answer = q.answer
@@ -720,10 +797,12 @@ function removeOption(gIndex: number, sqIndex: number, optIndex: number) {
 }
 
 function toggleAnswer(gIndex: number, sqIndex: number, key: string) {
+  if (isHearAnswerMode.value) return
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
   const list = [...(g.subQuestions || [])]
   const q = list[sqIndex]
+  if (!q || !Array.isArray(q.answer)) return
   const current = q.answer
   let next: string[] = []
   if (getSubMode(q) === 'multiple') {
@@ -984,6 +1063,32 @@ function toInt(v: any): number {
 
 .sub-card__title {
   font-weight: 600;
+}
+
+.sub-card__order {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-card__order-label {
+  color: $text-secondary;
+  font-size: $font-size-sm;
+}
+
+.sub-card__order-input {
+  width: 88px;
+  height: 32px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  padding: 0 10px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.sub-card__order-input:focus {
+  outline: none;
+  border-color: rgba(33, 150, 243, 0.45);
 }
 
 .sub-card__body {

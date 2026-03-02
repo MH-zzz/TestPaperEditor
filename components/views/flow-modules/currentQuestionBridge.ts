@@ -3,7 +3,8 @@ import type {
   ListeningChoiceFlowStep,
   ListeningChoiceQuestion,
   Question,
-  QuestionMetadata
+  QuestionMetadata,
+  SpeakingHearAnswerQuestion
 } from '/types'
 
 export type FlowContextInput = {
@@ -70,11 +71,13 @@ export function patchQuestionFlowContext<TQuestion extends QuestionWithMetadata>
   }
 }
 
-export function patchListeningChoiceQuestionFlow(
-  question: ListeningChoiceQuestion,
+export function patchListeningChoiceQuestionFlow<
+  TQuestion extends ListeningChoiceQuestion | SpeakingHearAnswerQuestion
+>(
+  question: TQuestion,
   source: ListeningChoiceFlowSource,
   steps: ListeningChoiceFlowStep[]
-): ListeningChoiceQuestion {
+): TQuestion {
   return {
     ...question,
     flow: {
@@ -84,5 +87,5 @@ export function patchListeningChoiceQuestionFlow(
       source,
       steps
     }
-  } as ListeningChoiceQuestion
+  } as TQuestion
 }

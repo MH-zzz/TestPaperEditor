@@ -13,6 +13,7 @@
       :questions="questions"
       :answers="answers"
       :show-answer="showAnswer"
+      :show-question-number="showQuestionNumber"
       :mode="mode"
       @select="handleOptionClick"
     />
@@ -41,6 +42,7 @@ const props = withDefaults(defineProps<{
   questions?: SubQuestion[]
   answers?: Record<string, string | string[]>
   showAnswer?: boolean
+  showQuestionNumber?: boolean
   mode?: RenderMode
   playAudioUrl?: string
   playAudioSource?: 'description' | 'content'
@@ -52,6 +54,7 @@ const props = withDefaults(defineProps<{
   questions: () => [],
   answers: () => ({}),
   showAnswer: false,
+  showQuestionNumber: true,
   mode: 'preview',
   playAudioUrl: '',
   playAudioSource: 'content',

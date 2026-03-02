@@ -22,7 +22,14 @@
 
     <!-- 底部状态栏（贴底，左右贴边） -->
     <view v-if="bottomDockVisible" class="lc-flow__bottom">
-      <view v-if="bottomCountdown" class="lc-bottom__countdown">
+      <view v-if="bottomRecordingIndicator" class="lc-bottom__recording">
+        <view class="lc-bottom__recording-icon">
+          <view class="lc-bottom__recording-stop" />
+        </view>
+        <text class="lc-bottom__recording-text">正在录音 {{ bottomRecordingElapsedDisplay }}</text>
+      </view>
+
+      <view v-else-if="bottomCountdown" class="lc-bottom__countdown">
         <text class="lc-bottom__countdown-label">{{ bottomCountdown.label }}</text>
         <text class="lc-bottom__countdown-number">{{ bottomCountdownDisplay }}</text>
       </view>
@@ -247,6 +254,16 @@ const playAudioPlayCount = computed(() => {
 
 const isPreview = computed(() => props.mode === 'preview')
 const shouldAutoPlay = computed(() => props.mode === 'exam')
+const isHearAnswerVariant = computed(() => {
+  const metadata = (props.data as any)?.metadata
+  if (!metadata || typeof metadata !== 'object') return false
+  const variant = typeof (metadata as any).questionVariant === 'string'
+    ? (metadata as any).questionVariant.trim()
+    : ''
+  return variant === 'hear_answer'
+})
+const isRecording = ref(false)
+const activeRecordingQuestionId = ref('')
 
 const introBaseTitle = computed(() => String(props.data.content?.intro?.title || '').trim())
 const introTitleDescription = computed(() => String(props.data.content?.intro?.title_description || '').trim())
@@ -289,6 +306,7 @@ function stepShowGroupPrompt(step: RendererStep | null | undefined) {
 }
 
 const activeContextTitle = computed(() => {
+  if (isHearAnswerVariant.value) return ''
   const step = displayStep.value
   if (!step) return ''
   if (!isListeningChoiceContextInfoStep(step)) return ''
@@ -297,6 +315,7 @@ const activeContextTitle = computed(() => {
 })
 
 const activeContextGroupTitle = computed(() => {
+  if (isHearAnswerVariant.value) return ''
   const step = displayStep.value
   if (!step) return ''
   if (!isListeningChoiceContextInfoStep(step)) return ''
@@ -313,6 +332,7 @@ const activeContextShowPrompt = computed(() => {
 })
 
 const activeTitle = computed(() => {
+  if (isHearAnswerVariant.value) return buildIntroTitle(true)
   const step = displayStep.value
   if (!step) return ''
   if (!stepShowTitle(step)) return ''
@@ -493,7 +513,9 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
   if (displayStepRenderView.value === 'groupPrompt') {
     return {
       ...shared,
+      isHearAnswer: isHearAnswerVariant.value,
       prompt: activeGroup.value?.prompt,
+      showQuestionNumber: true,
       questions: contextQuestions.value
     }
   }
@@ -502,9 +524,11 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
     return {
       ...shared,
       contextKind: countdownContext.value?.kind || '',
+      isHearAnswer: isHearAnswerVariant.value,
       introText: props.data.content?.intro?.text,
       introShowDescription: countdownIntroShowDescription.value,
       groupPrompt: countdownContextGroup.value?.prompt,
+      showQuestionNumber: true,
       questions: contextQuestions.value,
       label: String(isStepKind(step, 'countdown') ? (step.label || '') : '')
     }
@@ -517,6 +541,7 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
       contextGroupTitle: activeContextGroupTitle.value,
       contextShowPrompt: activeContextShowPrompt.value,
       prompt: activeGroup.value?.prompt,
+      showQuestionNumber: true,
       questions: contextQuestions.value,
       playAudioUrl: playAudioUrl.value,
       playAudioSource: activePlayAudioSource.value,
@@ -527,10 +552,14 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
   if (displayStepRenderView.value === 'answerChoice') {
     return {
       ...shared,
+      isHearAnswer: isHearAnswerVariant.value,
+      isRecording: isRecording.value,
+      recordingSecondsLeft: countdownLeft.value,
       contextTitle: activeContextTitle.value,
       contextGroupTitle: activeContextGroupTitle.value,
       contextShowPrompt: activeContextShowPrompt.value,
       prompt: activeGroup.value?.prompt,
+      showQuestionNumber: true,
       questions: activeQuestions.value
     }
   }
@@ -602,8 +631,11 @@ const bottomCountdown = computed(() => {
     if (countdownLeft.value <= 0) return null
     const groupId = resolveAnswerChoiceGroupId(step)
     const groupLabel = getGroupDisplayName(groupId)
+    const answerCountdownLabel = isHearAnswerVariant.value
+      ? (isRecording.value ? '录音倒计时' : '录音准备倒计时')
+      : '答题倒计时'
     return {
-      label: groupLabel ? `${groupLabel}-答题倒计时` : '答题倒计时',
+      label: groupLabel ? `${groupLabel}-${answerCountdownLabel}` : answerCountdownLabel,
       seconds: countdownLeft.value
     }
   }
@@ -618,8 +650,36 @@ const bottomCountdownDisplay = computed(() => {
   return formatSeconds(v.seconds)
 })
 
+const bottomRecordingIndicator = computed(() => {
+  if (!isHearAnswerVariant.value) return false
+  if (activeStepRenderView.value !== 'answerChoice') return false
+  if (isRecording.value) return true
+  // In preview, show recording dock style as a static visual (no auto timer simulation).
+  return isPreview.value
+})
+
+const bottomRecordingElapsedSeconds = computed(() => {
+  if (!bottomRecordingIndicator.value) return 0
+  if (isPreview.value && !isRecording.value) return 0
+  const step = activeStep.value
+  const totalSeconds = resolveAnswerSeconds(step)
+  if (totalSeconds <= 0) return 0
+  const elapsed = totalSeconds - Math.max(0, countdownLeft.value)
+  return Math.max(0, elapsed)
+})
+
+const bottomRecordingElapsedDisplay = computed(() => {
+  const seconds = bottomRecordingElapsedSeconds.value
+  return formatClockSeconds(seconds)
+})
+
 const bottomDockVisible = computed(() => {
-  return Boolean(bottomAudioUrl.value || bottomCountdown.value || (isPreview.value && bottomExpectAudio.value))
+  return Boolean(
+    bottomRecordingIndicator.value
+    || bottomAudioUrl.value
+    || bottomCountdown.value
+    || (isPreview.value && bottomExpectAudio.value)
+  )
 })
 
 function clearTickTimer() {
@@ -662,6 +722,45 @@ function startCountdown(seconds: number, onDone: () => void) {
   }, 1000)
 }
 
+function resolveActiveAnswerQuestionId(step: RendererStep): string {
+  if (!isStepKind(step, 'answerChoice')) return ''
+  const ids = Array.isArray(step.questionIds) ? step.questionIds.map(id => String(id || '')).filter(Boolean) : []
+  if (ids.length > 0) return ids[0]
+  const groupId = resolveAnswerChoiceGroupId(step)
+  if (!groupId) return ''
+  const list = groupsById.value[groupId]?.subQuestions || []
+  return String(list[0]?.id || '')
+}
+
+function startHearAnswerRecording(seconds: number, questionId: string, onDone: () => void) {
+  isRecording.value = true
+  activeRecordingQuestionId.value = String(questionId || '')
+  try {
+    const recorderManager = typeof (uni as any)?.getRecorderManager === 'function'
+      ? (uni as any).getRecorderManager()
+      : null
+    if (recorderManager && typeof recorderManager.start === 'function') {
+      recorderManager.start({ duration: Math.max(1, seconds) * 1000 })
+    }
+  } catch {}
+
+  startCountdown(seconds, () => {
+    stopHearAnswerRecording()
+    onDone()
+  })
+}
+
+function stopHearAnswerRecording() {
+  if (!isRecording.value) return
+  isRecording.value = false
+  try {
+    const recorderManager = typeof (uni as any)?.getRecorderManager === 'function'
+      ? (uni as any).getRecorderManager()
+      : null
+    if (recorderManager && typeof recorderManager.stop === 'function') recorderManager.stop()
+  } catch {}
+}
+
 function startIntroCountdown() {
   const seconds = introCountdownSeconds.value
   if (!seconds || seconds <= 0) {
@@ -695,10 +794,12 @@ function startAudioLoop(playCount: number, onDone: () => void) {
 }
 
 function enterActiveStep() {
+  stopHearAnswerRecording()
   clearTickTimer()
   countdownLeft.value = 0
   introCountdownLeft.value = 0
   audioRemaining.value = 0
+  activeRecordingQuestionId.value = ''
 
   const step = activeStep.value
   if (!step) return
@@ -793,9 +894,16 @@ function enterActiveStep() {
   if (renderView === 'answerChoice') {
     const seconds = resolveAnswerSeconds(step)
     if (step.autoNext === 'timeEnded' && seconds > 0) {
-      startCountdown(seconds, () => {
-        dispatchRuntime({ type: 'timeEnded' })
-      })
+      if (isHearAnswerVariant.value) {
+        const questionId = resolveActiveAnswerQuestionId(step)
+        startHearAnswerRecording(seconds, questionId, () => {
+          dispatchRuntime({ type: 'timeEnded' })
+        })
+      } else {
+        startCountdown(seconds, () => {
+          dispatchRuntime({ type: 'timeEnded' })
+        })
+      }
     }
     return
   }
@@ -851,6 +959,7 @@ watch(activeStep, () => {
 }, { immediate: true })
 
 onUnmounted(() => {
+  stopHearAnswerRecording()
   clearTickTimer()
 })
 
@@ -859,6 +968,13 @@ function formatSeconds(seconds: number): string {
   const mins = Math.floor(s / 60)
   const secs = s % 60
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatClockSeconds(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const mins = Math.floor(s / 60)
+  const secs = s % 60
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 function handleOptionClick(subQuestionId: string, optionKey: string) {
@@ -933,6 +1049,38 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
     justify-content: space-between;
     gap: 12px;
     padding: 10px 12px;
+  }
+
+  .lc-bottom__recording {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+
+  .lc-bottom__recording-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 2px solid rgba(244, 63, 94, 0.45);
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .lc-bottom__recording-stop {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: #ef4444;
+  }
+
+  .lc-bottom__recording-text {
+    font-size: 12px;
+    color: rgba(15, 23, 42, 0.78);
+    font-weight: 600;
   }
 
   .lc-bottom__countdown-label {

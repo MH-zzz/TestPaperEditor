@@ -211,6 +211,38 @@ export interface ListeningChoiceQuestion {
   flow: ListeningChoiceFlow
 }
 
+// ==================== 听后回答题 ====================
+
+export interface SpeakingHearAnswerSubQuestion {
+  id: string
+  order: number
+  stem: RichTextContent
+  audio?: AudioConfig
+}
+
+export interface SpeakingHearAnswerGroup {
+  id: string
+  title?: string
+  prompt?: RichTextContent
+  prepareSeconds?: number
+  answerSeconds?: number
+  descriptionAudio?: ListeningAudio
+  audio?: ListeningAudio
+  subQuestions: SpeakingHearAnswerSubQuestion[]
+}
+
+export interface SpeakingHearAnswerContent {
+  intro: ListeningChoiceIntroContent
+  groups: SpeakingHearAnswerGroup[]
+}
+
+export interface SpeakingHearAnswerQuestion {
+  id: string
+  type: 'speaking_hear_answer'
+  content: SpeakingHearAnswerContent
+  flow: ListeningChoiceFlow
+}
+
 // ==================== 听力填空题 ====================
 
 // 填空交互模式
@@ -474,6 +506,7 @@ export interface SpeakingStepsQuestion {
 
 export type Question =
   | ListeningChoiceQuestion
+  | SpeakingHearAnswerQuestion
   | ListeningFillQuestion
   | ListeningMatchQuestion
   | ListeningOrderQuestion
@@ -489,6 +522,7 @@ export interface QuestionMetadata {
   duration?: number    // 预计时长（秒）
   source?: string      // 来源
   tags?: string[]      // 标签
+  questionVariant?: string // 同题型下的业务变体（例如：hear_answer）
   // Optional routing dimensions for flow profile matching.
   region?: string
   scene?: string

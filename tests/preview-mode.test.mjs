@@ -83,6 +83,29 @@ test('ListeningChoiceRenderer answerChoice should not render early-next button',
   assert.ok(!src.includes('提前进入下一步'))
 })
 
+test('hear-answer renderer should show order + stem in preview', async () => {
+  const answerBodySrc = await readFile('components/renderer/listening-choice/ListeningChoiceAnswerChoiceBody.vue')
+  const listSrc = await readFile('components/renderer/listening-choice/ListeningChoiceQuestionList.vue')
+  const groupPromptSrc = await readFile('components/renderer/listening-choice/ListeningChoiceGroupPromptBody.vue')
+  const countdownSrc = await readFile('components/renderer/listening-choice/ListeningChoiceCountdownBody.vue')
+  const rendererSrc = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+
+  assert.ok(answerBodySrc.includes('v-else'))
+  assert.ok(answerBodySrc.includes('<ListeningChoiceQuestionList'))
+  assert.ok(answerBodySrc.includes(':show-question-number="showQuestionNumber"'))
+  assert.ok(answerBodySrc.includes('v-if="isHearAnswer" class="lc-hear-answer__recording"'))
+  assert.ok(listSrc.includes('showQuestionNumber?: boolean'))
+  assert.ok(listSrc.includes('v-if="showQuestionNumber" class="lc-question__number"'))
+  assert.ok(groupPromptSrc.includes('ListeningChoiceStepContext'))
+  assert.ok(groupPromptSrc.includes('isHearAnswer'))
+  assert.ok(countdownSrc.includes('ListeningChoiceStepContext'))
+  assert.ok(countdownSrc.includes('isHearAnswer'))
+  assert.ok(rendererSrc.includes('showQuestionNumber: true'))
+  assert.ok(rendererSrc.includes('isHearAnswer: isHearAnswerVariant.value'))
+  assert.ok(rendererSrc.includes('if (isHearAnswerVariant.value) return buildIntroTitle(true)'))
+  assert.ok(rendererSrc.includes('if (isHearAnswerVariant.value) return \'\''))
+})
+
 test('ListeningChoiceRenderer promptTone should reuse previous view instead of standalone page', async () => {
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
   assert.ok(src.includes('function resolveDisplayStepIndex'))
@@ -192,6 +215,14 @@ test('ListeningChoiceEditor sub-questions should support collapse and expand', a
   assert.ok(src.includes('toggleSubQuestion'))
   assert.ok(src.includes('▾'))
   assert.ok(src.includes('▸'))
+})
+
+test('ListeningChoiceEditor should support manual sub-question order input', async () => {
+  const src = await readFile('components/editor/ListeningChoiceEditor.vue')
+  assert.ok(src.includes('sub-card__order-label">序号</text>'))
+  assert.ok(src.includes('updateSubOrder(gIndex, sqIndex, e.detail.value)'))
+  assert.ok(src.includes('function updateSubOrder('))
+  assert.ok(!src.includes('第 {{ sq.order }} 题'))
 })
 
 test('listening choice group should include prepare/answer timing and audio play-count fields in type/template/editor', async () => {

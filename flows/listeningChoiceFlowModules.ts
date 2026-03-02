@@ -3,6 +3,7 @@
 import { compileListeningChoiceFlow } from '../engine/flow/listening-choice/compiler.ts'
 
 export const LISTENING_CHOICE_STANDARD_FLOW_ID = 'listening_choice.standard.v1'
+export const LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID = 'listening_hear_answer.standard.v1'
 
 type IdFactory = () => string
 type ListeningChoiceAudioSource = 'description' | 'content'
@@ -72,6 +73,25 @@ export const DEFAULT_LISTENING_CHOICE_STANDARD_MODULE: ListeningChoiceStandardFl
   ]
 }
 
+export const DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE: ListeningChoiceStandardFlowModuleV1 = {
+  version: 1,
+  id: LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
+  introShowTitle: true,
+  introShowTitleDescription: true,
+  introShowDescription: true,
+  introCountdownEnabled: false,
+  introCountdownShowTitle: true,
+  introCountdownSeconds: 3,
+  introCountdownLabel: '准备',
+  perGroupSteps: [
+    { kind: 'playAudio', showTitle: false, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+    { kind: 'countdown', showTitle: false, seconds: 5, label: '答题准备' },
+    { kind: 'playAudio', showTitle: false, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+    { kind: 'promptTone', showTitle: false, url: '/static/audio/small_time.mp3' },
+    { kind: 'answerChoice', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
+  ]
+}
+
 function defaultGenerateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
@@ -101,6 +121,13 @@ function nonEmptyString(v: any): string | undefined {
 
 function normalizeAudioSource(v: any): ListeningChoiceAudioSource {
   return v === 'description' ? 'description' : 'content'
+}
+
+function isHearAnswerVariant(question: any): boolean {
+  const metadata = question?.metadata
+  if (!metadata || typeof metadata !== 'object') return false
+  const variant = typeof metadata.questionVariant === 'string' ? metadata.questionVariant.trim() : ''
+  return variant === 'hear_answer'
 }
 
 function getGroupIndexById(question: any): Record<string, number> {
@@ -332,6 +359,7 @@ export function validateListeningChoiceStandardModule(input: any): ListeningChoi
 
 function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
   const module = normalizeListeningChoiceStandardModule(moduleInput)
+  const hearAnswerVariant = isHearAnswerVariant(question)
   const introCountdownEnabled = module.introCountdownEnabled !== false
   const introCountdownSeconds = Math.max(0, toInt(module.introCountdownSeconds, 3))
   const introCountdownLabel = nonEmptyString(module.introCountdownLabel) || '准备'
@@ -366,7 +394,12 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
     const groupId = g?.id ? String(g.id) : ''
 
     const kindCount: Record<string, number> = {}
-      ;(module.perGroupSteps || []).forEach((def: any) => {
+    const perSteps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
+    const perQuestionIds = Array.isArray(g?.subQuestions) && g.subQuestions.length > 0
+      ? g.subQuestions.map((sq: any) => String(sq?.id || '')).filter(Boolean)
+      : ['']
+
+    const appendPlanByDef = (def: any, questionId?: string) => {
         const kind = String(def?.kind || '')
         kindCount[kind] = (kindCount[kind] || 0) + 1
         const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
@@ -411,6 +444,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
           key,
           step: {
             kind: 'answerChoice',
+            questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
             showTitle: getBool(def, 'showTitle', true),
             showQuestionTitle: getBool(def, 'showQuestionTitle', true),
             showQuestionTitleDescription: getBool(def, 'showQuestionTitleDescription', true),
@@ -421,6 +455,20 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         })
         return
       }
+    }
+
+    if (!hearAnswerVariant) {
+      perSteps.forEach((def: any) => appendPlanByDef(def))
+      return
+    }
+
+    perQuestionIds.forEach((questionId: string, questionIndex: number) => {
+      perSteps.forEach((def: any) => {
+        const kind = String(def?.kind || '')
+        const isPerQuestionStep = kind === 'promptTone' || kind === 'answerChoice'
+        if (!isPerQuestionStep && questionIndex > 0) return
+        appendPlanByDef(def, questionId)
+      })
     })
   })
 

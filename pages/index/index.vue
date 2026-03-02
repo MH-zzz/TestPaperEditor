@@ -63,7 +63,17 @@ function onCreateFromSidebar() {
 }
 
 function syncTypeFromCurrentDraft() {
-  const nextType = String(questionDraft.state.currentQuestion?.type || '').trim()
+  const currentQuestion: any = questionDraft.state.currentQuestion
+  let nextType = String(currentQuestion?.type || '').trim()
+  const questionVariant = String(currentQuestion?.metadata?.questionVariant || '').trim()
+  if (nextType === 'listening_choice' && questionVariant === 'hear_answer') {
+    nextType = 'speaking_hear_answer'
+  }
+  if (nextType === 'speaking_steps') {
+    const partType = Number(currentQuestion?.partType || 0)
+    if (partType === 3) nextType = 'speaking_hear_answer'
+    else if (partType === 2) nextType = 'speaking_hear_choice'
+  }
   if (!nextType || !(questionTemplates as any)[nextType]) return
   currentType.value = nextType
 }

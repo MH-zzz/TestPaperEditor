@@ -76,6 +76,13 @@ test('flow module helpers should exist (listening_choice)', async () => {
   assert.equal(typeof mod.validateListeningChoiceStandardModule, 'function')
 })
 
+test('hear-answer default standard module should hide group titles by default', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const steps = mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps || []
+  assert.ok(steps.length > 0)
+  assert.ok(steps.every((step) => step.showTitle === false))
+})
+
 test('flow module store should expose max-version and archive helpers', async () => {
   const src = await import('node:fs/promises')
   const path = await import('node:path')
@@ -88,7 +95,7 @@ test('flow module store should expose max-version and archive helpers', async ()
   assert.ok(content.includes('setListeningChoiceStatus(ref: FlowModuleRef | null | undefined, nextStatus: FlowModuleStatus)'))
   assert.ok(content.includes('canListeningChoiceStatusTransition'))
   assert.ok(content.includes('function ensurePublishedStandardBaseline(modules: ListeningChoiceFlowModuleV1[])'))
-  assert.ok(content.includes('ensurePublishedStandardBaseline(normalized)'))
+  assert.ok(content.includes('ensurePublishedStandardBaseline(migratedList)'))
 })
 
 test('flow module store should support business display name + optional note fields', async () => {
@@ -97,10 +104,22 @@ test('flow module store should support business display name + optional note fie
   const file = path.resolve(process.cwd(), 'stores/flowModules.ts')
   const content = await src.readFile(file, 'utf8')
   assert.ok(content.includes("const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'"))
+  assert.ok(content.includes("const DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME = '听后回答标准'"))
+  assert.ok(content.includes('LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID'))
   assert.ok(content.includes('function normalizeListeningChoiceModuleName(src: Record<string, unknown>)'))
   assert.ok(content.includes('note: normalizeText(src.note)'))
   assert.ok(content.includes('name: src.name == null ? existing.name : src.name'))
   assert.ok(content.includes('note: src.note == null ? existing.note : src.note'))
+})
+
+test('flow module store should migrate legacy hear-answer title defaults', async () => {
+  const src = await import('node:fs/promises')
+  const path = await import('node:path')
+  const file = path.resolve(process.cwd(), 'stores/flowModules.ts')
+  const content = await src.readFile(file, 'utf8')
+  assert.ok(content.includes('isLegacyHearAnswerStandardTitleConfig'))
+  assert.ok(content.includes('applyHearAnswerDefaultTitleConfig'))
+  assert.ok(content.includes('this.save()'))
 })
 
 test('standard flow module validator should enforce core loop steps', async () => {

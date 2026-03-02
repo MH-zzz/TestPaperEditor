@@ -23,6 +23,7 @@ import ListeningChoiceRenderer from './ListeningChoiceRenderer.vue'
 import ListeningMatchRenderer from './ListeningMatchRenderer.vue'
 import ListeningFillRenderer from './ListeningFillRenderer.vue'
 import SpeakingStepsRenderer from './SpeakingStepsRenderer.vue'
+import SpeakingHearAnswerRenderer from './SpeakingHearAnswerRenderer.vue'
 
 const props = withDefaults(defineProps<{
   data: Question
@@ -60,6 +61,17 @@ type RendererRoute = {
 const QUESTION_RENDERER_ROUTES: Record<string, RendererRoute> = {
   listening_choice: {
     component: ListeningChoiceRenderer,
+    resolveProps: (p) => ({
+      data: p.data,
+      mode: p.mode,
+      answers: p.answers,
+      showAnswer: p.showAnswer,
+      stepIndex: p.stepIndex,
+      showStepNav: p.showStepNav
+    })
+  },
+  speaking_hear_answer: {
+    component: SpeakingHearAnswerRenderer,
     resolveProps: (p) => ({
       data: p.data,
       mode: p.mode,

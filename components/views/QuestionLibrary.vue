@@ -29,6 +29,11 @@
             :class="{ active: filterType === 'listening_choice' }"
             @click="filterType = 'listening_choice'"
           >听力选择</text>
+          <text
+            class="filter-opt"
+            :class="{ active: filterType === 'speaking_hear_answer' }"
+            @click="filterType = 'speaking_hear_answer'"
+          >听后回答</text>
         </view>
       </view>
     </view>
@@ -46,7 +51,7 @@
           @click="loadQuestion(item)"
         >
           <view class="card-header">
-            <text class="q-type">{{ getTypeName(item.type) }}</text>
+            <text class="q-type">{{ getTypeName(item) }}</text>
             <text class="q-date">{{ formatDate(item.metadata?.updatedAt) }}</text>
           </view>
           
@@ -116,17 +121,26 @@ function getPlainText(richtext: any): string {
 
 function getQuestionSummary(q: any): string {
   if (!q) return ''
-  if (q.type === 'listening_choice') {
+  if (q.type === 'listening_choice' || q.type === 'speaking_hear_answer') {
     return (
       getPlainText(q.content?.intro?.text) ||
       getPlainText(q.content?.groups?.[0]?.prompt) ||
-      '听力选择题'
+      (q.type === 'speaking_hear_answer' ? '听后回答题' : '听力选择题')
     )
   }
   return getPlainText(q.stem)
 }
 
-function getTypeName(type: string) {
+function getTypeName(question: any) {
+  if (question?.type === 'speaking_hear_answer') return '听后回答'
+  const variant = String(question?.metadata?.questionVariant || '').trim()
+  if (question?.type === 'listening_choice' && variant === 'hear_answer') return '听后回答'
+  if (question?.type === 'speaking_steps') {
+    const partType = Number(question?.partType || 0)
+    if (partType === 3) return '听后回答'
+    if (partType === 2) return '听后选择'
+  }
+  const type = String(question?.type || '')
   return questionTemplates[type as TemplateKey]?.name || type
 }
 

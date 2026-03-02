@@ -2,11 +2,15 @@ import type {
   ListeningChoiceFlowStep,
   ListeningChoiceGroup,
   ListeningChoiceQuestion,
-  ListeningChoiceFlowModuleV1
+  SpeakingHearAnswerQuestion,
+  ListeningChoiceFlowModuleV1,
+  QuestionMetadata
 } from '/types'
 
 type IdFactory = () => string
 type FlowOverrides = Record<string, Record<string, unknown>>
+type ListeningChoiceCompileQuestion = ListeningChoiceQuestion | SpeakingHearAnswerQuestion
+type PerGroupStepDef = ListeningChoiceFlowModuleV1['perGroupSteps'][number]
 type CompilePlanItem = {
   key: string
   step: Omit<ListeningChoiceFlowStep, 'id'>
@@ -33,6 +37,24 @@ function nonEmptyString(v: unknown): string | undefined {
 
 function normalizeAudioSource(v: unknown): 'description' | 'content' {
   return v === 'description' ? 'description' : 'content'
+}
+
+type QuestionWithMetadata = ListeningChoiceCompileQuestion & {
+  metadata?: QuestionMetadata
+}
+
+function readMetadata(question: ListeningChoiceCompileQuestion): QuestionMetadata {
+  const metadata = (question as QuestionWithMetadata).metadata
+  return metadata && typeof metadata === 'object' ? metadata : {}
+}
+
+function isHearAnswerVariant(question: ListeningChoiceCompileQuestion): boolean {
+  if (question.type === 'speaking_hear_answer') return true
+  const metadata = readMetadata(question)
+  const variant = typeof metadata?.questionVariant === 'string'
+    ? metadata.questionVariant.trim()
+    : ''
+  return variant === 'hear_answer'
 }
 
 function readOverrideBool(override: Record<string, unknown>, key: string): boolean | undefined {
@@ -110,8 +132,9 @@ function toPlanStep(step: Omit<ListeningChoiceFlowStep, 'id'>, generateId: IdFac
   return { id: generateId(), ...step } as ListeningChoiceFlowStep
 }
 
-function compilePlan(question: ListeningChoiceQuestion, module: ListeningChoiceFlowModuleV1) {
+function compilePlan(question: ListeningChoiceCompileQuestion, module: ListeningChoiceFlowModuleV1) {
   const plan: CompilePlanItem[] = []
+  const hearAnswerVariant = isHearAnswerVariant(question)
 
   const introCountdownEnabled = module.introCountdownEnabled !== false
   const introCountdownSeconds = Math.max(0, toInt(module.introCountdownSeconds, 3))
@@ -146,8 +169,11 @@ function compilePlan(question: ListeningChoiceQuestion, module: ListeningChoiceF
     const groupId = g?.id ? String(g.id) : ''
     const perSteps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
     const kindCount: Record<string, number> = {}
+    const perQuestionIds = Array.isArray(g?.subQuestions) && g.subQuestions.length > 0
+      ? g.subQuestions.map((sq) => String(sq?.id || '')).filter(Boolean)
+      : ['']
 
-    perSteps.forEach((def) => {
+    const appendPlanByDef = (def: PerGroupStepDef, questionId?: string) => {
       const kind = String(def?.kind || '')
       kindCount[kind] = (kindCount[kind] || 0) + 1
       const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
@@ -208,6 +234,7 @@ function compilePlan(question: ListeningChoiceQuestion, module: ListeningChoiceF
           step: {
             kind: 'answerChoice',
             groupId,
+            questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
             showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : true,
             showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
             showQuestionTitleDescription: typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true,
@@ -216,6 +243,22 @@ function compilePlan(question: ListeningChoiceQuestion, module: ListeningChoiceF
           }
         })
       }
+    }
+
+    if (!hearAnswerVariant) {
+      perSteps.forEach((def) => appendPlanByDef(def))
+      return
+    }
+
+    // Hear-answer variant runs per-question recording loops:
+    // group-level steps run once before the loop, promptTone/answerChoice repeat for each sub-question.
+    perQuestionIds.forEach((questionId, questionIndex) => {
+      perSteps.forEach((def) => {
+        const kind = String(def?.kind || '')
+        const isPerQuestionStep = kind === 'promptTone' || kind === 'answerChoice'
+        if (!isPerQuestionStep && questionIndex > 0) return
+        appendPlanByDef(def, questionId)
+      })
     })
   })
 
@@ -228,7 +271,7 @@ export interface ListeningChoiceCompileResult {
 }
 
 export function compileListeningChoiceFlow(
-  question: ListeningChoiceQuestion,
+  question: ListeningChoiceCompileQuestion,
   module: ListeningChoiceFlowModuleV1,
   opts?: { generateId?: IdFactory; overrides?: FlowOverrides }
 ): ListeningChoiceCompileResult {

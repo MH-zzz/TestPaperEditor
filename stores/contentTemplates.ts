@@ -1,5 +1,16 @@
 import { reactive } from 'vue'
-import type { ListeningChoiceContent, OptionStyle, RichTextContent, ListeningChoiceGroup, SubQuestion, QuestionOption } from '/types'
+import type {
+  AudioConfig,
+  ListeningChoiceContent,
+  ListeningChoiceGroup,
+  OptionStyle,
+  QuestionOption,
+  RichTextContent,
+  SpeakingHearAnswerContent,
+  SpeakingHearAnswerGroup,
+  SpeakingHearAnswerSubQuestion,
+  SubQuestion
+} from '/types'
 import { createPersistenceScheduler } from './persistence'
 
 const STORAGE_KEY = 'editor_content_templates_v1'
@@ -8,6 +19,11 @@ export interface ListeningChoiceContentTemplateV1 {
   version: 1
   optionStyle?: OptionStyle
   content: ListeningChoiceContent
+}
+
+export interface SpeakingHearAnswerContentTemplateV1 {
+  version: 1
+  content: SpeakingHearAnswerContent
 }
 
 function createRichText(text: string): RichTextContent {
@@ -74,6 +90,17 @@ function normalizeOptions(input: unknown): QuestionOption[] {
   ]
 }
 
+function normalizeAudioConfig(input: unknown): AudioConfig | undefined {
+  if (!isObjectRecord(input)) return undefined
+  const url = typeof input.url === 'string' ? input.url : ''
+  const trimmed = url.trim()
+  if (!trimmed) return undefined
+  return {
+    url: trimmed,
+    position: input.position === 'below' ? 'below' : 'above'
+  }
+}
+
 function normalizeSubQuestions(input: unknown): SubQuestion[] {
   if (!Array.isArray(input)) return []
   const out = input
@@ -118,6 +145,48 @@ function normalizeGroups(input: unknown): ListeningChoiceGroup[] {
           note: typeof audio.note === 'string' ? audio.note : undefined
         } : { url: '', playCount: 2, note: '题组音频（占位）' },
         subQuestions: normalizeSubQuestions(g.subQuestions)
+      }
+    })
+  return out
+}
+
+function normalizeHearAnswerSubQuestions(input: unknown): SpeakingHearAnswerSubQuestion[] {
+  if (!Array.isArray(input)) return []
+  const out = input
+    .filter((q): q is Record<string, unknown> => isObjectRecord(q))
+    .map((q, idx: number) => ({
+      id: nonEmptyString(q.id) || `tpl_ha_q_${idx + 1}`,
+      order: Number.isFinite(Number(q.order)) ? Number(q.order) : idx + 1,
+      stem: normalizeRichText(q.stem),
+      audio: normalizeAudioConfig(q.audio)
+    }))
+  return out
+}
+
+function normalizeHearAnswerGroups(input: unknown): SpeakingHearAnswerGroup[] {
+  if (!Array.isArray(input)) return []
+  const out = input
+    .filter((g): g is Record<string, unknown> => isObjectRecord(g))
+    .map((g, idx: number) => {
+      const descriptionAudio = isObjectRecord(g.descriptionAudio) ? g.descriptionAudio : null
+      const audio = isObjectRecord(g.audio) ? g.audio : null
+      return {
+        id: nonEmptyString(g.id) || `tpl_ha_g_${idx + 1}`,
+        title: nonEmptyString(g.title),
+        prompt: g.prompt ? normalizeRichText(g.prompt) : undefined,
+        prepareSeconds: normalizeNonNegativeInt(g.prepareSeconds, 5),
+        answerSeconds: normalizeNonNegativeInt(g.answerSeconds, 10),
+        descriptionAudio: descriptionAudio ? {
+          url: typeof descriptionAudio.url === 'string' ? descriptionAudio.url : '',
+          playCount: normalizePositiveInt(descriptionAudio.playCount, 1),
+          note: typeof descriptionAudio.note === 'string' ? descriptionAudio.note : undefined
+        } : { url: '', playCount: 1, note: '题组描述音频（可为空）' },
+        audio: audio ? {
+          url: typeof audio.url === 'string' ? audio.url : '',
+          playCount: normalizePositiveInt(audio.playCount, 2),
+          note: typeof audio.note === 'string' ? audio.note : undefined
+        } : { url: '', playCount: 2, note: '题组音频（占位）' },
+        subQuestions: normalizeHearAnswerSubQuestions(g.subQuestions)
       }
     })
   return out
@@ -174,6 +243,61 @@ export const DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE: ListeningChoiceContentTe
   }
 }
 
+export const DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE: SpeakingHearAnswerContentTemplateV1 = {
+  version: 1,
+  content: {
+    intro: {
+      title: '听后回答',
+      title_description: '(共12分,每小题2分)',
+      text: createRichText('听下面一段对话，回答第1小题。现在，你有5秒钟的时间阅读这道小题。'),
+      audio: { url: '', playCount: 1, note: '说明音频（可为空）' },
+      countdown: { seconds: 5, label: '准备', endBeepUrl: '/static/beep.mp3' }
+    },
+    groups: [
+      {
+        id: 'tpl_ha_g_1',
+        title: '第一题组（单题）',
+        prompt: createRichText('听下面一段对话回答第1小题，现在你有5秒钟的时间阅读这道小题。'),
+        prepareSeconds: 5,
+        answerSeconds: 10,
+        descriptionAudio: { url: '', playCount: 1, note: '题组描述音频（可为空）' },
+        audio: { url: '', playCount: 2, note: '题组音频（占位）' },
+        subQuestions: [
+          {
+            id: 'tpl_ha_q_1',
+            order: 1,
+            stem: createRichText('Who is the boy talking to on the phone?'),
+            audio: { url: '', position: 'above' }
+          }
+        ]
+      },
+      {
+        id: 'tpl_ha_g_2',
+        title: '第二题组（双题）',
+        prompt: createRichText('听下面一段对话回答第4-5小题，现在你有10秒钟的时间阅读这两道小题。'),
+        prepareSeconds: 10,
+        answerSeconds: 10,
+        descriptionAudio: { url: '', playCount: 1, note: '题组描述音频（可为空）' },
+        audio: { url: '', playCount: 2, note: '题组音频（占位）' },
+        subQuestions: [
+          {
+            id: 'tpl_ha_q_4',
+            order: 4,
+            stem: createRichText('How often should the girl water the plant?'),
+            audio: { url: '', position: 'above' }
+          },
+          {
+            id: 'tpl_ha_q_5',
+            order: 5,
+            stem: createRichText('What will the speakers do next?'),
+            audio: { url: '', position: 'above' }
+          }
+        ]
+      }
+    ]
+  }
+}
+
 export function normalizeListeningChoiceContentTemplate(input: unknown): ListeningChoiceContentTemplateV1 {
   try {
     const src = isObjectRecord(input) ? input : {}
@@ -210,9 +334,96 @@ export function normalizeListeningChoiceContentTemplate(input: unknown): Listeni
   }
 }
 
+export function normalizeSpeakingHearAnswerContentTemplate(input: unknown): SpeakingHearAnswerContentTemplateV1 {
+  try {
+    const src = isObjectRecord(input) ? input : {}
+    const contentSrc = isObjectRecord(src.content) ? src.content : {}
+    const introSrc = isObjectRecord(contentSrc.intro) ? contentSrc.intro : {}
+    const introAudio = isObjectRecord(introSrc.audio) ? introSrc.audio : null
+    const introCountdown = isObjectRecord(introSrc.countdown) ? introSrc.countdown : null
+
+    const groups = normalizeHearAnswerGroups(contentSrc.groups)
+    return {
+      version: 1,
+      content: {
+        intro: {
+          title: nonEmptyString(introSrc.title) || DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE.content.intro.title,
+          title_description: typeof introSrc.title_description === 'string'
+            ? introSrc.title_description
+            : (DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE.content.intro.title_description || ''),
+          text: normalizeRichText(introSrc.text),
+          audio: introAudio ? {
+            url: typeof introAudio.url === 'string' ? introAudio.url : '',
+            playCount: normalizePositiveInt(introAudio.playCount, 1),
+            note: typeof introAudio.note === 'string' ? introAudio.note : undefined
+          } : DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE.content.intro.audio,
+          countdown: introCountdown ? {
+            seconds: Math.max(0, Math.floor(Number(introCountdown.seconds || 0))),
+            label: typeof introCountdown.label === 'string' ? introCountdown.label : '准备',
+            endBeepUrl: typeof introCountdown.endBeepUrl === 'string' ? introCountdown.endBeepUrl : '/static/beep.mp3'
+          } : DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE.content.intro.countdown
+        },
+        groups: groups.length ? groups : DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE.content.groups
+      }
+    }
+  } catch {
+    return DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
+  }
+}
+
+function extractRichTextPlainText(content: unknown): string {
+  if (!isObjectRecord(content) || content.type !== 'richtext' || !Array.isArray(content.content)) return ''
+  return content.content
+    .map((node) => {
+      if (!isObjectRecord(node)) return ''
+      if (node.type !== 'text') return ''
+      return typeof node.text === 'string' ? node.text : ''
+    })
+    .join('')
+    .trim()
+}
+
+function normalizeStemForMatch(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isLegacySpeakingHearAnswerDefaultTemplate(template: SpeakingHearAnswerContentTemplateV1): boolean {
+  const groups = Array.isArray(template?.content?.groups) ? template.content.groups : []
+  if (groups.length !== 1) return false
+  const group = groups[0]
+  const subQuestions = Array.isArray(group?.subQuestions) ? group.subQuestions : []
+  if (subQuestions.length !== 1) return false
+  const groupTitle = String(group?.title || '').trim()
+  const stemText = extractRichTextPlainText(subQuestions[0]?.stem)
+  return groupTitle === '第一题组对话' && stemText.includes('Who is the boy talking to on the phone?')
+}
+
+function isLegacySpeakingHearAnswerExpandedDefaultTemplate(template: SpeakingHearAnswerContentTemplateV1): boolean {
+  const groups = Array.isArray(template?.content?.groups) ? template.content.groups : []
+  if (groups.length !== 4) return false
+  const groupSizes = groups.map((group) => (Array.isArray(group?.subQuestions) ? group.subQuestions.length : 0))
+  if (groupSizes.join(',') !== '1,1,1,2') return false
+
+  const subQuestions = groups.flatMap((group) => (Array.isArray(group?.subQuestions) ? group.subQuestions : []))
+  if (subQuestions.length !== 5) return false
+  const orders = subQuestions.map((sq) => Math.floor(Number(sq?.order || 0)))
+  if (orders.join(',') !== '1,2,3,4,5') return false
+
+  const stems = subQuestions.map((sq) => normalizeStemForMatch(extractRichTextPlainText(sq?.stem)))
+  return stems[0].includes('who is the boy talking to on the phone')
+    && stems[1].includes('how will the speakers go the concert')
+    && stems[2].includes('why did the boy miss school for a few days')
+    && stems[3].includes('how often should the girl water')
+    && stems[4].includes('what will the speakers do next')
+}
+
 class ContentTemplatesStore {
   state = reactive({
-    listeningChoice: DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE as ListeningChoiceContentTemplateV1
+    listeningChoice: DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE as ListeningChoiceContentTemplateV1,
+    speakingHearAnswer: DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE as SpeakingHearAnswerContentTemplateV1
   })
   private readonly persistence = createPersistenceScheduler(() => this.save(), 300)
 
@@ -225,19 +436,34 @@ class ContentTemplatesStore {
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (!stored) return
       const parsed = JSON.parse(stored)
+      let migrated = false
       if (parsed?.listeningChoice) {
         this.state.listeningChoice = normalizeListeningChoiceContentTemplate(parsed.listeningChoice)
+      }
+      if (parsed?.speakingHearAnswer) {
+        const normalized = normalizeSpeakingHearAnswerContentTemplate(parsed.speakingHearAnswer)
+        if (isLegacySpeakingHearAnswerDefaultTemplate(normalized) || isLegacySpeakingHearAnswerExpandedDefaultTemplate(normalized)) {
+          this.state.speakingHearAnswer = DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
+          migrated = true
+        } else {
+          this.state.speakingHearAnswer = normalized
+        }
+      }
+      if (migrated) {
+        this.save()
       }
     } catch (e) {
       console.error('Failed to load content templates', e)
       this.state.listeningChoice = DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE
+      this.state.speakingHearAnswer = DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
     }
   }
 
   save() {
     try {
       uni.setStorageSync(STORAGE_KEY, JSON.stringify({
-        listeningChoice: this.state.listeningChoice
+        listeningChoice: this.state.listeningChoice,
+        speakingHearAnswer: this.state.speakingHearAnswer
       }))
     } catch (e) {
       console.error('Failed to save content templates', e)
@@ -251,6 +477,16 @@ class ContentTemplatesStore {
 
   resetListeningChoice() {
     this.state.listeningChoice = DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE
+    this.persistence.schedule()
+  }
+
+  setSpeakingHearAnswer(template: unknown) {
+    this.state.speakingHearAnswer = normalizeSpeakingHearAnswerContentTemplate(template)
+    this.persistence.schedule()
+  }
+
+  resetSpeakingHearAnswer() {
+    this.state.speakingHearAnswer = DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
     this.persistence.schedule()
   }
 }

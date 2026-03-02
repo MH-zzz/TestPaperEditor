@@ -9,8 +9,15 @@
     </template>
 
     <template v-else-if="contextKind === 'group'">
+      <ListeningChoiceStepContext
+        v-if="isHearAnswer"
+        :show="Boolean(groupPrompt)"
+        :show-prompt="true"
+        :prompt="groupPrompt"
+      />
+
       <RichTextRenderer
-        v-if="groupPrompt"
+        v-else-if="groupPrompt"
         :content="groupPrompt"
         placeholder="请输入题组说明"
       />
@@ -20,6 +27,7 @@
         :questions="questions"
         :answers="answers"
         :show-answer="showAnswer"
+        :show-question-number="showQuestionNumber"
         :mode="mode"
         @select="handleOptionClick"
       />
@@ -35,6 +43,7 @@
 import type { RenderMode, RichTextContent, SubQuestion } from '/types'
 import RichTextRenderer from '../RichTextRenderer.vue'
 import ListeningChoiceQuestionList from './ListeningChoiceQuestionList.vue'
+import ListeningChoiceStepContext from './ListeningChoiceStepContext.vue'
 
 const props = withDefaults(defineProps<{
   contextKind?: 'intro' | 'group' | ''
@@ -44,6 +53,8 @@ const props = withDefaults(defineProps<{
   questions?: SubQuestion[]
   answers?: Record<string, string | string[]>
   showAnswer?: boolean
+  showQuestionNumber?: boolean
+  isHearAnswer?: boolean
   mode?: RenderMode
   label?: string
 }>(), {
@@ -52,6 +63,8 @@ const props = withDefaults(defineProps<{
   questions: () => [],
   answers: () => ({}),
   showAnswer: false,
+  showQuestionNumber: true,
+  isHearAnswer: false,
   mode: 'preview',
   label: ''
 })

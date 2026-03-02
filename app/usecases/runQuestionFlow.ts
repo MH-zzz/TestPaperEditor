@@ -9,11 +9,15 @@ import {
   reduceSpeakingStepsRuntimeState
 } from '/engine/flow/speaking-steps/runtime.ts'
 import { resolveListeningChoiceQuestion } from '/engine/flow/listening-choice/binding.ts'
-import { LISTENING_CHOICE_STANDARD_FLOW_ID } from '/flows/listeningChoiceFlowModules'
+import {
+  LISTENING_CHOICE_STANDARD_FLOW_ID,
+  LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+} from '/flows/listeningChoiceFlowModules'
 import type {
   ListeningChoiceQuestion,
   Question,
   QuestionMetadata,
+  SpeakingHearAnswerQuestion,
   SpeakingQuestion,
   SpeakingStepsQuestion
 } from '/types'
@@ -130,8 +134,8 @@ function readSpeakingStepsAutoNext(step: unknown): string | undefined {
 }
 
 export function getQuestionFlowSteps(question: Question): RuntimeStepProtocol[] {
-  if (question.type === 'listening_choice') {
-    const steps = (question as ListeningChoiceQuestion).flow?.steps || []
+  if (question.type === 'listening_choice' || question.type === 'speaking_hear_answer') {
+    const steps = (question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).flow?.steps || []
     return steps.map((step, index) => ({
       id: String(step?.id || `flow_${index + 1}`),
       kind: String(step?.kind || 'unknown'),
@@ -161,7 +165,7 @@ export function createQuestionFlowRuntimeState(
 ): FlowRuntimeState {
   const initial = Math.max(0, toInt(initialStepIndex, 0))
 
-  if (question.type === 'listening_choice') {
+  if (question.type === 'listening_choice' || question.type === 'speaking_hear_answer') {
     return createListeningChoiceRuntimeState(initial)
   }
 
@@ -177,10 +181,10 @@ export function reduceQuestionFlowRuntimeState(
   state: FlowRuntimeState,
   event: FlowRuntimeEvent
 ): FlowRuntimeState {
-  if (question.type === 'listening_choice') {
+  if (question.type === 'listening_choice' || question.type === 'speaking_hear_answer') {
     return reduceListeningChoiceRuntimeState(
       state,
-      (question as ListeningChoiceQuestion).flow?.steps || [],
+      (question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).flow?.steps || [],
       event
     )
   }
@@ -197,9 +201,9 @@ export function reduceQuestionFlowRuntimeState(
 }
 
 function resolveQuestion(question: Question, opts?: RunQuestionFlowOptions): Question {
-  if (question.type !== 'listening_choice') return question
+  if (question.type !== 'listening_choice' && question.type !== 'speaking_hear_answer') return question
 
-  return resolveListeningChoiceQuestion(question as ListeningChoiceQuestion, {
+  return resolveListeningChoiceQuestion(question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion, {
     generateId: opts?.generateId,
     ctx: mergeRoutingContext(question, opts?.ctx)
   }) as Question
@@ -209,7 +213,8 @@ function resolveRuntimeMeta(
   question: Question,
   opts?: RunQuestionFlowOptions
 ): QuestionFlowRuntimeMeta {
-  if (question.type !== 'listening_choice') {
+  const isListeningLike = question.type === 'listening_choice' || question.type === 'speaking_hear_answer'
+  if (!isListeningLike) {
     return {
       sourceKind: 'inline',
       profileId: '',
@@ -221,12 +226,15 @@ function resolveRuntimeMeta(
     }
   }
 
-  const source = (question as ListeningChoiceQuestion).flow?.source
+  const source = (question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).flow?.source
   const sourceKind = source?.kind === 'library' ? 'library' : 'standard'
-  const profileId = sourceKind === 'standard' ? String(source?.profileId || '') : ''
+  const profileId = sourceKind === 'standard' && question.type === 'listening_choice' ? String(source?.profileId || '') : ''
+  const defaultStandardId = question.type === 'speaking_hear_answer'
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
   const moduleId = sourceKind === 'library'
     ? String(source?.id || '')
-    : String(source?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+    : String(source?.id || defaultStandardId)
   const moduleVersion = sourceKind === 'standard'
     ? Math.max(1, toInt(source?.version, 1))
     : 0

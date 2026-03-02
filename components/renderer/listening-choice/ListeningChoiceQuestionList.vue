@@ -2,7 +2,7 @@
   <view class="lc-questions">
     <view v-for="(sq, idx) in questions" :key="sq.id" class="lc-question">
       <view class="lc-question__stem">
-        <text class="lc-question__number">{{ displayNumber(sq, idx) }}.</text>
+        <text v-if="showQuestionNumber" class="lc-question__number">{{ displayNumber(sq, idx) }}.</text>
         <RichTextRenderer :content="sq.stem" placeholder="请输入题干" />
       </view>
 
@@ -41,11 +41,13 @@ const props = withDefaults(defineProps<{
   questions: SubQuestion[]
   answers?: Record<string, string | string[]>
   showAnswer?: boolean
+  showQuestionNumber?: boolean
   mode?: RenderMode
 }>(), {
   questions: () => [],
   answers: () => ({}),
   showAnswer: false,
+  showQuestionNumber: true,
   mode: 'preview'
 })
 

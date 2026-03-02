@@ -4,6 +4,7 @@ import type {
   Question,
   QuestionOption,
   RichTextContent,
+  SpeakingHearAnswerQuestion,
   SubQuestion
 } from '/types'
 
@@ -36,7 +37,9 @@ function hasRichTextContent(value: unknown): value is RichTextContent {
   })
 }
 
-function validateListeningChoice(question: ListeningChoiceQuestion): QuestionValidationResult {
+type ListeningLikeQuestion = ListeningChoiceQuestion | SpeakingHearAnswerQuestion
+
+function validateListeningLike(question: ListeningLikeQuestion, requireChoiceAnswer: boolean): QuestionValidationResult {
   const errors: ValidationIssue[] = []
   const warnings: ValidationIssue[] = []
   const metadata = (question as { metadata?: Record<string, unknown> })?.metadata
@@ -89,42 +92,44 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
         })
       }
 
-      const options = toArray<QuestionOption>(sq?.options)
-      if (options.length < 2) {
-        errors.push({
-          code: 'sub_question_options_too_few',
-          path: `${sqPath}.options`,
-          message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题至少需要两个选项。`
-        })
-      }
-
-      const optionKeys = options
-        .map((opt) => String(opt?.key || '').trim())
-        .filter(Boolean)
-      const uniqueKeys = new Set(optionKeys)
-      if (optionKeys.length !== options.length || uniqueKeys.size !== optionKeys.length) {
-        errors.push({
-          code: 'sub_question_option_key_invalid',
-          path: `${sqPath}.options`,
-          message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题选项 key 不能为空且不能重复。`
-        })
-      }
-
-      const answers = toArray<string>(sq?.answer).map((v) => String(v || '').trim()).filter(Boolean)
-      if (answers.length === 0) {
-        errors.push({
-          code: 'sub_question_answer_required',
-          path: `${sqPath}.answer`,
-          message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题至少需要一个答案。`
-        })
-      } else {
-        const illegal = answers.filter(a => !uniqueKeys.has(a))
-        if (illegal.length > 0) {
+      if (requireChoiceAnswer) {
+        const options = toArray<QuestionOption>(sq?.options)
+        if (options.length < 2) {
           errors.push({
-            code: 'sub_question_answer_not_in_options',
-            path: `${sqPath}.answer`,
-            message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题存在不在选项中的答案：${illegal.join(', ')}。`
+            code: 'sub_question_options_too_few',
+            path: `${sqPath}.options`,
+            message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题至少需要两个选项。`
           })
+        }
+
+        const optionKeys = options
+          .map((opt) => String(opt?.key || '').trim())
+          .filter(Boolean)
+        const uniqueKeys = new Set(optionKeys)
+        if (optionKeys.length !== options.length || uniqueKeys.size !== optionKeys.length) {
+          errors.push({
+            code: 'sub_question_option_key_invalid',
+            path: `${sqPath}.options`,
+            message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题选项 key 不能为空且不能重复。`
+          })
+        }
+
+        const answers = toArray<string>(sq?.answer).map((v) => String(v || '').trim()).filter(Boolean)
+        if (answers.length === 0) {
+          errors.push({
+            code: 'sub_question_answer_required',
+            path: `${sqPath}.answer`,
+            message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题至少需要一个答案。`
+          })
+        } else {
+          const illegal = answers.filter(a => !uniqueKeys.has(a))
+          if (illegal.length > 0) {
+            errors.push({
+              code: 'sub_question_answer_not_in_options',
+              path: `${sqPath}.answer`,
+              message: `题组 ${gIndex + 1} 第 ${sqIndex + 1} 题存在不在选项中的答案：${illegal.join(', ')}。`
+            })
+          }
         }
       }
     })
@@ -156,6 +161,14 @@ function validateListeningChoice(question: ListeningChoiceQuestion): QuestionVal
   }
 }
 
+function validateListeningChoice(question: ListeningChoiceQuestion): QuestionValidationResult {
+  return validateListeningLike(question, true)
+}
+
+function validateSpeakingHearAnswer(question: SpeakingHearAnswerQuestion): QuestionValidationResult {
+  return validateListeningLike(question, false)
+}
+
 function baseResult(): QuestionValidationResult {
   return {
     ok: true,
@@ -181,6 +194,9 @@ export function validateQuestionBeforeSave(question: Question): QuestionValidati
 
   if (question.type === 'listening_choice') {
     return validateListeningChoice(question)
+  }
+  if (question.type === 'speaking_hear_answer') {
+    return validateSpeakingHearAnswer(question)
   }
 
   return baseResult()

@@ -30,6 +30,7 @@
 import { computed } from 'vue'
 import type { Question } from '/types'
 import ListeningChoiceEditor from './ListeningChoiceEditor.vue'
+import SpeakingHearAnswerEditor from './SpeakingHearAnswerEditor.vue'
 import ListeningMatchEditor from './ListeningMatchEditor.vue'
 import ListeningFillEditor from './ListeningFillEditor.vue'
 import SpeakingStepsEditor from './SpeakingStepsEditor.vue'
@@ -49,6 +50,7 @@ const emit = defineEmits<{
 const editorComponent = computed(() => {
   const map: Record<string, any> = {
     listening_choice: ListeningChoiceEditor,
+    speaking_hear_answer: SpeakingHearAnswerEditor,
     listening_match: ListeningMatchEditor,
     listening_fill: ListeningFillEditor,
     speaking_steps: SpeakingStepsEditor

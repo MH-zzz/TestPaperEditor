@@ -1,6 +1,12 @@
 import { reactive } from 'vue'
-import type { Question, ListeningChoiceQuestion, QuestionMetadata } from '/types'
+import type {
+  ListeningChoiceQuestion,
+  Question,
+  QuestionMetadata,
+  SpeakingHearAnswerQuestion
+} from '/types'
 import {
+  createListeningHearAnswerTemplate,
   questionTemplates,
   migrateListeningChoiceFlowSplitIntro,
   createListeningChoiceTemplate,
@@ -39,14 +45,19 @@ function ensureMetadata(question: DraftQuestion): DraftQuestion {
 }
 
 function normalizeListeningChoiceQuestion(question: DraftQuestion): DraftQuestion {
-  if (!question || question.type !== 'listening_choice') return question
+  if (!question || (question.type !== 'listening_choice' && question.type !== 'speaking_hear_answer')) return question
 
   if (!question.content || !question.flow) {
-    return questionTemplates.listening_choice.create() as DraftQuestion
+    return question.type === 'speaking_hear_answer'
+      ? questionTemplates.speaking_hear_answer.create() as DraftQuestion
+      : questionTemplates.listening_choice.create() as DraftQuestion
   }
 
-  const migrated = migrateListeningChoiceFlowSplitIntro(question as ListeningChoiceQuestion)
-  return resolveListeningChoiceQuestion(migrated as ListeningChoiceQuestion, { generateId }) as DraftQuestion
+  if (question.type === 'listening_choice') {
+    const migrated = migrateListeningChoiceFlowSplitIntro(question as ListeningChoiceQuestion)
+    return resolveListeningChoiceQuestion(migrated as ListeningChoiceQuestion, { generateId }) as DraftQuestion
+  }
+  return resolveListeningChoiceQuestion(question as SpeakingHearAnswerQuestion, { generateId }) as DraftQuestion
 }
 
 class QuestionDraftStore {
@@ -129,9 +140,14 @@ class QuestionDraftStore {
   createByType(type: TemplateKey, options: { useStoredTemplate?: boolean } = {}) {
     const template = questionTemplates[type]
     if (!template) return null
-    const created = (type === 'listening_choice' && options.useStoredTemplate === false)
-      ? createListeningChoiceTemplate({ useStoredTemplate: false })
-      : template.create() as Question
+    let created: Question
+    if (type === 'listening_choice' && options.useStoredTemplate === false) {
+      created = createListeningChoiceTemplate({ useStoredTemplate: false })
+    } else if (type === 'speaking_hear_answer' && options.useStoredTemplate === false) {
+      created = createListeningHearAnswerTemplate({ useStoredTemplate: false })
+    } else {
+      created = template.create() as Question
+    }
     this.setCurrentQuestion(created, {
       snapshot: true,
       normalizeFlow: true,

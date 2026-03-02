@@ -173,6 +173,49 @@ test('editor workspace should map 听说-听后选择 to listening_choice templa
   assert.ok(!src.includes("if (leaf === '听后选择') return { templateKey: 'speaking_hear_choice', enabled: true, reason: '' }"))
 })
 
+test('editor workspace should map 听说-听后回答 to speaking_hear_answer template', async () => {
+  const src = await readFile('components/views/EditorWorkspace.vue')
+  assert.ok(src.includes("if (leaf === '听后回答') return { templateKey: 'speaking_hear_answer', enabled: true, reason: '' }"))
+  assert.ok(!src.includes("if (leaf === '听后回答') return { templateKey: 'speaking_steps', enabled: false"))
+})
+
+test('question templates should expose speaking_hear_answer creation entry', async () => {
+  const src = await readFile('templates/index.ts')
+  assert.ok(src.includes('export function createListeningHearAnswerTemplate('))
+  assert.ok(src.includes("name: '听后回答'"))
+  assert.ok(src.includes("type: 'listening_choice'"))
+  assert.ok(src.includes("questionVariant: 'hear_answer'"))
+  assert.ok(src.includes('LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID'))
+  assert.ok(src.includes("id: LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID"))
+  assert.ok(src.includes('create: createListeningHearAnswerTemplate'))
+})
+
+test('speaking hear-answer default content should use single-group + double-group baseline', async () => {
+  const src = await readFile('stores/contentTemplates.ts')
+  assert.ok(src.includes("id: 'tpl_ha_g_1'"))
+  assert.ok(src.includes("id: 'tpl_ha_g_2'"))
+  assert.ok(src.includes('回答第4-5小题'))
+  assert.ok(src.includes("order: 1"))
+  assert.ok(src.includes("order: 4"))
+  assert.ok(src.includes("order: 5"))
+})
+
+test('content template store should migrate legacy hear-answer defaults on load', async () => {
+  const src = await readFile('stores/contentTemplates.ts')
+  assert.ok(src.includes('isLegacySpeakingHearAnswerDefaultTemplate'))
+  assert.ok(src.includes('isLegacySpeakingHearAnswerExpandedDefaultTemplate'))
+  assert.ok(src.includes('this.save()'))
+})
+
+test('listening-choice binding should use dedicated standard flow for hear-answer variant', async () => {
+  const src = await readFile('engine/flow/listening-choice/binding.ts')
+  assert.ok(src.includes('LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID'))
+  assert.ok(src.includes('function isHearAnswerVariant('))
+  assert.ok(src.includes('if (isHearAnswerVariant(question)) {'))
+  assert.ok(src.includes("flowModules.getListeningChoiceLatestPublished(LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)"))
+  assert.ok(src.includes('return { module: buildModuleFromLegacyStandard(defaultModuleId), profileId: profileId || matchedProfile?.id }'))
+})
+
 test('flow center should auto-normalize legacy routing rules into region-only mode', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('isLegacyRegionRoutingModel'))

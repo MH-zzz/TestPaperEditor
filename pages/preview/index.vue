@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { Question, MatchMode } from '/types'
+import type { ListeningChoiceQuestion, MatchMode, Question, SpeakingHearAnswerQuestion } from '/types'
 import QuestionRenderer from '/components/renderer/QuestionRenderer.vue'
 import { questionTemplates, migrateListeningChoiceFlowSplitIntro, generateId } from '/templates'
 import { resolveListeningChoiceQuestion } from '../../engine/flow/listening-choice/binding.ts'
@@ -109,9 +109,10 @@ function handleSelect(subQuestionId: string, optionKey: string) {
   }
 }
 
-function resolveListeningChoiceFlowSource(data: any) {
-  if (!data || data.type !== 'listening_choice') return data
-  return resolveListeningChoiceQuestion(data as any, { generateId }) as any
+function resolveListeningChoiceFlowSource(data: Question) {
+  if (!data) return data
+  if (data.type !== 'listening_choice' && data.type !== 'speaking_hear_answer') return data
+  return resolveListeningChoiceQuestion(data as ListeningChoiceQuestion | SpeakingHearAnswerQuestion, { generateId }) as Question
 }
 
 onMounted(() => {
@@ -120,18 +121,20 @@ onMounted(() => {
     if (!snapshot) return
 
     let data = snapshot
-    if (data?.type === 'listening_choice' && (!data.content || !data.flow)) {
-      data = questionTemplates.listening_choice.create()
+    if ((data?.type === 'listening_choice' || data?.type === 'speaking_hear_answer') && (!data.content || !data.flow)) {
+      data = data.type === 'speaking_hear_answer'
+        ? questionTemplates.speaking_hear_answer.create()
+        : questionTemplates.listening_choice.create()
       saveCurrentQuestionSnapshot(data)
     }
     if (data?.type === 'listening_choice' && data.content && data.flow) {
-      const migrated = migrateListeningChoiceFlowSplitIntro(data)
+      const migrated = migrateListeningChoiceFlowSplitIntro(data as ListeningChoiceQuestion)
       if (migrated !== data) {
-        data = migrated
+        data = migrated as Question
         saveCurrentQuestionSnapshot(data)
       }
     }
-    if (data?.type === 'listening_choice' && data.content && data.flow) {
+    if ((data?.type === 'listening_choice' || data?.type === 'speaking_hear_answer') && data.content && data.flow) {
       const resolved = resolveListeningChoiceFlowSource(data)
       if (resolved !== data) {
         data = resolved

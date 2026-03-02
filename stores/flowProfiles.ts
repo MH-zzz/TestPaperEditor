@@ -30,6 +30,7 @@ function normalizeQuestionType(v: unknown): QuestionType {
   if (s === 'listening_order') return 'listening_order'
   if (s === 'speaking') return 'speaking'
   if (s === 'speaking_steps') return 'speaking_steps'
+  if (s === 'speaking_hear_answer') return 'speaking_hear_answer'
   return 'listening_choice'
 }
 

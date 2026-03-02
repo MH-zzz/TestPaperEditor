@@ -1,5 +1,6 @@
 import type {
   ListeningChoiceQuestion,
+  SpeakingHearAnswerQuestion,
   ListeningChoiceFlow,
   ListeningChoiceFlowModuleV1,
   ListeningChoiceFlowSource,
@@ -12,6 +13,7 @@ import { flowProfiles } from '/stores/flowProfiles'
 import { flowLibrary } from '/stores/flowLibrary'
 import { standardFlows } from '/stores/standardFlows'
 import {
+  LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   detectListeningChoiceStandardFlowOverrides,
   materializeListeningChoiceTemplateSteps
@@ -20,7 +22,8 @@ import {
 type IdFactory = () => string
 
 type FlowRoutingContext = { region?: string; scene?: string; grade?: string }
-type QuestionWithMetadata = ListeningChoiceQuestion & { metadata?: QuestionMetadata }
+type ListeningChoiceLikeQuestion = ListeningChoiceQuestion | SpeakingHearAnswerQuestion
+type QuestionWithMetadata = ListeningChoiceLikeQuestion & { metadata?: QuestionMetadata }
 type FlowOverrides = Record<string, Record<string, unknown>>
 const FLOW_NORMALIZATION_ISSUE_CODE = 'flow_override_not_supported'
 const FLOW_NORMALIZATION_ISSUE_MESSAGE = '当前题目流程与题型流程线不一致，且无法自动映射。请先到「题型流程」修正流程线后再保存题目。'
@@ -40,15 +43,22 @@ function normalizeCtxValue(v: unknown): string | undefined {
   return s || undefined
 }
 
-function readMetadata(question: ListeningChoiceQuestion): QuestionMetadata {
+function readMetadata(question: ListeningChoiceLikeQuestion): QuestionMetadata {
   const metadata = (question as QuestionWithMetadata).metadata
   return isObjectRecord(metadata) ? (metadata as QuestionMetadata) : {}
 }
 
-function withFlowNormalizationIssue(
-  question: ListeningChoiceQuestion,
+function isHearAnswerVariant(question: ListeningChoiceLikeQuestion): boolean {
+  if (question.type === 'speaking_hear_answer') return true
+  const metadata = readMetadata(question)
+  const variant = typeof metadata?.questionVariant === 'string' ? metadata.questionVariant.trim() : ''
+  return variant === 'hear_answer'
+}
+
+function withFlowNormalizationIssue<T extends ListeningChoiceLikeQuestion>(
+  question: T,
   issue: { code: string; message: string } | null
-): ListeningChoiceQuestion {
+): T {
   const metadata = { ...readMetadata(question) } as QuestionMetadata
   if (issue) {
     metadata.flowNormalizationIssue = {
@@ -61,7 +71,7 @@ function withFlowNormalizationIssue(
   return {
     ...question,
     metadata
-  } as ListeningChoiceQuestion
+  } as T
 }
 
 function normalizeFlowOverrides(raw: unknown): FlowOverrides {
@@ -75,7 +85,7 @@ function normalizeFlowOverrides(raw: unknown): FlowOverrides {
 }
 
 function resolveRoutingCtx(
-  question: ListeningChoiceQuestion,
+  question: ListeningChoiceLikeQuestion,
   ctx?: FlowRoutingContext
 ) {
   const meta = readMetadata(question)
@@ -87,13 +97,48 @@ function resolveRoutingCtx(
   }
 }
 
-function buildModuleFromLegacyStandard(): ListeningChoiceFlowModuleV1 {
+function resolveFlowSource(question: ListeningChoiceLikeQuestion): ListeningChoiceFlowSource {
+  const defaultSourceId = isHearAnswerVariant(question)
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
+  const src = question?.flow?.source
+  if (src?.kind === 'library') {
+    return {
+      kind: 'library',
+      id: String(src.id || '')
+    }
+  }
+
+  if (src?.kind === 'standard') {
+    const rawId = String(src.id || defaultSourceId)
+    const migratedId = defaultSourceId === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID && rawId === LISTENING_CHOICE_STANDARD_FLOW_ID
+      ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+      : rawId
+    return {
+      kind: 'standard',
+      id: migratedId,
+      version: Number.isFinite(Number(src.version)) ? Math.max(1, toInt(src.version, 1)) : 1,
+      profileId: normalizeCtxValue(src.profileId),
+      overrides: normalizeFlowOverrides(src.overrides)
+    }
+  }
+
+  return {
+    kind: 'standard',
+    id: defaultSourceId,
+    version: 1,
+    overrides: {}
+  }
+}
+
+function buildModuleFromLegacyStandard(defaultModuleId = LISTENING_CHOICE_STANDARD_FLOW_ID): ListeningChoiceFlowModuleV1 {
+  const fallbackName = defaultModuleId === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID ? '听后回答题型流程' : '听后选择题型流程'
   const m = standardFlows.state.listeningChoice
   return {
     kind: 'listening_choice' as const,
-    id: String(m.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+    id: String(defaultModuleId || m.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
     version: 1,
-    name: '听后选择题型流程',
+    name: fallbackName,
     status: 'published' as const,
     introShowTitle: m.introShowTitle,
     introShowTitleDescription: m.introShowTitleDescription,
@@ -106,43 +151,20 @@ function buildModuleFromLegacyStandard(): ListeningChoiceFlowModuleV1 {
   }
 }
 
-function resolveFlowSource(question: ListeningChoiceQuestion): ListeningChoiceFlowSource {
-  const src = question?.flow?.source
-  if (src?.kind === 'library') {
-    return {
-      kind: 'library',
-      id: String(src.id || '')
-    }
-  }
-
-  if (src?.kind === 'standard') {
-    return {
-      kind: 'standard',
-      id: String(src.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
-      version: Number.isFinite(Number(src.version)) ? Math.max(1, toInt(src.version, 1)) : 1,
-      profileId: normalizeCtxValue(src.profileId),
-      overrides: normalizeFlowOverrides(src.overrides)
-    }
-  }
-
-  return {
-    kind: 'standard',
-    id: LISTENING_CHOICE_STANDARD_FLOW_ID,
-    version: 1,
-    overrides: {}
-  }
-}
-
 function resolveStandardModule(
-  question: ListeningChoiceQuestion,
+  question: ListeningChoiceLikeQuestion,
   source: ListeningChoiceFlowSource,
   ctx?: FlowRoutingContext
 ) {
+  const hearAnswerVariant = isHearAnswerVariant(question)
+  const defaultModuleId = hearAnswerVariant
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
   const isActiveModule = (module: ListeningChoiceFlowModuleV1 | null | undefined): module is ListeningChoiceFlowModuleV1 => {
     return !!module && module.status !== 'archived'
   }
   const standardSource = source.kind === 'standard' ? source : null
-  const explicitId = standardSource?.id ? String(standardSource.id) : ''
+  const explicitId = standardSource?.id ? String(standardSource.id) : String(defaultModuleId)
   const explicitVersion = Number.isFinite(Number(standardSource?.version))
     ? Math.max(1, toInt(standardSource?.version, 1))
     : 0
@@ -153,6 +175,23 @@ function resolveStandardModule(
     normalizeCtxValue(ctx?.grade)
   )
   let matchedProfile = null as ReturnType<typeof flowProfiles.resolve>
+
+  if (isHearAnswerVariant(question)) {
+    if (explicitId && explicitVersion >= 1) {
+      const hit = flowModules.getListeningChoiceByRef({ id: explicitId, version: explicitVersion })
+      if (isActiveModule(hit)) return { module: hit, profileId: undefined }
+    }
+
+    if (explicitId) {
+      const latest = flowModules.getListeningChoiceLatestPublished(explicitId)
+      if (latest) return { module: latest, profileId: undefined }
+    }
+
+    const hearAnswerDefault = flowModules.getListeningChoiceLatestPublished(LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)
+    if (hearAnswerDefault) return { module: hearAnswerDefault, profileId: undefined }
+
+    return { module: buildModuleFromLegacyStandard(defaultModuleId), profileId: undefined }
+  }
 
   // When routing context exists (e.g. region tag), prefer profile routing over stale source refs.
   if (hasRoutingCtx) {
@@ -187,13 +226,14 @@ function resolveStandardModule(
     if (isActiveModule(hit)) return { module: hit, profileId: matchedProfile.id }
   }
 
-  const fallback = flowModules.getListeningChoiceDefault()
+  const fallback = flowModules.getListeningChoiceDefault(defaultModuleId)
   if (fallback) return { module: fallback, profileId: profileId || matchedProfile?.id }
 
-  return { module: buildModuleFromLegacyStandard(), profileId: profileId || matchedProfile?.id }
+  return { module: buildModuleFromLegacyStandard(defaultModuleId), profileId: profileId || matchedProfile?.id }
 }
 
 function buildNormalizedFlowSource(
+  question: ListeningChoiceLikeQuestion,
   source: ListeningChoiceFlowSource,
   patch: { id?: string; version?: number; profileId?: string }
 ): ListeningChoiceFlowSource {
@@ -201,7 +241,10 @@ function buildNormalizedFlowSource(
     return { kind: 'library', id: String(source.id || '') }
   }
 
-  const id = String(patch.id || source?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+  const defaultSourceId = isHearAnswerVariant(question)
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
+  const id = String(patch.id || source?.id || defaultSourceId)
   const versionInput = patch.version == null ? source?.version : patch.version
   const version = Number.isFinite(Number(versionInput))
     ? Math.max(1, toInt(versionInput, 1))
@@ -235,7 +278,7 @@ function toLegacyStandardModule(module: ListeningChoiceFlowModuleV1) {
 }
 
 export function resolveListeningChoiceFlowSteps(
-  question: ListeningChoiceQuestion,
+  question: ListeningChoiceLikeQuestion,
   opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
 ): { steps: ListeningChoiceFlowStep[]; source: ListeningChoiceFlowSource } {
   const source = resolveFlowSource(question)
@@ -250,7 +293,7 @@ export function resolveListeningChoiceFlowSteps(
       }) as ListeningChoiceFlowStep[]
       return {
         steps,
-        source: buildNormalizedFlowSource(source, {})
+        source: buildNormalizedFlowSource(question, source, {})
       }
     }
   }
@@ -263,7 +306,7 @@ export function resolveListeningChoiceFlowSteps(
 
   return {
     steps: compiled.steps,
-    source: buildNormalizedFlowSource(source, {
+    source: buildNormalizedFlowSource(question, source, {
       id: resolved.module.id,
       version: resolved.module.version,
       profileId: resolved.profileId
@@ -271,10 +314,10 @@ export function resolveListeningChoiceFlowSteps(
   }
 }
 
-export function resolveListeningChoiceQuestion(
-  question: ListeningChoiceQuestion,
+export function resolveListeningChoiceQuestion<T extends ListeningChoiceLikeQuestion>(
+  question: T,
   opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
-): ListeningChoiceQuestion {
+): T {
   const resolved = resolveListeningChoiceFlowSteps(question, opts)
   const flow: ListeningChoiceFlow = {
     ...(question.flow || { version: 1, mode: 'semi-auto' as const }),
@@ -286,15 +329,18 @@ export function resolveListeningChoiceQuestion(
   return {
     ...question,
     flow
-  }
+  } as T
 }
 
-export function normalizeListeningChoiceQuestionForSave(
-  question: ListeningChoiceQuestion,
+export function normalizeListeningChoiceQuestionForSave<T extends ListeningChoiceLikeQuestion>(
+  question: T,
   opts?: { generateId?: IdFactory; ctx?: FlowRoutingContext }
-): ListeningChoiceQuestion {
+): T {
   const resolvedQuestion = resolveListeningChoiceQuestion(question, opts)
-  const src = resolvedQuestion.flow?.source || { kind: 'standard', id: LISTENING_CHOICE_STANDARD_FLOW_ID }
+  const defaultSourceId = isHearAnswerVariant(resolvedQuestion)
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
+  const src = resolvedQuestion.flow?.source || { kind: 'standard', id: defaultSourceId }
 
   if (src?.kind === 'library') {
     return withFlowNormalizationIssue(resolvedQuestion, null)
@@ -327,7 +373,7 @@ export function normalizeListeningChoiceQuestionForSave(
         },
         steps: compiled.steps
       }
-    }, null)
+    } as T, null)
   }
   return withFlowNormalizationIssue(resolvedQuestion, {
     code: FLOW_NORMALIZATION_ISSUE_CODE,

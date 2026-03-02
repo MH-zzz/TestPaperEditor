@@ -1,7 +1,14 @@
 <template>
   <view class="lc-step">
+    <ListeningChoiceStepContext
+      v-if="isHearAnswer"
+      :show="Boolean(prompt)"
+      :show-prompt="true"
+      :prompt="prompt"
+    />
+
     <RichTextRenderer
-      v-if="prompt"
+      v-else-if="prompt"
       :content="prompt"
       placeholder="请输入题组说明"
     />
@@ -11,6 +18,7 @@
       :questions="questions"
       :answers="answers"
       :show-answer="showAnswer"
+      :show-question-number="showQuestionNumber"
       :mode="mode"
       @select="handleOptionClick"
     />
@@ -25,17 +33,22 @@
 import type { RenderMode, RichTextContent, SubQuestion } from '/types'
 import RichTextRenderer from '../RichTextRenderer.vue'
 import ListeningChoiceQuestionList from './ListeningChoiceQuestionList.vue'
+import ListeningChoiceStepContext from './ListeningChoiceStepContext.vue'
 
 const props = withDefaults(defineProps<{
   prompt?: RichTextContent
   questions?: SubQuestion[]
   answers?: Record<string, string | string[]>
   showAnswer?: boolean
+  showQuestionNumber?: boolean
+  isHearAnswer?: boolean
   mode?: RenderMode
 }>(), {
   questions: () => [],
   answers: () => ({}),
   showAnswer: false,
+  showQuestionNumber: true,
+  isHearAnswer: false,
   mode: 'preview'
 })
 

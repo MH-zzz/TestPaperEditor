@@ -1,5 +1,6 @@
 import type {
   ListeningChoiceQuestion,
+  SpeakingHearAnswerQuestion,
   ListeningFillQuestion,
   ListeningMatchQuestion,
   ListeningOrderQuestion,
@@ -11,8 +12,13 @@ import type {
   Question
 } from '/types'
 import { LISTENING_CHOICE_STANDARD_FLOW_ID } from '../flows/listeningChoiceFlowModules'
+import { LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID } from '../flows/listeningChoiceFlowModules'
 import { resolveListeningChoiceQuestion } from '../engine/flow/listening-choice/binding.ts'
-import { contentTemplates, DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE } from '/stores/contentTemplates'
+import {
+  contentTemplates,
+  DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE,
+  DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
+} from '/stores/contentTemplates'
 import { flowProfiles } from '/stores/flowProfiles'
 
 // 生成唯一 ID
@@ -98,6 +104,62 @@ export function createListeningChoiceTemplate(
   }
 
   return resolveListeningChoiceQuestion(q, { generateId })
+}
+
+export function createListeningHearAnswerTemplate(
+  options?: { useStoredTemplate?: boolean }
+): SpeakingHearAnswerQuestion {
+  const storedTpl: any = options?.useStoredTemplate === false
+    ? DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
+    : contentTemplates?.state?.speakingHearAnswer
+  const tpl = storedTpl && typeof storedTpl === 'object' ? storedTpl : {}
+  const rawContent = tpl.content && typeof tpl.content === 'object' ? tpl.content : {}
+
+  const content: any = JSON.parse(JSON.stringify(rawContent || {}))
+  const groups: any[] = Array.isArray(content.groups) ? content.groups : []
+  let fallbackOrder = 1
+  const regeneratedGroups = groups.map((g: any) => {
+    const groupId = generateId()
+    const subQuestions: any[] = Array.isArray(g?.subQuestions) ? g.subQuestions : []
+    const nextSub = subQuestions.map((sq: any) => {
+      const explicitOrder = Number(sq?.order)
+      const normalizedOrder = Number.isFinite(explicitOrder) && explicitOrder > 0
+        ? Math.floor(explicitOrder)
+        : fallbackOrder
+      fallbackOrder = Math.max(fallbackOrder + 1, normalizedOrder + 1)
+      return {
+        id: generateId(),
+        order: normalizedOrder,
+        stem: sq?.stem || createEmptyRichText(),
+        audio: sq?.audio || undefined
+      }
+    })
+    return { ...g, id: groupId, subQuestions: nextSub }
+  })
+
+  const question: SpeakingHearAnswerQuestion = {
+    id: generateId(),
+    type: 'speaking_hear_answer',
+    metadata: {
+      questionVariant: 'hear_answer'
+    },
+    content: {
+      ...(content || {}),
+      groups: regeneratedGroups
+    },
+    flow: {
+      version: 1,
+      mode: 'semi-auto',
+      source: {
+        kind: 'standard',
+        id: LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
+        version: 1,
+        overrides: {}
+      },
+      steps: []
+    }
+  }
+  return resolveListeningChoiceQuestion(question, { generateId }) as SpeakingHearAnswerQuestion
 }
 
 // ==================== Migrations / Normalizers ====================
@@ -623,6 +685,12 @@ export const questionTemplates = {
     description: '听问题后，说出正确选项',
     icon: '🎧',
     create: () => createSpeakingStepsTemplate(2)
+  },
+  speaking_hear_answer: {
+    name: '听后回答',
+    description: '听对话后，录音回答问题',
+    icon: '🎙️',
+    create: createListeningHearAnswerTemplate
   }
 } as const
 

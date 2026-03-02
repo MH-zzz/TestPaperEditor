@@ -13,14 +13,14 @@
             <text class="back__text">返回</text>
           </view>
           <view class="header-titles">
-            <text class="title">听后选择</text>
-            <text class="subtitle">点击流程图节点，直接配置该步骤规则</text>
+            <text class="title">{{ activeFlowDisplayName }}</text>
+            <text class="subtitle">{{ activeFlowSubtitle }}</text>
           </view>
         </template>
       </view>
 
       <view class="header-right">
-        <template v-if="page === 'listening_choice'">
+        <template v-if="page !== 'home'">
           <button class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
           <button class="btn btn-outline btn-sm" @click="showPublishLogs">发布日志</button>
           <button class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
@@ -43,7 +43,24 @@
           <text class="flow-card__title">听后选择</text>
           <text class="flow-card__desc">介绍页 → 每题组：播放描述音频 → 倒计时 → 播放正文音频 → 答题</text>
           <view class="flow-card__meta">
-            <text class="meta-item">流程线：{{ flowLineOptions.length }}</text>
+            <text class="meta-item">流程线：{{ listeningChoiceFlowLineCount }}</text>
+            <text class="meta-dot">·</text>
+            <text class="meta-item">影响所有标准题</text>
+          </view>
+        </view>
+
+        <view class="flow-card" @tap="openSpeakingHearAnswer">
+          <view class="flow-card__top">
+            <text class="flow-card__icon">🎙️</text>
+            <view class="flow-card__badges">
+              <text class="badge">题型流程</text>
+              <text class="badge badge--muted">听后回答</text>
+            </view>
+          </view>
+          <text class="flow-card__title">听后回答</text>
+          <text class="flow-card__desc">介绍页 → 每题组：播放描述音频 → 倒计时 → 播放正文音频 → 提示音 → 录音答题</text>
+          <view class="flow-card__meta">
+            <text class="meta-item">流程线：{{ speakingHearAnswerFlowLineCount }}</text>
             <text class="meta-dot">·</text>
             <text class="meta-item">影响所有标准题</text>
           </view>
@@ -81,6 +98,7 @@
                   :preview-step-index="currentStepIndex"
                   template-mode
                   :focus-path="templateFocusPath"
+                  :question-mode="activeEditorQuestionMode"
                 />
               </view>
             </view>
@@ -119,7 +137,7 @@
                       <input
                         class="text-input"
                         :value="draftModuleName"
-                        placeholder="例如：听后选择标准 / 广东-听后选择流程"
+                        :placeholder="flowNamePlaceholder"
                         @input="(e) => draftModuleName = e.detail.value"
                       />
                     </view>
@@ -379,7 +397,7 @@
                   <text class="diagram-hint__text">点击步骤可展开配置；拖动右侧手柄可排序每题组步骤；再次点击同一步骤可收起</text>
                 </view>
 
-                <view class="region-binding">
+                <view v-if="isRegionRoutingEnabled" class="region-binding">
                   <view class="region-binding__head">
                     <text class="region-binding__title">地区匹配</text>
                     <text class="region-binding__desc">一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线。「通用」就是默认/标准流程，未命中地区走「通用」。</text>
@@ -636,7 +654,7 @@
                 <input
                   class="text-input"
                   :value="flowLineWizardName"
-                  placeholder="例如：听后选择-北京"
+                  :placeholder="flowWizardNamePlaceholder"
                   @input="(e) => flowLineWizardName = String(e.detail.value || '')"
                 />
               </view>
@@ -645,7 +663,7 @@
                 <textarea
                   class="textarea-input"
                   :value="flowLineWizardNote"
-                  placeholder="例如：北京地区听后选择流程"
+                  :placeholder="flowWizardNotePlaceholder"
                   maxlength="200"
                   @input="(e) => flowLineWizardNote = String(e.detail.value || '')"
                 />
@@ -653,7 +671,7 @@
             </view>
           </view>
 
-          <view class="wizard-section">
+          <view v-if="isRegionRoutingEnabled" class="wizard-section">
             <text class="wizard-section__title">3. 绑定地区（可多选）</text>
             <text class="wizard-section__desc">一个地区只能绑定 1 个流程线，勾选后会自动改绑到新流程线；勾选「通用」将设置默认/标准流程。</text>
             <view v-if="regionBindingOptions.length === 0" class="empty-tip">暂无地区标签，请先在标签管理补充“地区”。</view>
@@ -691,9 +709,12 @@ import type {
   FlowModuleRef,
   FlowModuleStatus,
   FlowProfileV1,
+  ListeningChoiceContent,
   ListeningChoiceFlowModuleV1,
   ListeningChoiceQuestion,
   Question,
+  SpeakingHearAnswerContent,
+  SpeakingHearAnswerQuestion,
   SubQuestion
 } from '/types'
 import ListeningChoiceEditor from '/components/editor/ListeningChoiceEditor.vue'
@@ -726,6 +747,7 @@ import { buildModuleDiffSummary, formatModuleDiffSummary } from '/domain/flow-mo
 import { validateListeningChoiceModuleCommitCrossChecks } from '/domain/flow-module/usecases/validateModuleCommitCrossChecks'
 import {
   DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+  LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   type ListeningChoiceStandardFlowModuleV1,
   materializeListeningChoiceStandardSteps,
@@ -748,8 +770,10 @@ import {
   type ModuleCommitValidationResult
 } from './flow-modules/useModuleLifecycle'
 
-type Page = 'home' | 'listening_choice'
+type FlowPageType = 'listening_choice' | 'speaking_hear_answer'
+type Page = 'home' | FlowPageType
 const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'
+const DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME = '听后回答标准'
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))
@@ -894,7 +918,9 @@ function normalizeModuleNote(note: unknown): string {
 }
 
 function moduleNameFallbackById(id: string): string {
-  return id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
+  if (id === LISTENING_CHOICE_STANDARD_FLOW_ID) return DEFAULT_LISTENING_CHOICE_MODULE_NAME
+  if (id === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME
+  return id
 }
 
 function normalizeFlowModuleStatus(value: unknown): FlowModuleStatus {
@@ -911,7 +937,8 @@ function formatFlowModuleStatusLabel(status: FlowModuleStatus): string {
 type ModuleDisplayRefLike = Partial<FlowModuleRef & { name?: string | null }> | null | undefined
 
 function formatModuleDisplayRef(refLike: ModuleDisplayRefLike): string {
-  const id = String(refLike?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+  const fallbackId = getStandardModuleIdByPageType(activeFlowPageType.value)
+  const id = String(refLike?.id || fallbackId)
   const version = Math.max(1, toInt(refLike?.version || 1))
   const hit = flowModules.getListeningChoiceByRef({ id, version })
   const name = normalizeModuleName(refLike?.name || hit?.name, moduleNameFallbackById(id))
@@ -954,34 +981,116 @@ function toLegacyStandardModule(moduleInput: unknown): ListeningChoiceStandardFl
   }
 }
 
-function getDefaultModule(): ListeningChoiceFlowModuleV1 {
-  const module = flowModules.getListeningChoiceDefault()
+function getStandardModuleIdByPageType(pageType: FlowPageType): string {
+  return pageType === 'speaking_hear_answer'
+    ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
+    : LISTENING_CHOICE_STANDARD_FLOW_ID
+}
+
+function getDefaultModuleNameByPageType(pageType: FlowPageType): string {
+  return pageType === 'speaking_hear_answer'
+    ? DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME
+    : DEFAULT_LISTENING_CHOICE_MODULE_NAME
+}
+
+function getFlowLineIdPrefixByPageType(pageType: FlowPageType): string {
+  return pageType === 'speaking_hear_answer'
+    ? 'listening_hear_answer.line'
+    : 'listening_choice.line'
+}
+
+function isModuleIdMatchPageType(moduleIdInput: unknown, pageType: FlowPageType): boolean {
+  const moduleId = String(moduleIdInput || '').trim()
+  if (!moduleId) return false
+  if (pageType === 'speaking_hear_answer') {
+    return moduleId === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID || moduleId.startsWith('listening_hear_answer.line.')
+  }
+  return moduleId !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID && !moduleId.startsWith('listening_hear_answer.line.')
+}
+
+function getDefaultModule(pageType: FlowPageType = 'listening_choice'): ListeningChoiceFlowModuleV1 {
+  const standardId = getStandardModuleIdByPageType(pageType)
+  const defaultName = getDefaultModuleNameByPageType(pageType)
+  const module = flowModules.getListeningChoiceDefault(standardId)
   if (module) return module
   return {
     kind: 'listening_choice',
-    id: LISTENING_CHOICE_STANDARD_FLOW_ID,
+    id: standardId,
     version: 1,
-    name: DEFAULT_LISTENING_CHOICE_MODULE_NAME,
+    name: defaultName,
     note: '',
     status: 'published',
     ...DEFAULT_LISTENING_CHOICE_STANDARD_MODULE
   }
 }
 
-function buildQuestionFromTemplate(): ListeningChoiceQuestion {
-  const tpl = contentTemplates.state.listeningChoice
-  const defaultModule = getDefaultModule()
+function emptyRichText(): ListeningChoiceContent['intro']['text'] {
   return {
-    id: 'flow_demo:listening_choice',
+    type: 'richtext',
+    content: []
+  }
+}
+
+function normalizeListeningChoiceContentFromHearAnswer(
+  contentInput: SpeakingHearAnswerContent
+): ListeningChoiceContent {
+  const content = contentInput || ({ intro: { text: emptyRichText() }, groups: [] } as SpeakingHearAnswerContent)
+  return {
+    intro: content.intro || { text: emptyRichText() },
+    groups: (content.groups || []).map((group, gIndex) => ({
+      ...group,
+      id: String(group?.id || `flow_demo_ha_g_${gIndex + 1}`),
+      subQuestions: (group.subQuestions || []).map((sq, sqIndex) => ({
+        id: String(sq?.id || `flow_demo_ha_q_${gIndex + 1}_${sqIndex + 1}`),
+        order: Number(sq?.order || sqIndex + 1),
+        stem: sq?.stem || emptyRichText(),
+        audio: sq?.audio,
+        options: [],
+        answerMode: 'single',
+        answer: []
+      }))
+    }))
+  }
+}
+
+function normalizeSpeakingHearAnswerContentFromListening(
+  contentInput: ListeningChoiceContent
+): SpeakingHearAnswerContent {
+  const content = contentInput || ({ intro: { text: emptyRichText() }, groups: [] } as ListeningChoiceContent)
+  return {
+    intro: content.intro || { text: emptyRichText() },
+    groups: (content.groups || []).map((group, gIndex) => ({
+      ...group,
+      id: String(group?.id || `tpl_ha_g_${gIndex + 1}`),
+      subQuestions: (group.subQuestions || []).map((sq, sqIndex) => ({
+        id: String(sq?.id || `tpl_ha_q_${gIndex + 1}_${sqIndex + 1}`),
+        order: Number(sq?.order || sqIndex + 1),
+        stem: sq?.stem || emptyRichText(),
+        audio: sq?.audio
+      }))
+    }))
+  }
+}
+
+function buildQuestionFromTemplate(pageType: FlowPageType = 'listening_choice'): ListeningChoiceQuestion {
+  const defaultModule = getDefaultModule(pageType)
+  const isHearAnswer = pageType === 'speaking_hear_answer'
+  const listeningChoiceTemplate = contentTemplates.state.listeningChoice
+  const hearAnswerTemplate = contentTemplates.state.speakingHearAnswer
+  return {
+    id: isHearAnswer ? 'flow_demo:speaking_hear_answer' : 'flow_demo:listening_choice',
     type: 'listening_choice',
-    optionStyle: tpl.optionStyle || 'ABCD',
-    content: clone(tpl.content),
+    optionStyle: isHearAnswer ? 'ABCD' : (listeningChoiceTemplate.optionStyle || 'ABCD'),
+    metadata: isHearAnswer ? { questionVariant: 'hear_answer' } : undefined,
+    content: isHearAnswer
+      ? normalizeListeningChoiceContentFromHearAnswer(clone(hearAnswerTemplate.content))
+      : clone(listeningChoiceTemplate.content),
     flow: {
       version: 1,
       mode: 'semi-auto',
       source: {
         kind: 'standard',
-        id: String(defaultModule.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+        id: String(defaultModule.id || getStandardModuleIdByPageType(pageType)),
         version: Number(defaultModule.version || 1),
         overrides: {}
       },
@@ -991,11 +1100,23 @@ function buildQuestionFromTemplate(): ListeningChoiceQuestion {
 }
 
 const page = ref<Page>('home')
-const defaultModule = getDefaultModule()
-const draftModuleId = ref(String(defaultModule.id || LISTENING_CHOICE_STANDARD_FLOW_ID))
+const activeFlowPageType = ref<FlowPageType>('listening_choice')
+const defaultModule = getDefaultModule(activeFlowPageType.value)
+const draftModuleId = ref(String(defaultModule.id || getStandardModuleIdByPageType(activeFlowPageType.value)))
 const draftModuleVersion = ref(Number(defaultModule.version || 1))
-const draftModuleName = ref(normalizeModuleName(defaultModule.name, DEFAULT_LISTENING_CHOICE_MODULE_NAME))
+const draftModuleName = ref(normalizeModuleName(defaultModule.name, getDefaultModuleNameByPageType(activeFlowPageType.value)))
 const draftModuleNote = ref(normalizeModuleNote(defaultModule?.note))
+const activeFlowDisplayName = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '听后回答' : '听后选择')
+const activeFlowSubtitle = computed(() => activeFlowPageType.value === 'speaking_hear_answer'
+  ? '点击流程图节点，直接配置听后回答步骤规则'
+  : '点击流程图节点，直接配置该步骤规则')
+const activeEditorQuestionMode = computed<'choice' | 'hearAnswer'>(() => activeFlowPageType.value === 'speaking_hear_answer' ? 'hearAnswer' : 'choice')
+const isRegionRoutingEnabled = computed(() => activeFlowPageType.value === 'listening_choice')
+const flowNamePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer'
+  ? '例如：听后回答标准 / 北京-听后回答流程'
+  : '例如：听后选择标准 / 广东-听后选择流程')
+const flowWizardNamePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：听后回答-北京' : '例如：听后选择-北京')
+const flowWizardNotePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：北京地区听后回答流程' : '例如：北京地区听后选择流程')
 type FlowLineWizardBaseline = 'current' | 'standard'
 const flowLineWizardVisible = ref(false)
 const flowLineWizardBaseline = ref<FlowLineWizardBaseline>('current')
@@ -1004,16 +1125,25 @@ const flowLineWizardNote = ref('')
 const flowLineWizardRegions = ref<string[]>([])
 const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toLegacyStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
-  const id = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  const fallbackName = id === LISTENING_CHOICE_STANDARD_FLOW_ID ? DEFAULT_LISTENING_CHOICE_MODULE_NAME : id
+  const fallbackStandardId = getStandardModuleIdByPageType(activeFlowPageType.value)
+  const id = String(draftModuleId.value || fallbackStandardId)
+  const fallbackName = moduleNameFallbackById(id)
   const name = normalizeModuleName(draftModuleName.value, fallbackName)
   return name
 })
 const demoBase = computed<ListeningChoiceQuestion>({
   get() {
-    return buildQuestionFromTemplate()
+    return buildQuestionFromTemplate(activeFlowPageType.value)
   },
   set(next) {
+    if (activeFlowPageType.value === 'speaking_hear_answer') {
+      const fallback = normalizeListeningChoiceContentFromHearAnswer(contentTemplates.state.speakingHearAnswer.content)
+      contentTemplates.setSpeakingHearAnswer({
+        version: 1,
+        content: normalizeSpeakingHearAnswerContentFromListening(clone(next?.content || fallback))
+      })
+      return
+    }
     contentTemplates.setListeningChoice({
       version: 1,
       optionStyle: next?.optionStyle || 'ABCD',
@@ -1022,9 +1152,13 @@ const demoBase = computed<ListeningChoiceQuestion>({
   }
 })
 
-const flowProfileRules = computed<FlowProfileV1[]>(() => flowProfiles.listByQuestionType('listening_choice'))
+const flowProfileRules = computed<FlowProfileV1[]>(() => {
+  if (!isRegionRoutingEnabled.value) return []
+  return flowProfiles.listByQuestionType('listening_choice')
+})
 const listeningChoiceModules = computed<ListeningChoiceFlowModuleV1[]>(() => {
-  return flowModules.listListeningChoice() || []
+  return (flowModules.listListeningChoice() || [])
+    .filter((module) => isModuleIdMatchPageType(module?.id, activeFlowPageType.value))
 })
 const flowModuleRefOptions = computed(() => {
   return listeningChoiceModules.value.filter((m) => normalizeFlowModuleStatus(m?.status) === 'published')
@@ -1062,6 +1196,20 @@ const flowLineOptions = computed<FlowLineOption[]>(() => {
 
   return result.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
 })
+
+function countFlowLinesByPageType(pageType: FlowPageType): number {
+  const groups = new Set<string>()
+  ;(flowModules.listListeningChoice() || []).forEach((module) => {
+    const id = String(module?.id || '').trim()
+    if (!id) return
+    if (!isModuleIdMatchPageType(id, pageType)) return
+    groups.add(id)
+  })
+  return groups.size
+}
+
+const listeningChoiceFlowLineCount = computed(() => countFlowLinesByPageType('listening_choice'))
+const speakingHearAnswerFlowLineCount = computed(() => countFlowLinesByPageType('speaking_hear_answer'))
 const REGION_FLOW_PROFILE_PRIORITY = 10
 const REGION_GENERAL_LABEL = '通用'
 
@@ -1075,7 +1223,7 @@ type RegionRoutingBinding = {
 }
 
 const currentFlowLineRef = computed<FlowModuleRef>(() => ({
-  id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
+  id: String(draftModuleId.value || getStandardModuleIdByPageType(activeFlowPageType.value)),
   version: Math.max(1, toInt(draftModuleVersion.value || 1))
 }))
 
@@ -1236,6 +1384,7 @@ function replaceRegionRoutingBindings(
     defaultNote?: string
   } = {}
 ): boolean {
+  if (!isRegionRoutingEnabled.value) return true
   const nextProfiles = buildRegionOnlyProfiles(flowProfileRules.value || [], bindings || [], options)
   const result = flowProfiles.replaceQuestionTypeProfiles('listening_choice', nextProfiles)
   if (!result.ok) {
@@ -1247,6 +1396,7 @@ function replaceRegionRoutingBindings(
 }
 
 function ensureRegionRoutingMode(silent = true) {
+  if (!isRegionRoutingEnabled.value) return true
   const profiles = flowProfileRules.value || []
   if (!isLegacyRegionRoutingModel(profiles)) return true
   const ok = replaceRegionRoutingBindings(collectRegionRoutingBindings(profiles))
@@ -1298,14 +1448,16 @@ const canCreateFlowLineFromWizard = computed(() => {
 })
 
 function suggestFlowLineNameByRegions(regions: string[]): string {
-  if (regions.length === 1) return `听后选择-${regions[0]}`
-  if (regions.length > 1) return '听后选择-多地区'
-  return '听后选择-新流程线'
+  const prefix = activeFlowDisplayName.value
+  if (regions.length === 1) return `${prefix}-${regions[0]}`
+  if (regions.length > 1) return `${prefix}-多地区`
+  return `${prefix}-新流程线`
 }
 
 function getStandardBaselineModule(): ListeningChoiceFlowModuleV1 {
-  const standard = flowModules.getListeningChoiceLatestPublished(LISTENING_CHOICE_STANDARD_FLOW_ID)
-  return standard || getDefaultModule()
+  const standardId = getStandardModuleIdByPageType(activeFlowPageType.value)
+  const standard = flowModules.getListeningChoiceLatestPublished(standardId)
+  return standard || getDefaultModule(activeFlowPageType.value)
 }
 
 function openFlowLineCreateWizard() {
@@ -1313,7 +1465,7 @@ function openFlowLineCreateWizard() {
   flowLineWizardVisible.value = true
   flowLineWizardBaseline.value = 'current'
   flowLineWizardRegions.value = []
-  const currentName = normalizeModuleName(draftModuleName.value, DEFAULT_LISTENING_CHOICE_MODULE_NAME)
+  const currentName = normalizeModuleName(draftModuleName.value, getDefaultModuleNameByPageType(activeFlowPageType.value))
   flowLineWizardName.value = `${currentName}-副本`
   flowLineWizardNote.value = ''
 }
@@ -1375,6 +1527,7 @@ function formatRegionBindingTarget(rawRegion: string): string {
 }
 
 function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
+  if (!isRegionRoutingEnabled.value) return
   const region = normalizeNullableText(rawRegion)
   if (!region) return
   ensureRegionRoutingMode(true)
@@ -1442,7 +1595,7 @@ function confirmCreateFlowLineFromWizard() {
     return
   }
   const note = String(flowLineWizardNote.value || '').trim()
-  const nextId = buildUniqueFlowLineId(`listening_choice.line.${Date.now()}`)
+  const nextId = buildUniqueFlowLineId(`${getFlowLineIdPrefixByPageType(activeFlowPageType.value)}.${Date.now()}`)
   const baselineDraft = buildWizardBaselineDraft()
 
   draftModuleId.value = nextId
@@ -1462,10 +1615,12 @@ function confirmCreateFlowLineFromWizard() {
   const saved = saveStandard(true, true, 1)
   if (!saved) return
 
-  const regions = (flowLineWizardRegions.value || [])
-    .map((item) => normalizeNullableText(item))
-    .filter((item): item is string => Boolean(item))
-  if (regions.length > 0) {
+  const regions = isRegionRoutingEnabled.value
+    ? (flowLineWizardRegions.value || [])
+      .map((item) => normalizeNullableText(item))
+      .filter((item): item is string => Boolean(item))
+    : []
+  if (isRegionRoutingEnabled.value && regions.length > 0) {
     ensureRegionRoutingMode(true)
     const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))
     const specificRegions = regions.filter((region) => !isGeneralRegion(region))
@@ -1881,11 +2036,29 @@ function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPa
     ])
   }
 
+  const crossCheckProfiles = isRegionRoutingEnabled.value
+    ? (flowProfileRules.value || [])
+    : [{
+        id: `profile:${activeFlowPageType.value}:default`,
+        questionType: 'listening_choice' as const,
+        region: undefined,
+        scene: undefined,
+        grade: undefined,
+        module: {
+          id: String(draftModuleId.value || getStandardModuleIdByPageType(activeFlowPageType.value)),
+          version: Math.max(1, toInt(draftModuleVersion.value || 1))
+        },
+        priority: 0,
+        enabled: true,
+        note: `${activeFlowDisplayName.value}默认流程`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }]
   const crossValidation = validateListeningChoiceModuleCommitCrossChecks({
     mode: payload.mode,
     template: demoBase.value,
     nextModule: payload.module,
-    flowProfiles: flowProfileRules.value || [],
+    flowProfiles: crossCheckProfiles,
     moduleCatalog: flowModules.listListeningChoice()
   })
   if (crossValidation.ok) {
@@ -2626,13 +2799,14 @@ function onFlowQuickAdd(kind: string) {
 
 function syncDraftModuleMeta(module: unknown) {
   const mod = isObjectRecord(module) ? module : {}
-  const id = String(mod.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
+  const id = String(mod.id || getStandardModuleIdByPageType(activeFlowPageType.value))
   draftModuleName.value = normalizeModuleName(mod.name, moduleNameFallbackById(id))
   draftModuleNote.value = normalizeModuleNote(mod.note)
 }
 
 function buildUniqueFlowLineId(baseId: string): string {
-  const normalizedBaseId = String(baseId || '').trim() || `listening_choice.line.${Date.now()}`
+  const fallbackPrefix = getFlowLineIdPrefixByPageType(activeFlowPageType.value)
+  const normalizedBaseId = String(baseId || '').trim() || `${fallbackPrefix}.${Date.now()}`
   const existingIds = new Set(
     (listeningChoiceModules.value || []).map((module) => String(module?.id || '')).filter(Boolean)
   )
@@ -2648,8 +2822,9 @@ function buildUniqueFlowLineId(baseId: string): string {
 }
 
 function switchDraftToModuleRef(ref: FlowModuleRef) {
+  const fallbackStandardId = getStandardModuleIdByPageType(activeFlowPageType.value)
   const targetRef = {
-    id: String(ref?.id || LISTENING_CHOICE_STANDARD_FLOW_ID),
+    id: String(ref?.id || fallbackStandardId),
     version: Math.max(1, toInt(ref?.version || 1))
   }
   const module = flowModules.getListeningChoiceByRef(targetRef)
@@ -2692,8 +2867,9 @@ function goHome() {
 
 function openListeningChoice() {
   ensureRegionRoutingMode(true)
+  activeFlowPageType.value = 'listening_choice'
   flowLineWizardVisible.value = false
-  const module = getDefaultModule()
+  const module = getDefaultModule('listening_choice')
   draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   draftModuleVersion.value = Number(module.version || 1)
   syncDraftModuleMeta(module)
@@ -2703,6 +2879,21 @@ function openListeningChoice() {
   currentStepIndex.value = 0
   configStepIndex.value = 0
   page.value = 'listening_choice'
+}
+
+function openSpeakingHearAnswer() {
+  activeFlowPageType.value = 'speaking_hear_answer'
+  flowLineWizardVisible.value = false
+  const module = getDefaultModule('speaking_hear_answer')
+  draftModuleId.value = String(module.id || LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)
+  draftModuleVersion.value = Number(module.version || 1)
+  syncDraftModuleMeta(module)
+  listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  previewAnswers.value = {}
+  showAnswer.value = false
+  currentStepIndex.value = 0
+  configStepIndex.value = 0
+  page.value = 'speaking_hear_answer'
 }
 
 function reloadDemoBaseFromTemplate() {
@@ -2761,8 +2952,11 @@ function applyStandardToCurrentQuestion() {
       return
     }
 
-    if (data?.type !== 'listening_choice') {
-      uni.showToast({ title: '当前题目不是听后选择', icon: 'none' })
+    const expectedType = activeFlowPageType.value === 'speaking_hear_answer'
+      ? 'speaking_hear_answer'
+      : 'listening_choice'
+    if (data?.type !== expectedType) {
+      uni.showToast({ title: `当前题目不是${activeFlowDisplayName.value}`, icon: 'none' })
       return
     }
 
@@ -2774,7 +2968,7 @@ function applyStandardToCurrentQuestion() {
     const steps = materializeListeningChoiceStandardSteps(data, { generateId, overrides: {}, module })
 
     const next = patchListeningChoiceQuestionFlow(
-      data as ListeningChoiceQuestion,
+      data as ListeningChoiceQuestion | SpeakingHearAnswerQuestion,
       {
         kind: 'standard',
         id: draftModuleId.value,
