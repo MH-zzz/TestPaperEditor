@@ -26,6 +26,7 @@
 11. Week 4 / Task 11（第一版）：新增 `loopNode` 受限循环 MVP。编译层支持 `compileFlowVisualGraphToLoopMvpSteps`（`maxIterations` 校验、continue/exit 路径约束），运行时新增 `reduceFlowRuntimeStateWithLoop`（循环计数与上限退出），并扩展步骤能力字段支持 `maxIterations`。
 12. Week 4 / Task 12（第一版）：新增流程导出包 V2 迁移闭环。导出端改为 `schemaVersion: 2 + exportCapabilities + migrationReport`；导入端新增 `migrateFlowExportPayloadToV2`，兼容旧字段（`modules/profiles/logs`）并输出迁移轨迹（字段变更路径 + 原因）。
 13. 教研直观性增强（补充）：在“地区视角总览”中接入路由模拟快捷入口，支持按地区一键模拟命中、读取/写回题目上下文，并在列表中高亮当前模拟地区与命中摘要。
+14. 教研直观性增强（补充 2）：恢复并收敛“路由模拟器 + 规则诊断 + 修复预览”面板（地区/场景/年级输入、Top 候选、冲突/死规则/弱覆盖诊断、自动修复预览/确认），让教研可在流程中心闭环验证规则。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
@@ -39,6 +40,8 @@
 9. `npm run test`：201/201 全通过。
 10. `node --test tests/flow-research-editor-mode.test.mjs tests/flow-profile-routing.test.mjs tests/preview-mode.test.mjs`：通过（新增地区总览路由模拟断言）。
 11. `npm run test`：224/224 全通过。
+12. `node --test tests/flow-research-editor-mode.test.mjs tests/flow-profile-routing.test.mjs`：通过（新增路由模拟器与诊断面板断言）。
+13. `npm run test`：226/226 全通过。
 
 ---
 

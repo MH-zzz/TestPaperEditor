@@ -353,12 +353,15 @@ test('flow center should provide read-only visual graph modal from steps', async
   assert.ok(typeSrc.includes('export interface FlowVisualGraph'))
 })
 
-test('flow center should keep routing diagnostics helpers in script layer', async () => {
+test('flow center should keep routing diagnostics helpers and simulator panel', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('flowProfileFixSuggestions'))
   assert.ok(src.includes('applyFlowProfileFixSuggestion'))
   assert.ok(src.includes('applyAllFlowProfileFixSuggestions'))
-  assert.ok(!src.includes('自动修复建议'))
+  assert.ok(src.includes('路由模拟器'))
+  assert.ok(src.includes('路由规则诊断'))
+  assert.ok(src.includes('自动修复建议'))
+  assert.ok(src.includes('showFlowProfileSubmitValidationSummary'))
 })
 
 test('flow center should preview fix suggestions before applying changes', async () => {

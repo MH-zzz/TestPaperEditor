@@ -34,6 +34,12 @@ test('flow modules manager should provide region overview list for teaching work
   assert.ok(src.includes('isRegionSimulationTarget'))
   assert.ok(src.includes('loadRouteSimFromCurrentQuestion'))
   assert.ok(src.includes('syncRouteSimToCurrentQuestion'))
+  assert.ok(src.includes('路由模拟器'))
+  assert.ok(src.includes('Top 候选规则'))
+  assert.ok(src.includes('路由规则诊断'))
+  assert.ok(src.includes('showFlowProfileSubmitValidationSummary'))
+  assert.ok(src.includes('flowProfileFixSuggestions'))
+  assert.ok(src.includes('pendingFlowProfileFixSuggestions'))
 })
 
 test('flow modules manager should provide macro expansion preview in visual detail panel', async () => {

@@ -667,6 +667,179 @@
                     </view>
                   </view>
                 </view>
+                <view v-if="isRegionRoutingEnabled" class="route-sim">
+                  <view class="route-sim__head">
+                    <view class="route-sim__head-main">
+                      <text class="route-sim__title">路由模拟器</text>
+                      <text class="route-sim__desc">输入地区/场景/年级，实时验证命中流程线；可一键写回当前题目上下文。</text>
+                    </view>
+                    <view class="route-sim__head-actions">
+                      <button class="btn btn-outline btn-xs" @click="loadRouteSimFromCurrentQuestion">读取题目上下文</button>
+                      <button class="btn btn-outline btn-xs" @click="syncRouteSimToCurrentQuestion">写回题目上下文</button>
+                    </view>
+                  </view>
+                  <view class="route-sim__grid">
+                    <view class="form-item">
+                      <text class="form-item__label">地区</text>
+                      <input
+                        class="text-input"
+                        :value="routeSimRegion"
+                        placeholder="如：广东"
+                        @input="(e) => routeSimRegion = String(e.detail.value || '')"
+                      />
+                    </view>
+                    <view class="form-item">
+                      <text class="form-item__label">场景</text>
+                      <input
+                        class="text-input"
+                        :value="routeSimScene"
+                        placeholder="如：模考"
+                        @input="(e) => routeSimScene = String(e.detail.value || '')"
+                      />
+                    </view>
+                    <view class="form-item">
+                      <text class="form-item__label">年级</text>
+                      <input
+                        class="text-input"
+                        :value="routeSimGrade"
+                        placeholder="如：九年级"
+                        @input="(e) => routeSimGrade = String(e.detail.value || '')"
+                      />
+                    </view>
+                  </view>
+                  <view class="route-sim__result">
+                    <text class="route-sim__result-title">命中结果</text>
+                    <text class="route-sim__line">命中规则：{{ flowCenterHitRuleText }}</text>
+                    <text class="route-sim__line">命中流程：{{ flowCenterHitModuleVersionText }}</text>
+                    <text class="route-sim__line">{{ routeSimScoreSummaryText }}</text>
+                  </view>
+                  <view class="route-sim__result route-sim__result--soft">
+                    <text class="route-sim__result-title">Top 候选规则</text>
+                    <view v-if="simulatedRankedCandidates.length > 0" class="route-sim__rank-list">
+                      <view
+                        v-for="(item, index) in simulatedRankedCandidates.slice(0, 5)"
+                        :key="`route-rank:${item.profile.id}:${index}`"
+                        class="route-sim__rank-item"
+                      >
+                        <text class="route-sim__rank-main">{{ index + 1 }}. {{ formatFlowProfileLabel(item.profile) }} · {{ formatModuleDisplayRef(item.profile.module) }}</text>
+                        <text class="route-sim__rank-sub">score={{ item.totalScore }} · region={{ item.regionScore }} · scene={{ item.sceneScore }} · grade={{ item.gradeScore }} · priority={{ item.priorityScore }}</text>
+                      </view>
+                    </view>
+                    <text v-else class="route-sim__line">当前条件下暂无命中候选。</text>
+                  </view>
+                </view>
+                <view v-if="isRegionRoutingEnabled" class="route-check">
+                  <view class="route-check__head">
+                    <text class="route-check__title">路由规则诊断</text>
+                    <text class="route-check__meta">冲突 {{ flowProfileDiagnostics.conflicts.length }} · 死规则 {{ flowProfileDiagnostics.deadRules.length }} · 弱覆盖 {{ flowProfileDiagnostics.weakCoverage.length }}</text>
+                  </view>
+
+                  <view class="route-check__section">
+                    <view class="route-check__section-head">
+                      <text class="route-check__section-title">提交校验</text>
+                      <view class="route-check__preview-actions">
+                        <button class="btn btn-outline btn-xs" @click="showFlowProfileSubmitValidationSummary">查看详情</button>
+                        <button class="btn btn-outline btn-xs" :disabled="flowProfileFixSuggestions.length <= 0" @click="applyAllFlowProfileFixSuggestions">预览修复</button>
+                      </view>
+                    </view>
+                    <text class="route-check__item-main">{{ flowProfileSubmitValidation.ok ? '状态：可提交' : '状态：存在阻断' }}</text>
+                    <text class="route-check__item-sub">错误 {{ flowProfileSubmitValidation.errors.length }} 条 · 提醒 {{ flowProfileSubmitValidation.warnings.length }} 条</text>
+                  </view>
+
+                  <view class="route-check__section">
+                    <text class="route-check__section-title">冲突规则</text>
+                    <view v-if="flowProfileDiagnostics.conflicts.length > 0" class="route-check__list">
+                      <view
+                        v-for="item in flowProfileDiagnostics.conflicts"
+                        :key="`route-conflict:${item.signature}`"
+                        class="route-check__item"
+                      >
+                        <text class="route-check__item-main">{{ item.signature }}</text>
+                        <text class="route-check__item-sub">冲突规则：{{ formatFlowProfileLabelsByIds(item.ids || []) }}</text>
+                      </view>
+                    </view>
+                    <text v-else class="route-check__ok">当前无冲突规则。</text>
+                  </view>
+
+                  <view class="route-check__section">
+                    <text class="route-check__section-title">死规则</text>
+                    <view v-if="flowProfileDiagnostics.deadRules.length > 0" class="route-check__list">
+                      <view
+                        v-for="item in flowProfileDiagnostics.deadRules"
+                        :key="`route-dead:${item.id}`"
+                        class="route-check__item"
+                      >
+                        <text class="route-check__item-main">{{ formatFlowProfileLabelById(item.id) }}</text>
+                        <text class="route-check__item-sub">被覆盖：{{ formatFlowProfileLabelsByIds(item.blockedBy || []) }}</text>
+                      </view>
+                    </view>
+                    <text v-else class="route-check__ok">当前无死规则。</text>
+                  </view>
+
+                  <view class="route-check__section">
+                    <text class="route-check__section-title">弱覆盖规则</text>
+                    <view v-if="flowProfileDiagnostics.weakCoverage.length > 0" class="route-check__list">
+                      <view
+                        v-for="item in flowProfileDiagnostics.weakCoverage"
+                        :key="`route-weak:${item.id}`"
+                        class="route-check__item"
+                      >
+                        <text class="route-check__item-main">{{ formatFlowProfileLabelById(item.id) }}</text>
+                        <text class="route-check__item-sub">{{ item.reason }}</text>
+                      </view>
+                    </view>
+                    <text v-else class="route-check__ok">当前无弱覆盖规则。</text>
+                  </view>
+
+                  <view class="route-check__section">
+                    <text class="route-check__section-title">自动修复建议</text>
+                    <view v-if="flowProfileFixSuggestions.length > 0" class="route-check__list">
+                      <view
+                        v-for="item in flowProfileFixSuggestions.slice(0, 6)"
+                        :key="item.key"
+                        class="route-check__item"
+                      >
+                        <text class="route-check__item-main">{{ item.summary }}</text>
+                        <text class="route-check__item-sub">{{ item.reason }}</text>
+                        <view class="route-check__item-actions">
+                          <button class="btn btn-outline btn-xs" @click="applyFlowProfileFixSuggestion(item)">预览修复</button>
+                        </view>
+                      </view>
+                    </view>
+                    <text v-else class="route-check__ok">当前无自动修复建议。</text>
+                  </view>
+
+                  <view v-if="pendingFlowProfileFixSuggestions.length > 0" class="route-check__section">
+                    <view class="route-check__section-head">
+                      <text class="route-check__section-title">修复预览（{{ pendingFlowProfileFixSuggestions.length }}）</text>
+                      <view class="route-check__preview-actions">
+                        <button class="btn btn-outline btn-xs" @click="cancelFlowProfileFixPreview">取消</button>
+                        <button class="btn btn-outline btn-xs" @click="confirmFlowProfileFixPreview">确认应用</button>
+                      </view>
+                    </view>
+                    <view class="route-check__list">
+                      <view
+                        v-for="item in pendingFlowProfileFixSuggestions"
+                        :key="`route-fix-preview:${item.key}`"
+                        class="route-check__item"
+                      >
+                        <text class="route-check__item-main">{{ item.summary }}</text>
+                        <text class="route-check__item-sub">{{ item.reason }}</text>
+                        <view v-if="item.previewFields.length > 0" class="route-check__preview-fields">
+                          <view
+                            v-for="field in item.previewFields"
+                            :key="`route-fix-preview:${item.key}:${field.key}`"
+                            class="route-check__preview-field"
+                          >
+                            <text class="route-check__preview-key">{{ field.key }}</text>
+                            <text class="route-check__preview-before">之前：{{ field.before }}</text>
+                            <text class="route-check__preview-after">之后：{{ field.after }}</text>
+                          </view>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
               </view>
             </view>
 
@@ -2646,6 +2819,15 @@ function formatFlowProfileSubmitValidation(validation: FlowProfileSubmitValidati
 function showFlowProfileSubmitBlocked(validation: FlowProfileSubmitValidation) {
   uni.showModal({
     title: '路由诊断未通过',
+    content: formatFlowProfileSubmitValidation(validation),
+    showCancel: false
+  })
+}
+
+function showFlowProfileSubmitValidationSummary() {
+  const validation = flowProfileSubmitValidation.value
+  uni.showModal({
+    title: validation.ok ? '路由提交校验通过' : '路由提交校验未通过',
     content: formatFlowProfileSubmitValidation(validation),
     showCancel: false
   })
