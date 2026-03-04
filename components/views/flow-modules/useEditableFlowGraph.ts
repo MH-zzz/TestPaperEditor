@@ -83,6 +83,17 @@ export type FlowSnippetCaptureResult =
     message: string
   }
 
+export type FlowVisualBulkPatchResult =
+  | {
+    ok: true
+    updatedNodeCount: number
+  }
+  | {
+    ok: false
+    code: string
+    message: string
+  }
+
 const STENCIL_ITEMS: FlowStencilItem[] = [
   { kind: 'intro', label: '介绍页', color: '#2563eb', category: 'control', categoryLabel: '控制', description: '展示题型介绍与说明', defaultAutoNext: 'tapNext' },
   { kind: 'countdown', label: '倒计时', color: '#f59e0b', category: 'control', categoryLabel: '控制', description: '等待倒计时结束自动推进', defaultAutoNext: 'countdownEnded' },
@@ -422,6 +433,15 @@ function normalizeSnippetTemplateSteps(steps: FlowSnippetTemplateStep[]): FlowSn
   return result
 }
 
+function readAllowedFieldKeySetByStepKind(stepKind: string): Set<FlowPropertyFieldKey> {
+  const fields = buildPropertyFieldsByStepKind(stepKind)
+  return new Set(fields.map((item) => item.key))
+}
+
+function readPatchValue(raw: string | undefined): string {
+  return String(raw || '').trim()
+}
+
 function createEditableNodeFromReadonly(
   node: FlowVisualNode<ReadonlyFlowNodePayload>,
   index: number
@@ -746,6 +766,110 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     markDirty('patch_selected_node')
   }
 
+  function resolveCommonPropertyFieldsByNodeIds(nodeIds: string[]): FlowPropertyField[] {
+    const ids = Array.isArray(nodeIds) ? nodeIds.map((id) => String(id || '').trim()).filter(Boolean) : []
+    if (ids.length <= 0) return []
+    const idSet = new Set(ids)
+    const selectedNodes = nodes.value.filter((item) => idSet.has(item.id))
+    if (selectedNodes.length <= 0) return []
+
+    const first = selectedNodes[0]
+    const firstFields = buildPropertyFieldsByStepKind(first.data.stepKind)
+    let commonKeys = new Set(firstFields.map((item) => item.key))
+
+    for (let i = 1; i < selectedNodes.length; i += 1) {
+      const currentFields = buildPropertyFieldsByStepKind(selectedNodes[i].data.stepKind)
+      const keySet = new Set(currentFields.map((item) => item.key))
+      commonKeys = new Set([...commonKeys].filter((key) => keySet.has(key)))
+      if (commonKeys.size <= 0) break
+    }
+
+    return firstFields.filter((item) => commonKeys.has(item.key))
+  }
+
+  function patchNodesByIds(
+    nodeIds: string[],
+    patch: FlowVisualNodePatch,
+    dirtyAction = 'patch_nodes_by_ids'
+  ): FlowVisualBulkPatchResult {
+    const ids = Array.isArray(nodeIds) ? nodeIds.map((id) => String(id || '').trim()).filter(Boolean) : []
+    if (ids.length <= 0) {
+      return { ok: false, code: 'bulk_patch_empty_selection', message: '请先选中需要批量修改的节点。' }
+    }
+    const idSet = new Set(ids)
+    const hasStepKind = patch.stepKind !== undefined
+    const hasAutoNext = patch.autoNext !== undefined
+    const hasGroupId = patch.groupId !== undefined
+    if (!hasStepKind && !hasAutoNext && !hasGroupId) {
+      return { ok: false, code: 'bulk_patch_empty_patch', message: '未检测到可应用的批量字段。' }
+    }
+
+    let changed = false
+    let updatedNodeCount = 0
+    const nextNodes = nodes.value.map((item) => {
+      if (!idSet.has(item.id)) return item
+      const allowedKeys = readAllowedFieldKeySetByStepKind(item.data.stepKind)
+      let nextStepKind = item.data.stepKind
+      let nextAutoNext = item.data.autoNext
+      let nextGroupId = item.data.groupId
+
+      if (hasStepKind && allowedKeys.has('stepKind')) {
+        const value = readPatchValue(patch.stepKind)
+        if (value) nextStepKind = value
+      }
+
+      if (hasAutoNext && allowedKeys.has('autoNext')) {
+        nextAutoNext = readPatchValue(patch.autoNext)
+      }
+
+      if (hasGroupId && allowedKeys.has('groupId')) {
+        nextGroupId = readPatchValue(patch.groupId)
+      }
+
+      if (
+        nextStepKind === item.data.stepKind
+        && nextAutoNext === item.data.autoNext
+        && nextGroupId === item.data.groupId
+      ) {
+        return item
+      }
+
+      changed = true
+      updatedNodeCount += 1
+      return {
+        ...item,
+        data: {
+          ...item.data,
+          stepKind: nextStepKind,
+          autoNext: nextAutoNext,
+          groupId: nextGroupId
+        }
+      }
+    })
+
+    if (!changed) {
+      return { ok: false, code: 'bulk_patch_noop', message: '批量更新未产生变更，请检查字段与选区。' }
+    }
+
+    pushHistorySnapshot()
+    nodes.value = relayoutNodes(nextNodes)
+    ensureSelectedNode()
+    markRecentlyMoved(selectedNodeId.value)
+    markDirty(dirtyAction)
+    return {
+      ok: true,
+      updatedNodeCount
+    }
+  }
+
+  function patchSelectionRange(patch: FlowVisualNodePatch): FlowVisualBulkPatchResult {
+    const ids = snippetSelectionNodeIds.value
+    if (ids.length <= 1) {
+      return { ok: false, code: 'bulk_patch_selection_too_small', message: '请至少选择 2 个节点再进行批量修改。' }
+    }
+    return patchNodesByIds(ids, patch, 'patch_selection_range')
+  }
+
   function removeSelectedNode() {
     const nodeId = selectedNodeId.value
     if (!nodeId) return
@@ -872,6 +996,11 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     const start = Math.min(anchorIndex, selectedIndex)
     const end = Math.max(anchorIndex, selectedIndex)
     return list.slice(start, end + 1).map((item) => item.id)
+  })
+  const bulkPropertyFieldsForSelection = computed<FlowPropertyField[]>(() => {
+    const ids = snippetSelectionNodeIds.value
+    if (ids.length <= 1) return []
+    return resolveCommonPropertyFieldsByNodeIds(ids)
   })
 
   function buildSuggestedSnippetName(steps: FlowSnippetTemplateStep[]): string {
@@ -1053,6 +1182,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     selectedNodeId,
     snippetSelectionAnchorId,
     snippetSelectionNodeIds,
+    bulkPropertyFieldsForSelection,
     selectedNode,
     compileResult,
     compiledStepPreview,
@@ -1072,6 +1202,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     insertSnippetNearTarget,
     insertSnippetAtTail,
     saveSnippetFromSelectionRange,
+    patchSelectionRange,
     patchSelectedNode,
     removeSelectedNode,
     duplicateSelectedNode,

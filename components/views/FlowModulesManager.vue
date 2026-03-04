@@ -794,7 +794,52 @@
               @move-up="moveReadonlyFlowVisualNodeUp"
               @move-down="moveReadonlyFlowVisualNodeDown"
               @reset="resetReadonlyFlowVisualFromQuestion"
-            />
+            >
+              <template #bulk>
+                <view v-if="readonlyFlowVisualBulkPanelVisible" class="flow-visual-bulk">
+                  <view class="flow-visual-bulk__head">
+                    <text class="flow-visual-bulk__title">批量属性面板</text>
+                    <text class="flow-visual-bulk__meta">已选 {{ readonlyFlowVisualBulkSelectionCount }} 个节点（起点 → 当前）</text>
+                  </view>
+                  <text class="flow-visual-bulk__desc">仅显示交集属性；批量应用会走同一校验链路并进入撤销栈。</text>
+
+                  <view
+                    v-for="field in readonlyFlowVisualBulkFields"
+                    :key="`bulk:${field.key}`"
+                    class="flow-visual-bulk__field"
+                  >
+                    <view class="flow-visual-bulk__field-head">
+                      <text class="flow-visual-bulk__label">{{ field.label }}</text>
+                      <text class="flow-visual-bulk__state">{{ isReadonlyFlowVisualBulkFieldTouched(field.key) ? '待应用' : '未设置' }}</text>
+                    </view>
+
+                    <template v-if="field.type === 'select'">
+                      <view class="flow-visual-bulk__chips">
+                        <text
+                          v-for="option in field.options || []"
+                          :key="`bulk:${field.key}:${option.value}`"
+                          class="flow-visual-bulk__chip"
+                          :class="{ active: readReadonlyFlowVisualBulkFieldDraft(field.key) === option.value }"
+                          @click="setReadonlyFlowVisualBulkFieldDraft(field.key, option.value)"
+                        >{{ option.label }}（{{ option.value }}）</text>
+                      </view>
+                    </template>
+
+                    <input
+                      class="flow-visual-bulk__input"
+                      :value="readReadonlyFlowVisualBulkFieldDraft(field.key)"
+                      :placeholder="field.placeholder || '输入后点击应用'"
+                      @input="(e) => setReadonlyFlowVisualBulkFieldDraft(field.key, e.detail.value)"
+                    />
+                  </view>
+
+                  <view class="flow-visual-bulk__actions">
+                    <button class="btn btn-outline btn-xs" @click="resetReadonlyFlowVisualBulkPatchDraft">重置批量草稿</button>
+                    <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualBulkPatch">应用到选中步骤</button>
+                  </view>
+                </view>
+              </template>
+            </PropertyPanel>
 
             <view class="flow-visual-compile">
               <text class="flow-visual-detail__title">线性编译结果</text>
@@ -1055,6 +1100,7 @@ import {
 import { useRouteSimulator } from './flow-modules/useRouteSimulator'
 import {
   useEditableFlowGraph,
+  type FlowPropertyFieldKey,
   type FlowVisualNodePatch
 } from './flow-modules/useEditableFlowGraph'
 import type { VisualLinearStep } from '/domain/flow-visual/usecases/compileGraphToSteps'
@@ -2664,6 +2710,17 @@ const readonlyFlowSnippetSelectionLabel = computed(() => {
   if (count === 1) return '当前仅选中 1 步（可保存单步片段）'
   return `已框选 ${count} 步（起点 → 当前）`
 })
+const readonlyFlowVisualBulkFields = flowVisualEditor.bulkPropertyFieldsForSelection
+const readonlyFlowVisualBulkSelectionCount = computed(() => readonlyFlowSnippetSelectionNodeIds.value.length)
+const readonlyFlowVisualBulkPanelVisible = computed(() => {
+  return readonlyFlowVisualBulkSelectionCount.value > 1 && readonlyFlowVisualBulkFields.value.length > 0
+})
+const readonlyFlowVisualBulkPatchDraft = ref<Partial<Record<FlowPropertyFieldKey, string>>>({})
+const readonlyFlowVisualBulkPatchTouched = ref<Record<FlowPropertyFieldKey, boolean>>({
+  stepKind: false,
+  autoNext: false,
+  groupId: false
+})
 let flowVisualBodyOverflow = ''
 
 function formatFlowVisualDebugTime(value: unknown) {
@@ -2692,11 +2749,13 @@ function openReadonlyFlowVisual() {
   readonlyFlowVisualVisible.value = true
   flowVisualEditor.reloadFromQuestion()
   flowVisualEditor.clearSnippetSelectionAnchor()
+  resetReadonlyFlowVisualBulkPatchDraft()
 }
 
 function closeReadonlyFlowVisual() {
   readonlyFlowVisualVisible.value = false
   flowVisualEditor.clearSnippetSelectionAnchor()
+  resetReadonlyFlowVisualBulkPatchDraft()
 }
 
 function clearReadonlyFlowPartialPreviewMode() {
@@ -2706,6 +2765,66 @@ function clearReadonlyFlowPartialPreviewMode() {
   }
   readonlyFlowPartialPreviewRestoreOverride.value = undefined
   readonlyFlowPartialPreviewState.value = null
+  resetReadonlyFlowVisualBulkPatchDraft()
+}
+
+function resetReadonlyFlowVisualBulkPatchDraft() {
+  readonlyFlowVisualBulkPatchDraft.value = {}
+  readonlyFlowVisualBulkPatchTouched.value = {
+    stepKind: false,
+    autoNext: false,
+    groupId: false
+  }
+}
+
+function readReadonlyFlowVisualBulkFieldDraft(key: FlowPropertyFieldKey): string {
+  return String(readonlyFlowVisualBulkPatchDraft.value[key] || '')
+}
+
+function setReadonlyFlowVisualBulkFieldDraft(key: FlowPropertyFieldKey, value: string) {
+  readonlyFlowVisualBulkPatchDraft.value = {
+    ...readonlyFlowVisualBulkPatchDraft.value,
+    [key]: String(value || '')
+  }
+  readonlyFlowVisualBulkPatchTouched.value = {
+    ...readonlyFlowVisualBulkPatchTouched.value,
+    [key]: true
+  }
+}
+
+function isReadonlyFlowVisualBulkFieldTouched(key: FlowPropertyFieldKey): boolean {
+  return readonlyFlowVisualBulkPatchTouched.value[key] === true
+}
+
+function applyReadonlyFlowVisualBulkPatch() {
+  if (!readonlyFlowVisualBulkPanelVisible.value) {
+    uni.showToast({ title: '请先选择至少 2 个可批量编辑节点', icon: 'none' })
+    return
+  }
+
+  const visibleKeySet = new Set(readonlyFlowVisualBulkFields.value.map((item) => item.key))
+  const patch: FlowVisualNodePatch = {}
+  let patchKeyCount = 0
+  for (const key of ['stepKind', 'autoNext', 'groupId'] as FlowPropertyFieldKey[]) {
+    if (!visibleKeySet.has(key)) continue
+    if (!isReadonlyFlowVisualBulkFieldTouched(key)) continue
+    patch[key] = String(readonlyFlowVisualBulkPatchDraft.value[key] || '')
+    patchKeyCount += 1
+  }
+
+  if (patchKeyCount <= 0) {
+    uni.showToast({ title: '请先设置至少 1 个批量字段', icon: 'none' })
+    return
+  }
+
+  const result = flowVisualEditor.patchSelectionRange(patch)
+  if (!result.ok) {
+    uni.showToast({ title: result.message, icon: 'none' })
+    return
+  }
+
+  resetReadonlyFlowVisualBulkPatchDraft()
+  uni.showToast({ title: `已批量更新 ${result.updatedNodeCount} 个节点`, icon: 'none' })
 }
 
 function selectReadonlyFlowVisualNode(id: string) {
@@ -3394,6 +3513,17 @@ onBeforeUnmount(() => {
 
 watch(readonlyFlowVisualVisible, (visible) => {
   setFlowVisualBodyScrollLocked(visible)
+  if (!visible) resetReadonlyFlowVisualBulkPatchDraft()
+})
+
+watch(readonlyFlowVisualBulkPanelVisible, (visible, prev) => {
+  if (visible === prev) return
+  resetReadonlyFlowVisualBulkPatchDraft()
+})
+
+watch(() => readonlyFlowVisualBulkFields.value.map((item) => item.key).join('|'), (next, prev) => {
+  if (next === prev) return
+  resetReadonlyFlowVisualBulkPatchDraft()
 })
 
 watch(flowCenterRouteSignature, (next, prev) => {
@@ -5242,6 +5372,103 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 }
 
 .flow-visual-snippet__ops {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.flow-visual-bulk {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.flow-visual-bulk__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-visual-bulk__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.flow-visual-bulk__meta,
+.flow-visual-bulk__desc {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+  line-height: 1.35;
+}
+
+.flow-visual-bulk__field {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-bulk__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-visual-bulk__label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.76);
+}
+
+.flow-visual-bulk__state {
+  font-size: 11px;
+  color: rgba(30, 64, 175, 0.88);
+}
+
+.flow-visual-bulk__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flow-visual-bulk__chip {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.flow-visual-bulk__chip.active {
+  color: rgba(30, 64, 175, 0.95);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(219, 234, 254, 0.68);
+}
+
+.flow-visual-bulk__input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.82);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.flow-visual-bulk__actions {
   display: flex;
   align-items: center;
   gap: 6px;

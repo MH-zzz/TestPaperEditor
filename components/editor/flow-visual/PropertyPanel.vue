@@ -1,7 +1,7 @@
 <template>
   <view class="flow-property">
     <text class="flow-property__title">属性面板</text>
-    <text class="flow-property__desc">基于步骤 schema 渲染字段，修改后实时回写图节点（Delete 删除，Ctrl/Cmd+Z 撤销，Ctrl/Cmd+D 复制，↑↓ 切节点）</text>
+    <text class="flow-property__desc">基于步骤 schema 渲染字段，修改后实时回写图节点（Delete 删除，Ctrl/Cmd+Z 撤销，Ctrl/Cmd+D 复制，↑↓ 切节点；多选后可在扩展区域批量更新）</text>
 
     <template v-if="node">
       <view class="flow-property__block">
@@ -53,6 +53,8 @@
         <button class="btn btn-outline btn-xs" @click="emit('reset')">重置图</button>
         <button class="btn btn-outline btn-xs danger" @click="emit('remove')">删除节点</button>
       </view>
+
+      <slot name="bulk" />
     </template>
 
     <text v-else class="flow-property__empty">当前无可编辑节点</text>
