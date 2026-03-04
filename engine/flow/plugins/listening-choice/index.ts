@@ -1,5 +1,5 @@
 import { createFlowStepPluginRegistry } from '../registry.ts'
-import type { FlowStepPlugin, FlowStepPluginValidationResult } from '../types.ts'
+import type { FlowStepConfigField, FlowStepPlugin, FlowStepPluginValidationResult } from '../types.ts'
 import { listeningChoiceIntroStepPlugin } from './intro.ts'
 import { listeningChoiceGroupPromptStepPlugin } from './groupPrompt.ts'
 import { listeningChoiceCountdownStepPlugin } from './countdown.ts'
@@ -28,7 +28,8 @@ const UNKNOWN_STEP_PLUGIN: FlowStepPlugin = {
   kind: 'unknown',
   schema: {
     description: '未知步骤',
-    requiredFields: ['kind']
+    requiredFields: ['kind'],
+    configFields: []
   },
   renderer: {
     view: 'unsupported',
@@ -66,4 +67,21 @@ export function validateListeningChoiceStep(kind: string, step: any): FlowStepPl
 
 export function ensureListeningChoiceStepPlugin(kind: string): FlowStepPlugin {
   return registry.ensure(kind)
+}
+
+export function listListeningChoiceStepConfigFields(kind: string): FlowStepConfigField[] {
+  const plugin = getListeningChoiceStepPlugin(kind)
+  const fields = Array.isArray(plugin.schema?.configFields) ? plugin.schema.configFields : []
+  return fields
+    .map((field) => String(field || '').trim())
+    .filter(Boolean) as FlowStepConfigField[]
+}
+
+export function supportsListeningChoiceStepConfigField(
+  kind: string,
+  field: FlowStepConfigField | string
+): boolean {
+  const target = String(field || '').trim()
+  if (!target) return false
+  return listListeningChoiceStepConfigFields(kind).includes(target as FlowStepConfigField)
 }

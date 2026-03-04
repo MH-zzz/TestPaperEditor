@@ -125,7 +125,7 @@ test('FlowModulesManager should support template-data + flow-rule + preview work
 test('FlowModulesManager preview replay expansion should prioritize compiled step playTimes to avoid double-expansion', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('function resolvePreviewAudioPlayCount(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {'))
-  assert.ok(src.includes('const explicit = Math.floor(Number((step as any)?.playTimes))'))
+  assert.ok(src.includes('const explicit = Math.floor(Number((step as unknown as { playTimes?: unknown }).playTimes))'))
   assert.ok(src.includes('if (Number.isFinite(explicit) && explicit > 0)'))
   assert.ok(src.includes('return Math.max(1, explicit)'))
 })

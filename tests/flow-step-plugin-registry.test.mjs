@@ -50,6 +50,26 @@ test('listening-choice plugin registry should register all core step kinds', asy
   assert.equal(unknown.renderer.view, 'unsupported')
 })
 
+test('listening-choice plugin registry should expose config field capabilities by kind', async () => {
+  const mod = await import('../engine/flow/plugins/listening-choice/index.ts')
+  assert.equal(typeof mod.supportsListeningChoiceStepConfigField, 'function')
+
+  assert.equal(mod.supportsListeningChoiceStepConfigField('recordGuide', 'screenStrategy'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('recordGuide', 'textSource'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('recordGuide', 'showGroupPrompt'), true)
+
+  assert.equal(mod.supportsListeningChoiceStepConfigField('playAudio', 'audioSource'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('playAudio', 'repeatGapSeconds'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('playAudio', 'screenStrategy'), false)
+
+  assert.equal(mod.supportsListeningChoiceStepConfigField('countdown', 'label'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('countdown', 'showQuestionTitle'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('countdown', 'audioSource'), false)
+
+  assert.equal(mod.supportsListeningChoiceStepConfigField('promptTone', 'url'), true)
+  assert.equal(mod.supportsListeningChoiceStepConfigField('promptTone', 'showQuestionTitle'), false)
+})
+
 test('listening-choice renderer step behavior helper should consume engine plugin registry', async () => {
   const src = await readFile('components/renderer/listening-choice/stepPlugins.ts')
 
@@ -58,6 +78,9 @@ test('listening-choice renderer step behavior helper should consume engine plugi
   assert.ok(src.includes('STEP_BEHAVIOR_PLUGINS'))
   assert.ok(src.includes('getListeningChoiceStepPlugin(kind)'))
   assert.ok(src.includes('resolveListeningChoiceStepRenderView'))
+  assert.ok(src.includes('function resolveStepScreenStrategy(step: unknown): string'))
+  assert.ok(src.includes("if (strategy === 'reusePrevious') return true"))
+  assert.ok(src.includes("if (strategy === 'replaceBody') return false"))
 })
 
 test('listening-choice runtime should delegate step auto transitions to plugin reducers', async () => {

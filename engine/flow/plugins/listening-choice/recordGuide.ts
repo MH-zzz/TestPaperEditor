@@ -11,12 +11,25 @@ export const listeningChoiceRecordGuideStepPlugin: FlowStepPlugin = {
       'questionIds',
       'guideText',
       'guideAudioUrl',
+      'url',
+      'textSource',
+      'audioSource',
       'showTitle',
       'showQuestionTitle',
       'showQuestionTitleDescription',
       'showGroupPrompt',
       'screenStrategy',
       'autoNext'
+    ],
+    configFields: [
+      'showTitle',
+      'showQuestionTitle',
+      'showQuestionTitleDescription',
+      'showGroupPrompt',
+      'textSource',
+      'audioSource',
+      'url',
+      'screenStrategy'
     ]
   },
   renderer: {

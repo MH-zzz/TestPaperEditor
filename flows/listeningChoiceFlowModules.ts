@@ -52,6 +52,16 @@ export interface ListeningChoiceStandardFlowModuleV1 {
   perGroupSteps: ListeningChoiceStandardPerGroupStepDef[]
 }
 
+export type ListeningChoiceStandardStepConfigRef =
+  | { type: 'intro' }
+  | { type: 'intro_countdown' }
+  | {
+      type: 'per_group'
+      index: number
+      kind: ListeningChoiceStandardPerGroupStepDef['kind']
+    }
+  | { type: 'other' }
+
 export type ListeningChoiceFlowModuleIssueLevel = 'error' | 'warning'
 
 export interface ListeningChoiceFlowModuleValidationIssue {
@@ -453,7 +463,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
   const introCountdownSeconds = Math.max(0, toInt(module.introCountdownSeconds, 3))
   const introCountdownLabel = nonEmptyString(module.introCountdownLabel) || '准备'
 
-  const plan: { key: string; step: any }[] = []
+  const plan: { key: string; step: any; perGroupIndex?: number }[] = []
   plan.push({
     key: 'intro',
     step: {
@@ -488,7 +498,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
       ? g.subQuestions.map((sq: any) => String(sq?.id || '')).filter(Boolean)
       : ['']
 
-    const appendPlanByDef = (def: any, questionId?: string, prevDef?: any) => {
+    const appendPlanByDef = (def: any, defIndex: number, questionId?: string, prevDef?: any) => {
         const kind = String(def?.kind || '')
         kindCount[kind] = (kindCount[kind] || 0) + 1
         const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
@@ -513,6 +523,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
             const playKey = totalPlayTimes > 1 ? `${key}.loop${playIndex + 1}` : key
             plan.push({
               key: playKey,
+              perGroupIndex: defIndex,
               step: {
                 kind: 'playAudio',
                 showTitle,
@@ -533,6 +544,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
             const gapSeconds = repeatGapSeconds == null ? fallbackGapSeconds : repeatGapSeconds
             plan.push({
               key: `${key}.gap${playIndex + 1}`,
+              perGroupIndex: defIndex,
               step: {
                 kind: 'countdown',
                 showTitle: false,
@@ -556,6 +568,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         const label = typeof def?.label === 'string' ? def.label : '准备'
         plan.push({
           key,
+          perGroupIndex: defIndex,
           step: {
             kind: 'countdown',
             showTitle: getBool(def, 'showTitle', true),
@@ -572,6 +585,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         const url = typeof def?.url === 'string' ? def.url : '/static/audio/small_time.mp3'
         plan.push({
           key,
+          perGroupIndex: defIndex,
           step: { kind: 'promptTone', showTitle: getBool(def, 'showTitle', true), url, groupId, autoNext: 'audioEnded' }
         })
         return
@@ -593,6 +607,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
             : String((sq?.recordGuideAudio?.url) || ((g as any)?.recordGuideAudio?.url) || ''))
         plan.push({
           key,
+          perGroupIndex: defIndex,
           step: {
             kind: 'recordGuide',
             questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
@@ -616,6 +631,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
           : Math.max(0, toInt(g?.answerSeconds, 0))
         plan.push({
           key,
+          perGroupIndex: defIndex,
           step: {
             kind: 'answerChoice',
             questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
@@ -633,7 +649,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
     }
 
     if (!hearAnswerVariant) {
-      perSteps.forEach((def: any, defIndex: number) => appendPlanByDef(def, undefined, perSteps[defIndex - 1]))
+      perSteps.forEach((def: any, defIndex: number) => appendPlanByDef(def, defIndex, undefined, perSteps[defIndex - 1]))
       return
     }
 
@@ -642,12 +658,48 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         const kind = String(def?.kind || '')
         const isPerQuestionStep = kind === 'promptTone' || kind === 'recordGuide' || kind === 'answerChoice'
         if (!isPerQuestionStep && questionIndex > 0) return
-        appendPlanByDef(def, questionId, perSteps[defIndex - 1])
+        appendPlanByDef(def, defIndex, questionId, perSteps[defIndex - 1])
       })
     })
   })
 
   return plan
+}
+
+export function resolveListeningChoiceStandardStepConfigRefs(
+  question: any,
+  opts?: { module?: ListeningChoiceStandardFlowModuleV1 }
+): ListeningChoiceStandardStepConfigRef[] {
+  const module = normalizeListeningChoiceStandardModule(opts?.module || DEFAULT_LISTENING_CHOICE_STANDARD_MODULE)
+  const plan = buildListeningChoiceStandardPlan(question, module)
+  const perGroupSteps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
+
+  return plan.map((item) => {
+    const key = String(item?.key || '')
+    if (key === 'intro') return { type: 'intro' } as const
+    if (key === 'intro.countdown') return { type: 'intro_countdown' } as const
+
+    const index = Number(item?.perGroupIndex)
+    if (Number.isFinite(index) && index >= 0 && index < perGroupSteps.length) {
+      const def = perGroupSteps[index]
+      const kind = String(def?.kind || '')
+      if (
+        kind === 'playAudio'
+        || kind === 'countdown'
+        || kind === 'promptTone'
+        || kind === 'recordGuide'
+        || kind === 'answerChoice'
+      ) {
+        return {
+          type: 'per_group',
+          index,
+          kind: kind as ListeningChoiceStandardPerGroupStepDef['kind']
+        } as const
+      }
+    }
+
+    return { type: 'other' } as const
+  })
 }
 
 // NOTE: Implemented as pure functions with dependency injection for ID generation,

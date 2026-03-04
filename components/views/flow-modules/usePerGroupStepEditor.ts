@@ -1,9 +1,13 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { ListeningChoiceFlowStep, ListeningChoiceQuestion } from '/types'
+import type { FlowStepConfigField } from '/engine/flow/plugins/types'
+import { supportsListeningChoiceStepConfigField } from '/engine/flow/plugins/listening-choice/index.ts'
 import type {
   ListeningChoiceStandardFlowModuleV1,
-  ListeningChoiceStandardPerGroupStepDef
+  ListeningChoiceStandardPerGroupStepDef,
+  ListeningChoiceStandardStepConfigRef
 } from '/flows/listeningChoiceFlowModules'
+import { resolveListeningChoiceStandardStepConfigRefs } from '/flows/listeningChoiceFlowModules'
 
 export type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'recordGuide' | 'answerChoice'
 export type AudioSource = 'description' | 'content'
@@ -139,14 +143,41 @@ export function usePerGroupStepEditor(options: {
   }
 
   function flowIndexByPerGroupIndex(perGroupIndex: number): number {
-    return calcPerGroupOffset() + Math.max(0, perGroupIndex)
+    const target = Math.max(0, perGroupIndex)
+    const refs = stepConfigRefs.value
+    for (let i = 0; i < refs.length; i += 1) {
+      const ref = refs[i]
+      if (ref?.type === 'per_group' && ref.index === target) return i
+    }
+    return calcPerGroupOffset() + target
   }
+
+  const stepConfigRefs = computed<ListeningChoiceStandardStepConfigRef[]>(() => {
+    try {
+      return resolveListeningChoiceStandardStepConfigRefs(demoQuestion.value, {
+        module: listeningChoiceDraft.value
+      })
+    } catch {
+      return []
+    }
+  })
 
   function resolveConfigByFlowIndex(idx: number): SelectedConfig | null {
     const steps = demoQuestion.value.flow?.steps || []
     if (idx < 0) return null
     const step = steps[idx]
     if (!step) return null
+
+    const fromRef = stepConfigRefs.value[idx]
+    if (fromRef?.type === 'intro') return { type: 'intro' }
+    if (fromRef?.type === 'intro_countdown') return { type: 'intro_countdown' }
+    if (fromRef?.type === 'per_group') {
+      const def = listeningChoiceDraft.value?.perGroupSteps?.[fromRef.index]
+      const kind = String(def?.kind || fromRef.kind)
+      if (isPerGroupKind(kind)) {
+        return { type: 'per_group', index: fromRef.index, kind }
+      }
+    }
 
     if (step.kind === 'intro') return { type: 'intro' }
 
@@ -270,13 +301,32 @@ export function usePerGroupStepEditor(options: {
     return defaultValue
   }
 
+  function supportsPerGroupField(index: number, key: FlowStepConfigField | string): boolean {
+    const step = listeningChoiceDraft.value?.perGroupSteps?.[index]
+    if (!step) return false
+    return supportsListeningChoiceStepConfigField(String(step.kind || ''), key)
+  }
+
+  function sanitizePerGroupPatch(stepKind: string, patch: Record<string, unknown>): Record<string, unknown> {
+    const safe: Record<string, unknown> = {}
+    const entries = Object.entries(patch || {})
+    for (let i = 0; i < entries.length; i += 1) {
+      const [key, value] = entries[i]
+      if (!supportsListeningChoiceStepConfigField(stepKind, key)) continue
+      safe[key] = value
+    }
+    return safe
+  }
+
   function patchPerGroupStep(index: number, patch: Record<string, unknown>) {
     const list = [...(listeningChoiceDraft.value?.perGroupSteps || [])]
     const current = list[index]
     if (!current) return
+    const allowedPatch = sanitizePerGroupPatch(String(current.kind || ''), patch)
+    if (Object.keys(allowedPatch).length <= 0) return
     list[index] = {
       ...(current as unknown as Record<string, unknown>),
-      ...patch
+      ...allowedPatch
     } as ListeningChoiceStandardPerGroupStepDef
     patchDraft({ perGroupSteps: list })
   }
@@ -406,6 +456,7 @@ export function usePerGroupStepEditor(options: {
     getPerGroupRepeatGapSeconds,
     isPerGroupReplayGapEnabled,
     getPerGroupBool,
+    supportsPerGroupField,
     patchPerGroupStep,
     setPerGroupAudioSource,
     setPerGroupRepeatGapSeconds,

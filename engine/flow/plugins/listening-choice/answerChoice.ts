@@ -6,7 +6,8 @@ export const listeningChoiceAnswerChoiceStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-答题步骤',
     requiredFields: ['kind'],
-    optionalFields: ['groupId', 'questionIds', 'showQuestionTitle', 'showQuestionTitleDescription', 'showGroupPrompt', 'autoNext']
+    optionalFields: ['groupId', 'questionIds', 'showTitle', 'showQuestionTitle', 'showQuestionTitleDescription', 'showGroupPrompt', 'autoNext'],
+    configFields: ['showTitle', 'showQuestionTitle', 'showQuestionTitleDescription', 'showGroupPrompt']
   },
   renderer: {
     view: 'answerChoice',

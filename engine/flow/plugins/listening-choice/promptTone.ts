@@ -6,7 +6,8 @@ export const listeningChoicePromptToneStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-提示音步骤',
     requiredFields: ['kind'],
-    optionalFields: ['url', 'groupId', 'showTitle', 'autoNext']
+    optionalFields: ['url', 'groupId', 'showTitle', 'autoNext'],
+    configFields: ['showTitle', 'url']
   },
   renderer: {
     view: 'unsupported',

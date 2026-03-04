@@ -10,7 +10,23 @@ export type FlowStepPluginSchema = {
   description?: string
   requiredFields?: string[]
   optionalFields?: string[]
+  // Declares which step fields are editable in flow-config UI.
+  configFields?: FlowStepConfigField[]
 }
+
+export type FlowStepConfigField =
+  | 'showTitle'
+  | 'showTitleDescription'
+  | 'showDescription'
+  | 'showQuestionTitle'
+  | 'showQuestionTitleDescription'
+  | 'showGroupPrompt'
+  | 'audioSource'
+  | 'repeatGapSeconds'
+  | 'label'
+  | 'url'
+  | 'textSource'
+  | 'screenStrategy'
 
 export type FlowStepPluginRenderer = {
   view: string

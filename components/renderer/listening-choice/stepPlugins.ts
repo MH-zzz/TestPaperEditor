@@ -92,6 +92,12 @@ function normalizeStepKind(step: unknown): string {
   return typeof kind === 'string' ? kind.trim() : ''
 }
 
+function resolveStepScreenStrategy(step: unknown): string {
+  if (!isObjectRecord(step)) return ''
+  const strategy = step.screenStrategy
+  return typeof strategy === 'string' ? strategy.trim() : ''
+}
+
 export function getListeningChoiceStepKind(step: unknown): ListeningChoiceStepKind {
   const kind = normalizeStepKind(step)
   if (!kind) return 'unknown'
@@ -136,6 +142,9 @@ export function getListeningChoiceStepBehavior(step: unknown): ListeningChoiceSt
 }
 
 export function shouldReuseListeningChoicePreviousScreen(step: unknown): boolean {
+  const strategy = resolveStepScreenStrategy(step)
+  if (strategy === 'reusePrevious') return true
+  if (strategy === 'replaceBody') return false
   return getListeningChoiceStepBehavior(step).reusePreviousScreen === true
 }
 

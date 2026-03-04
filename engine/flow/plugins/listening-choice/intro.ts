@@ -6,7 +6,8 @@ export const listeningChoiceIntroStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-介绍页步骤',
     requiredFields: ['kind'],
-    optionalFields: ['showTitle', 'showTitleDescription', 'showDescription', 'autoNext']
+    optionalFields: ['showTitle', 'showTitleDescription', 'showDescription', 'autoNext'],
+    configFields: ['showTitle', 'showTitleDescription', 'showDescription']
   },
   renderer: {
     view: 'intro',

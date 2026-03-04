@@ -5,7 +5,8 @@ export const listeningChoiceFinishStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-完成步骤',
     requiredFields: ['kind'],
-    optionalFields: ['text', 'showTitle']
+    optionalFields: ['text', 'showTitle'],
+    configFields: ['showTitle']
   },
   renderer: {
     view: 'finish',

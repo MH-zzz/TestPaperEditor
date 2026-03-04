@@ -259,7 +259,10 @@
                         </template>
 
                         <template v-else-if="selectedConfig.type === 'per_group'">
-                          <view class="form-item">
+                          <view
+                            v-if="supportsPerGroupField(selectedConfig.index, 'showTitle')"
+                            class="form-item"
+                          >
                             <text class="form-item__label">显示标题</text>
                             <view
                               class="toggle"
@@ -271,7 +274,10 @@
                           </view>
 
                           <template v-if="selectedConfig.kind === 'playAudio'">
-                            <view class="form-item form-item--full">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'audioSource')"
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">音频来源</text>
                               <view class="mode-toggle">
                                 <view
@@ -287,7 +293,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitle')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题目标题</text>
                               <view
                                 class="toggle"
@@ -298,7 +307,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitleDescription')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示标题补充</text>
                               <view
                                 class="toggle"
@@ -309,7 +321,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showGroupPrompt')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题组描述</text>
                               <view
                                 class="toggle"
@@ -320,7 +335,12 @@
                               </view>
                             </view>
 
-                            <template v-if="getPerGroupAudioSource(selectedConfig.index) === 'content'">
+                            <template
+                              v-if="
+                                supportsPerGroupField(selectedConfig.index, 'repeatGapSeconds')
+                                && getPerGroupAudioSource(selectedConfig.index) === 'content'
+                              "
+                            >
                               <view class="form-item">
                                 <text class="form-item__label">间隔倒计时</text>
                                 <view
@@ -345,7 +365,10 @@
                           </template>
 
                           <template v-if="selectedConfig.kind === 'countdown'">
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitle')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题目标题</text>
                               <view
                                 class="toggle"
@@ -363,7 +386,10 @@
                           </template>
 
                           <template v-if="selectedConfig.kind === 'promptTone'">
-                            <view class="form-item form-item--full">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'url')"
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">提示音 URL</text>
                               <input
                                 class="text-input"
@@ -374,7 +400,10 @@
                           </template>
 
                           <template v-if="selectedConfig.kind === 'recordGuide'">
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitle')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题目标题</text>
                               <view
                                 class="toggle"
@@ -385,7 +414,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitleDescription')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示标题补充</text>
                               <view
                                 class="toggle"
@@ -396,7 +428,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showGroupPrompt')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题组描述</text>
                               <view
                                 class="toggle"
@@ -407,7 +442,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item form-item--full">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'textSource')"
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">文案来源</text>
                               <view class="mode-toggle mode-toggle--triple">
                                 <view
@@ -423,7 +461,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item form-item--full">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'audioSource')"
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">音频来源</text>
                               <view class="mode-toggle mode-toggle--triple">
                                 <view
@@ -444,7 +485,13 @@
                               </view>
                             </view>
 
-                            <view v-if="getRecordGuideAudioSource(selectedConfig.index) === 'fixed'" class="form-item form-item--full">
+                            <view
+                              v-if="
+                                supportsPerGroupField(selectedConfig.index, 'url')
+                                && getRecordGuideAudioSource(selectedConfig.index) === 'fixed'
+                              "
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">固定音频 URL</text>
                               <input
                                 class="text-input"
@@ -454,7 +501,10 @@
                               />
                             </view>
 
-                            <view class="form-item form-item--full">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'screenStrategy')"
+                              class="form-item form-item--full"
+                            >
                               <text class="form-item__label">屏幕策略</text>
                               <view class="mode-toggle mode-toggle--triple">
                                 <view
@@ -472,7 +522,10 @@
                           </template>
 
                           <template v-if="selectedConfig.kind === 'answerChoice'">
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitle')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题目标题</text>
                               <view
                                 class="toggle"
@@ -483,7 +536,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showQuestionTitleDescription')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示标题补充</text>
                               <view
                                 class="toggle"
@@ -494,7 +550,10 @@
                               </view>
                             </view>
 
-                            <view class="form-item">
+                            <view
+                              v-if="supportsPerGroupField(selectedConfig.index, 'showGroupPrompt')"
+                              class="form-item"
+                            >
                               <text class="form-item__label">显示题组描述</text>
                               <view
                                 class="toggle"
@@ -2839,7 +2898,7 @@ function normalizePreviewReplayGapSeconds(step: ListeningChoiceFlowStep, groupBy
 }
 
 function resolvePreviewAudioPlayCount(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {
-  const explicit = Math.floor(Number((step as any)?.playTimes))
+  const explicit = Math.floor(Number((step as unknown as { playTimes?: unknown }).playTimes))
   if (Number.isFinite(explicit) && explicit > 0) {
     return Math.max(1, explicit)
   }
@@ -3132,6 +3191,7 @@ const {
   getPerGroupRepeatGapSeconds,
   isPerGroupReplayGapEnabled,
   getPerGroupBool,
+  supportsPerGroupField,
   patchPerGroupStep,
   setPerGroupAudioSource,
   setPerGroupRepeatGapSeconds,

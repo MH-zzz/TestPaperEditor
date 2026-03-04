@@ -5,7 +5,8 @@ export const listeningChoiceGroupPromptStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-题组提示步骤',
     requiredFields: ['kind', 'groupId'],
-    optionalFields: ['showTitle', 'autoNext']
+    optionalFields: ['showTitle', 'autoNext'],
+    configFields: ['showTitle']
   },
   renderer: {
     view: 'groupPrompt',

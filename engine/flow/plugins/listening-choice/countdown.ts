@@ -6,7 +6,8 @@ export const listeningChoiceCountdownStepPlugin: FlowStepPlugin = {
   schema: {
     description: '听后选择-倒计时步骤',
     requiredFields: ['kind', 'seconds'],
-    optionalFields: ['label', 'showTitle', 'autoNext']
+    optionalFields: ['label', 'showTitle', 'showQuestionTitle', 'autoNext'],
+    configFields: ['showTitle', 'showQuestionTitle', 'label']
   },
   renderer: {
     view: 'countdown',

@@ -69,11 +69,54 @@ test('flow module helpers should exist (listening_choice)', async () => {
 
   assert.equal(typeof mod.LISTENING_CHOICE_STANDARD_FLOW_ID, 'string')
   assert.equal(typeof mod.materializeListeningChoiceStandardSteps, 'function')
+  assert.equal(typeof mod.resolveListeningChoiceStandardStepConfigRefs, 'function')
   assert.equal(typeof mod.detectListeningChoiceStandardFlowOverrides, 'function')
   assert.equal(typeof mod.concreteListeningChoiceStepsToTemplate, 'function')
   assert.equal(typeof mod.materializeListeningChoiceTemplateSteps, 'function')
   assert.equal(typeof mod.hashFlowTemplate, 'function')
   assert.equal(typeof mod.validateListeningChoiceStandardModule, 'function')
+})
+
+test('per-group editor should sanitize unsupported patch fields by step capability', async () => {
+  const fs = await import('node:fs/promises')
+  const path = await import('node:path')
+  const file = path.resolve(process.cwd(), 'components/views/flow-modules/usePerGroupStepEditor.ts')
+  const content = await fs.readFile(file, 'utf8')
+
+  assert.ok(content.includes("from '/engine/flow/plugins/listening-choice/index.ts'"))
+  assert.ok(content.includes('supportsListeningChoiceStepConfigField'))
+  assert.ok(content.includes('function sanitizePerGroupPatch'))
+  assert.ok(content.includes('const allowedPatch = sanitizePerGroupPatch'))
+})
+
+test('standard step config refs should map expanded hear-answer runtime steps back to per-group defs', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const q = makeListeningChoiceQuestion({ groupCount: 1, qsPerGroup: 2, answerSeconds: 10 })
+  q.metadata = { ...(q.metadata || {}), questionVariant: 'hear_answer' }
+
+  const steps = mod.materializeListeningChoiceStandardSteps(q, {
+    generateId: makeIdFactory('map'),
+    module: mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  })
+  const refs = mod.resolveListeningChoiceStandardStepConfigRefs(q, {
+    module: mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  })
+
+  assert.equal(refs.length, steps.length)
+  assert.deepEqual(refs[0], { type: 'intro' })
+  assert.deepEqual(refs[1], { type: 'per_group', index: 0, kind: 'playAudio' })
+  assert.deepEqual(refs[2], { type: 'per_group', index: 1, kind: 'countdown' })
+  assert.deepEqual(refs[3], { type: 'per_group', index: 2, kind: 'playAudio' })
+  assert.deepEqual(refs[4], { type: 'per_group', index: 2, kind: 'playAudio' })
+  assert.deepEqual(refs[5], { type: 'per_group', index: 2, kind: 'playAudio' })
+  assert.deepEqual(refs[6], { type: 'per_group', index: 3, kind: 'recordGuide' })
+  assert.deepEqual(refs[7], { type: 'per_group', index: 4, kind: 'promptTone' })
+  assert.deepEqual(refs[8], { type: 'per_group', index: 5, kind: 'answerChoice' })
+  assert.deepEqual(refs[9], { type: 'per_group', index: 6, kind: 'promptTone' })
+  assert.deepEqual(refs[10], { type: 'per_group', index: 3, kind: 'recordGuide' })
+  assert.deepEqual(refs[11], { type: 'per_group', index: 4, kind: 'promptTone' })
+  assert.deepEqual(refs[12], { type: 'per_group', index: 5, kind: 'answerChoice' })
+  assert.deepEqual(refs[13], { type: 'per_group', index: 6, kind: 'promptTone' })
 })
 
 test('hear-answer default standard module should hide group titles by default', async () => {
