@@ -37,6 +37,13 @@ async function loadLocalLearningSeeds() {
   return [listeningChoice, hearAnswer]
 }
 
+async function loadLocalLearningFlowModules() {
+  const raw = await fs.readFile(path.join(repoRoot, 'static/local-learning/flows.json'), 'utf8')
+  const payload = JSON.parse(raw)
+  const modules = Array.isArray(payload?.listeningChoiceModules) ? payload.listeningChoiceModules : []
+  return modules.filter((item) => item && typeof item === 'object')
+}
+
 function removePath(target, pathText) {
   const parts = String(pathText || '').split('.').filter(Boolean)
   if (parts.length <= 0) return
@@ -145,6 +152,122 @@ function toEngineModule(baseModule, fallbackName) {
   }
 }
 
+function moduleKey(moduleLike) {
+  return `${String(moduleLike?.id || '')}@${Math.max(1, Number(moduleLike?.version || 1))}`
+}
+
+function dedupeModules(modules) {
+  const map = new Map()
+  ;(modules || []).forEach((item) => {
+    const key = moduleKey(item)
+    if (!key || map.has(key)) return
+    map.set(key, item)
+  })
+  return Array.from(map.values())
+}
+
+function buildModuleCandidatesForQuestion(question, localModules, defaults) {
+  const fromLocal = (localModules || []).map((item) => toEngineModule(item, String(item?.name || 'local-module')))
+  const fromDefaults = [
+    toEngineModule(defaults.DEFAULT_LISTENING_CHOICE_STANDARD_MODULE, 'listening-choice-default'),
+    toEngineModule(defaults.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE, 'hear-answer-default')
+  ]
+  const all = dedupeModules([...fromLocal, ...fromDefaults])
+  if (question?.type === 'speaking_hear_answer') {
+    return all.filter((item) => String(item?.id || '').includes('hear_answer') || String(item?.name || '').includes('听后回答'))
+  }
+  return all.filter((item) => !String(item?.id || '').includes('hear_answer'))
+}
+
+function isNoopMutation(seedQuestion, mutation) {
+  const before = JSON.stringify(seedQuestion)
+  const next = clone(seedQuestion)
+  mutation.apply(next)
+  return JSON.stringify(next) === before
+}
+
+function buildMutationCases(seedQuestion) {
+  const out = []
+  const push = (name, tags, apply) => out.push({ name, tags, apply })
+
+  push('missing_intro_audio_url', ['intro', 'audio'], (q) => {
+    removePath(q, 'content.intro.audio.url')
+  })
+
+  const groups = Array.isArray(seedQuestion?.content?.groups) ? seedQuestion.content.groups : []
+  groups.forEach((group, gIndex) => {
+    push(`g${gIndex}_missing_description_audio_url`, ['group', 'audio'], (q) => {
+      removePath(q, `content.groups.${gIndex}.descriptionAudio.url`)
+    })
+    push(`g${gIndex}_missing_content_audio_url`, ['group', 'audio'], (q) => {
+      removePath(q, `content.groups.${gIndex}.audio.url`)
+    })
+    push(`g${gIndex}_description_play_count_zero`, ['group', 'audio', 'playCount'], (q) => {
+      setPath(q, `content.groups.${gIndex}.descriptionAudio.playCount`, 0)
+    })
+    push(`g${gIndex}_content_play_count_zero`, ['group', 'audio', 'playCount'], (q) => {
+      setPath(q, `content.groups.${gIndex}.audio.playCount`, 0)
+    })
+    push(`g${gIndex}_prepare_seconds_zero`, ['group', 'timing'], (q) => {
+      setPath(q, `content.groups.${gIndex}.prepareSeconds`, 0)
+    })
+    push(`g${gIndex}_missing_prompt`, ['group', 'recordGuide'], (q) => {
+      removePath(q, `content.groups.${gIndex}.prompt`)
+    })
+    push(`g${gIndex}_empty_sub_questions`, ['group', 'question'], (q) => {
+      setPath(q, `content.groups.${gIndex}.subQuestions`, [])
+    })
+
+    const subQuestions = Array.isArray(group?.subQuestions) ? group.subQuestions : []
+    subQuestions.forEach((_, qIndex) => {
+      push(`g${gIndex}_q${qIndex}_missing_question_id`, ['question', 'id'], (q) => {
+        setPath(q, `content.groups.${gIndex}.subQuestions.${qIndex}.id`, '')
+      })
+      push(`g${gIndex}_q${qIndex}_missing_record_guide_audio`, ['question', 'recordGuide'], (q) => {
+        removePath(q, `content.groups.${gIndex}.subQuestions.${qIndex}.recordGuideAudio.url`)
+      })
+      push(`g${gIndex}_q${qIndex}_missing_record_guide_text`, ['question', 'recordGuide'], (q) => {
+        removePath(q, `content.groups.${gIndex}.subQuestions.${qIndex}.recordGuideText`)
+      })
+    })
+  })
+
+  if (seedQuestion?.type === 'speaking_hear_answer') {
+    push('hear_answer_missing_all_prompts', ['recordGuide', 'global'], (q) => {
+      const list = Array.isArray(q?.content?.groups) ? q.content.groups : []
+      list.forEach((_, gIndex) => {
+        removePath(q, `content.groups.${gIndex}.prompt`)
+        removePath(q, `content.groups.${gIndex}.recordGuideText`)
+        removePath(q, `content.groups.${gIndex}.recordGuideAudio.url`)
+      })
+    })
+  }
+
+  const singles = out.filter((item) => !isNoopMutation(seedQuestion, item))
+  const comboSeed = singles
+    .filter((item) => item.tags.includes('audio') || item.tags.includes('timing') || item.tags.includes('question'))
+    .slice(0, 10)
+  const combos = []
+  for (let i = 0; i < comboSeed.length; i += 1) {
+    for (let j = i + 1; j < comboSeed.length; j += 1) {
+      if (combos.length >= 18) break
+      const a = comboSeed[i]
+      const b = comboSeed[j]
+      combos.push({
+        name: `combo__${a.name}__${b.name}`,
+        tags: Array.from(new Set([...(a.tags || []), ...(b.tags || [])])),
+        apply(question) {
+          a.apply(question)
+          b.apply(question)
+        }
+      })
+    }
+    if (combos.length >= 18) break
+  }
+
+  return singles.concat(combos)
+}
+
 test('compiler should skip corresponding steps when required fields are missing', async () => {
   const { compileListeningChoiceFlow } = await import('../engine/flow/listening-choice/compiler.ts')
 
@@ -207,74 +330,56 @@ test('compiler should skip corresponding steps when required fields are missing'
   assert.deepEqual(out.steps.map((item) => item.kind), ['intro', 'answerChoice'])
 })
 
-test('standard-flow compile should keep malformed-variant execution skippable across both local-learning seed types', async () => {
+test('standard-flow compile should auto-derive missing-field and multi-flow scenario matrix from 2 local-learning seeds', async () => {
   const { compileListeningChoiceFlow } = await import('../engine/flow/listening-choice/compiler.ts')
   const {
     DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
     DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
   } = await import('../flows/listeningChoiceFlowModules.ts')
   const seeds = await loadLocalLearningSeeds()
+  const localModules = await loadLocalLearningFlowModules()
+  const defaults = {
+    DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+    DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  }
 
-  const mutateCases = [
-    {
-      name: 'missing_intro_audio',
-      apply(question) {
-        removePath(question, 'content.intro.audio.url')
-      }
-    },
-    {
-      name: 'missing_group_description_audio',
-      apply(question) {
-        removePath(question, 'content.groups.0.descriptionAudio.url')
-      }
-    },
-    {
-      name: 'missing_group_content_audio',
-      apply(question) {
-        removePath(question, 'content.groups.0.audio.url')
-      }
-    },
-    {
-      name: 'zero_prepare_seconds',
-      apply(question) {
-        setPath(question, 'content.groups.0.prepareSeconds', 0)
-      }
-    },
-    {
-      name: 'missing_sub_questions_in_first_group',
-      apply(question) {
-        setPath(question, 'content.groups.0.subQuestions', [])
-      }
-    },
-    {
-      name: 'missing_hear_answer_record_guide_materials',
-      apply(question) {
-        if (question.type !== 'speaking_hear_answer') return
-        removePath(question, 'content.groups.0.recordGuideAudio.url')
-        removePath(question, 'content.groups.0.recordGuideText')
-        removePath(question, 'content.groups.0.prompt')
-        removePath(question, 'content.groups.0.subQuestions.0.recordGuideAudio.url')
-        removePath(question, 'content.groups.0.subQuestions.0.recordGuideText')
-      }
-    }
-  ]
+  let executedScenarios = 0
 
   for (const seed of seeds) {
-    for (const mutate of mutateCases) {
-      const q = clone(seed)
-      mutate.apply(q)
-      const module = q.type === 'speaking_hear_answer'
-        ? toEngineModule(DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE, 'hear-answer-default')
-        : toEngineModule(DEFAULT_LISTENING_CHOICE_STANDARD_MODULE, 'listening-choice-default')
-      const out = compileListeningChoiceFlow(q, module, {
-        generateId: (() => {
-          let i = 0
-          return () => `m_${++i}`
-        })()
-      })
-      q.flow = { ...(q.flow || {}), version: 1, steps: out.steps }
-      assert.ok(out.steps.length > 0, `[${q.type}] ${mutate.name} 应生成可执行流程`)
-      assertCompiledStepsSkippableWhenFieldsMissing(q)
+    const moduleCandidates = buildModuleCandidatesForQuestion(seed, localModules, defaults)
+    assert.ok(moduleCandidates.length > 0, `[${seed.type}] 至少要有 1 条流程模块候选`)
+
+    const mutationCases = buildMutationCases(seed)
+    assert.ok(mutationCases.length >= 24, `[${seed.type}] 自动衍生 mutation 数不足，当前=${mutationCases.length}`)
+
+    const scenarioCases = [
+      {
+        name: 'baseline',
+        apply() {}
+      },
+      ...mutationCases
+    ]
+
+    for (const module of moduleCandidates) {
+      for (const mutation of scenarioCases) {
+        const q = clone(seed)
+        mutation.apply(q)
+        const out = compileListeningChoiceFlow(q, module, {
+          generateId: (() => {
+            let i = 0
+            return () => `mx_${++i}`
+          })()
+        })
+        q.flow = { ...(q.flow || {}), version: 1, steps: out.steps }
+        assert.ok(
+          out.steps.length > 0,
+          `[${q.type}] module=${moduleKey(module)} scenario=${mutation.name} 应生成可执行流程`
+        )
+        assertCompiledStepsSkippableWhenFieldsMissing(q)
+        executedScenarios += 1
+      }
     }
   }
+
+  assert.ok(executedScenarios >= 100, `自动衍生场景数不足，当前=${executedScenarios}`)
 })
