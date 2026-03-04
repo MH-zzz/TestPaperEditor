@@ -2354,17 +2354,19 @@ function buildCommitValidationFailureResult(
 }
 
 function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPayload): ModuleCommitValidationResult {
+  const visualErrors = readonlyFlowCompileResult.value.errors || []
+  if (visualErrors.length > 0) {
+    return buildCommitValidationFailureResult(
+      visualErrors.map((item) => ({
+        code: `flow_visual_${item.code}`,
+        path: `flowVisual.${item.path}`,
+        message: `可视流程未通过线性编译：${item.message}`
+      }))
+    )
+  }
+
   if (flowVisualEditor.dirty.value) {
     console.warn('[FlowModulesManager] commit blocked: visual graph dirty', flowVisualEditor.debugInfo.value)
-    if (!readonlyFlowCompileResult.value.ok) {
-      return buildCommitValidationFailureResult(
-        (readonlyFlowCompileResult.value.errors || []).map((item) => ({
-          code: `flow_visual_${item.code}`,
-          path: `flowVisual.${item.path}`,
-          message: `可视流程未通过线性编译：${item.message}`
-        }))
-      )
-    }
     return buildCommitValidationFailureResult([
       {
         code: 'flow_visual_unapplied_changes',
@@ -2372,6 +2374,17 @@ function validateModuleCommitBeforeSavePublish(payload: ModuleCommitValidationPa
         message: '可视流程存在未应用变更，请先“应用到流程草稿”或“重置图”后再更新流程线。'
       }
     ])
+  }
+
+  const visualWarnings = readonlyFlowCompileResult.value.warnings || []
+  if (payload.mode === 'publish' && visualWarnings.length > 0) {
+    return buildCommitValidationFailureResult(
+      visualWarnings.map((item) => ({
+        code: `flow_visual_warning_${item.code}`,
+        path: `flowVisual.${item.path}`,
+        message: `发布前请处理可视流程提醒：${item.message}`
+      }))
+    )
   }
 
   const crossCheckProfiles = isRegionRoutingEnabled.value

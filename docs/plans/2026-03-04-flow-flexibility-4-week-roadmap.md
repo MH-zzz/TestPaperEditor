@@ -18,6 +18,7 @@
 3. Week 1 / Task 3（关键路径部分）：修复流程编辑关键路径 `any` 守卫冲突，统一为无 `any` 写法，并同步修正对应预览测试断言。
 4. Week 2 / Task 4（第一版）：在线性编译阶段加入步骤语义 lint（核心步骤缺失、关键顺序异常、上下文异常/组绑定提醒），并在可视流程面板实时展示 warnings；新增插入前预检查与即时 toast 拦截。
 5. Week 2 / Task 5（第一版）：新增“一键修复建议”领域 usecase 与画布应用入口，针对核心缺失/顺序异常（缺播放、缺答题、缺倒计时、答题先于播放、介绍页位置/重复）提供可执行修复按钮。
+6. Week 2 / Task 6（第一版）：提交门禁改为区分 `save/publish` 模式；发布前新增可视流程 warning 门禁，且可视流程 compile error 在提交前统一阻断，形成“编辑期 lint + 发布门禁”同源校验链路。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。

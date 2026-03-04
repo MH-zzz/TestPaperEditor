@@ -478,7 +478,12 @@ test('flow center should run template/module/profile cross-checks before module 
   assert.ok(validatorSrc.includes('route_archived_module_ref'))
   assert.ok(src.includes('flowVisualEditor.dirty.value'))
   assert.ok(src.includes('flow_visual_unapplied_changes'))
+  assert.ok(src.includes("payload.mode === 'publish'"))
+  assert.ok(src.includes('flow_visual_warning_'))
   assert.ok(src.includes('可视流程存在未应用变更'))
+  assert.ok(lifecycleSrc.includes('commitMode: ModuleCommitMode = \'save\''))
+  assert.ok(lifecycleSrc.includes('checkModuleCommitGuard(commitMode, draftPayload, targetRef)'))
+  assert.ok(lifecycleSrc.includes("return saveStandard(skipWarningCheck, skipImpactCheck, undefined, 'publish')"))
 })
 
 test('flow visual editor should expose clearDirty for draft-apply workflow', async () => {

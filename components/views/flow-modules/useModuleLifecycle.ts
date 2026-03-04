@@ -353,7 +353,12 @@ export function useModuleLifecycle(options: {
     return false
   }
 
-  function saveStandard(skipWarningCheck = false, skipImpactCheck = false, targetVersion?: number): boolean {
+  function saveStandard(
+    skipWarningCheck = false,
+    skipImpactCheck = false,
+    targetVersion?: number,
+    commitMode: ModuleCommitMode = 'save'
+  ): boolean {
     const effectiveVersion = Math.max(1, toInt(targetVersion || draftModuleVersion.value || 1))
     const targetRef = {
       id: String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID),
@@ -391,13 +396,13 @@ export function useModuleLifecycle(options: {
         cancelText: '取消',
         success: (res) => {
           if (!res.confirm) return
-          saveStandard(true, skipImpactCheck, targetVersion)
+          saveStandard(true, skipImpactCheck, targetVersion, commitMode)
         }
       })
       return false
     }
 
-    if (!checkModuleCommitGuard('save', draftPayload, targetRef)) return false
+    if (!checkModuleCommitGuard(commitMode, draftPayload, targetRef)) return false
 
     if (!skipImpactCheck) {
       const impact = getFlowModuleSaveImpact({ id: draftPayload.id, version: effectiveVersion })
@@ -421,7 +426,7 @@ export function useModuleLifecycle(options: {
         cancelText: '取消',
         success: (res) => {
           if (!res.confirm) return
-          saveStandard(true, true, targetVersion)
+          saveStandard(true, true, targetVersion, commitMode)
         }
       })
       return false
@@ -443,11 +448,11 @@ export function useModuleLifecycle(options: {
   }
 
   function saveStandardAsNextVersion(): boolean {
-    return saveStandard()
+    return saveStandard(false, false, undefined, 'save')
   }
 
   function publishCurrentStandard(skipWarningCheck = false, skipImpactCheck = false): boolean {
-    return saveStandard(skipWarningCheck, skipImpactCheck)
+    return saveStandard(skipWarningCheck, skipImpactCheck, undefined, 'publish')
   }
 
   function archiveCurrentStandard() {
