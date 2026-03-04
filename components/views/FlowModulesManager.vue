@@ -837,6 +837,25 @@
                   </view>
                 </template>
               </template>
+              <template v-if="readonlyFlowQuickFixSuggestions.length > 0">
+                <text class="flow-visual-compile__status is-fix">一键修复建议（{{ readonlyFlowQuickFixSuggestions.length }}）</text>
+                <view class="flow-visual-fix-list">
+                  <view
+                    v-for="item in readonlyFlowQuickFixSuggestions"
+                    :key="item.key"
+                    class="flow-visual-fix-item"
+                  >
+                    <view class="flow-visual-fix-item__main">
+                      <text class="flow-visual-fix-item__title">{{ item.label }}</text>
+                      <text class="flow-visual-fix-item__detail">{{ item.detail }}</text>
+                    </view>
+                    <button
+                      class="btn btn-outline btn-xs flow-visual-fix-item__btn"
+                      @click="applyReadonlyFlowVisualQuickFix(item.key)"
+                    >应用</button>
+                  </view>
+                </view>
+              </template>
             </view>
           </view>
         </view>
@@ -2544,6 +2563,7 @@ const readonlyFlowVisualVisible = ref(false)
 const readonlyFlowGraph = flowVisualEditor.graph
 const readonlyFlowCompileResult = flowVisualEditor.compileResult
 const readonlyFlowCompiledStepPreview = flowVisualEditor.compiledStepPreview
+const readonlyFlowQuickFixSuggestions = flowVisualEditor.quickFixSuggestions
 const readonlyFlowLinearChecks = flowVisualEditor.linearConstraintChecks
 const canReadonlyFlowVisualUndo = flowVisualEditor.canUndo
 const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
@@ -2611,6 +2631,15 @@ function undoReadonlyFlowVisual() {
 
 function redoReadonlyFlowVisual() {
   flowVisualEditor.redo()
+}
+
+function applyReadonlyFlowVisualQuickFix(key: string) {
+  const applied = flowVisualEditor.applyQuickFixSuggestion(key)
+  if (!applied) {
+    uni.showToast({ title: '修复应用失败，请手动调整', icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '已应用修复建议', icon: 'none' })
 }
 
 function onReadonlyFlowVisualDragStart(kind: string) {
@@ -5036,6 +5065,10 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(180, 83, 9, 0.9);
 }
 
+.flow-visual-compile__status.is-fix {
+  color: rgba(29, 78, 216, 0.92);
+}
+
 .flow-visual-compile__list {
   display: flex;
   flex-direction: column;
@@ -5061,6 +5094,45 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 .flow-visual-compile__issue.is-warning {
   border-color: rgba(245, 158, 11, 0.34);
   background: rgba(255, 251, 235, 0.9);
+}
+
+.flow-visual-fix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-fix-item {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  background: rgba(239, 246, 255, 0.7);
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-visual-fix-item__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-visual-fix-item__title {
+  font-size: 12px;
+  color: rgba(29, 78, 216, 0.95);
+  font-weight: 700;
+}
+
+.flow-visual-fix-item__detail {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.65);
+}
+
+.flow-visual-fix-item__btn {
+  flex-shrink: 0;
 }
 
 .flow-visual-compile__issue-action {

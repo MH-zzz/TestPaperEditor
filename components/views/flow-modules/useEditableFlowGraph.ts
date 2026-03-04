@@ -2,6 +2,10 @@ import { computed, ref, watch, type Ref } from 'vue'
 import type { FlowVisualEdge, FlowVisualGraph, FlowVisualNode, ListeningChoiceQuestion } from '/types'
 import { compileFlowVisualGraphToLinearSteps } from '/domain/flow-visual/usecases/compileGraphToSteps'
 import {
+  buildLinearFlowFixSuggestions,
+  type FlowLinearFixSuggestion
+} from '/domain/flow-visual/usecases/buildLinearFlowFixSuggestions'
+import {
   buildListeningChoiceReadonlyFlowGraph,
   type ReadonlyFlowNodePayload,
   type ReadonlyFlowStepCategory
@@ -336,6 +340,16 @@ function createStencilNode(kind: string, index: number): FlowVisualNode<Editable
   }, index)
 }
 
+function findFirstNodeIndexByKind(nodes: FlowVisualNode<EditableFlowNodePayload>[], kind: string): number {
+  const target = String(kind || '').trim()
+  for (let i = 0; i < (nodes || []).length; i += 1) {
+    const current = nodes[i]
+    const currentKind = String(current?.data?.stepKind || current?.kind || '').trim()
+    if (currentKind === target) return i
+  }
+  return -1
+}
+
 function validateStencilInsertion(
   nodes: FlowVisualNode<EditableFlowNodePayload>[],
   kind: string,
@@ -535,6 +549,38 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     return { ok: true }
   }
 
+  function insertStencilAt(kind: 'playAudio' | 'countdown' | 'answerChoice', insertIndex: number): boolean {
+    const safeIndex = Math.max(0, Math.min(insertIndex, nodes.value.length))
+    const check = validateStencilInsertion(nodes.value, kind, safeIndex)
+    if (!check.ok) return false
+    pushHistorySnapshot()
+    const next = [...nodes.value]
+    const node = createStencilNode(kind, safeIndex)
+    next.splice(safeIndex, 0, node)
+    nodes.value = relayoutNodes(next)
+    selectedNodeId.value = node.id
+    markRecentlyMoved(node.id)
+    markDirty('apply_quick_fix_insert')
+    return true
+  }
+
+  function moveNodeToIndex(sourceIndex: number, targetIndex: number): boolean {
+    if (sourceIndex < 0 || sourceIndex >= nodes.value.length) return false
+    const safeTarget = Math.max(0, Math.min(targetIndex, nodes.value.length - 1))
+    if (sourceIndex === safeTarget) return false
+    pushHistorySnapshot()
+    const next = [...nodes.value]
+    const [moved] = next.splice(sourceIndex, 1)
+    if (!moved) return false
+    const adjustedTarget = sourceIndex < safeTarget ? safeTarget - 1 : safeTarget
+    next.splice(adjustedTarget, 0, moved)
+    nodes.value = relayoutNodes(next)
+    selectedNodeId.value = moved.id
+    markRecentlyMoved(moved.id)
+    markDirty('apply_quick_fix_move')
+    return true
+  }
+
   function patchSelectedNode(patch: FlowVisualNodePatch) {
     const nodeId = selectedNodeId.value
     if (!nodeId) return
@@ -700,6 +746,66 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
 
   const compileResult = computed(() => compileFlowVisualGraphToLinearSteps(graph.value))
   const compiledStepPreview = computed(() => compileResult.value.steps.slice(0, 6))
+  const quickFixSuggestions = computed<FlowLinearFixSuggestion[]>(() => {
+    return buildLinearFlowFixSuggestions({
+      steps: compileResult.value.steps,
+      errors: compileResult.value.errors,
+      warnings: compileResult.value.warnings
+    })
+  })
+
+  function applyQuickFixSuggestion(key: string): boolean {
+    const target = quickFixSuggestions.value.find((item) => item.key === key)
+    if (!target) return false
+    const action = target.action
+    if (action.type === 'insert') {
+      if (action.at === 'start') return insertStencilAt(action.kind, 0)
+      if (action.at === 'end') return insertStencilAt(action.kind, nodes.value.length)
+      if (action.at === 'after_intro') {
+        const introIndex = findFirstNodeIndexByKind(nodes.value, 'intro')
+        return insertStencilAt(action.kind, introIndex >= 0 ? introIndex + 1 : 0)
+      }
+      if (action.at === 'after_first_play_audio') {
+        const playAudioIndex = findFirstNodeIndexByKind(nodes.value, 'playAudio')
+        return insertStencilAt(action.kind, playAudioIndex >= 0 ? playAudioIndex + 1 : nodes.value.length)
+      }
+      return false
+    }
+
+    if (action.type === 'move_answer_after_first_play_audio') {
+      const answerIndex = findFirstNodeIndexByKind(nodes.value, 'answerChoice')
+      const playAudioIndex = findFirstNodeIndexByKind(nodes.value, 'playAudio')
+      if (answerIndex < 0 || playAudioIndex < 0) return false
+      if (answerIndex > playAudioIndex) return false
+      return moveNodeToIndex(answerIndex, playAudioIndex + 1)
+    }
+
+    if (action.type === 'move_intro_to_start') {
+      const introIndex = findFirstNodeIndexByKind(nodes.value, 'intro')
+      if (introIndex <= 0) return false
+      return moveNodeToIndex(introIndex, 0)
+    }
+
+    if (action.type === 'remove_extra_intro') {
+      const introIndexes: number[] = []
+      for (let i = 0; i < nodes.value.length; i += 1) {
+        if (String(nodes.value[i]?.data?.stepKind || nodes.value[i]?.kind || '') === 'intro') {
+          introIndexes.push(i)
+        }
+      }
+      if (introIndexes.length <= 1) return false
+      pushHistorySnapshot()
+      const keep = introIndexes[0]
+      const next = nodes.value.filter((_, idx) => !(idx !== keep && introIndexes.includes(idx)))
+      nodes.value = relayoutNodes(next)
+      ensureSelectedNode()
+      markRecentlyMoved(selectedNodeId.value)
+      markDirty('apply_quick_fix_remove')
+      return true
+    }
+
+    return false
+  }
   const linearConstraintChecks = computed<FlowLinearConstraintCheck[]>(() => {
     const stats = buildGraphConstraintStats(graph.value)
     return [
@@ -762,6 +868,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     selectedNode,
     compileResult,
     compiledStepPreview,
+    quickFixSuggestions,
     linearConstraintChecks,
     propertyFieldsForSelectedNode,
     canUndo,
@@ -780,6 +887,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     moveSelectedNodeUp: () => moveSelectedNode(-1),
     moveSelectedNodeDown: () => moveSelectedNode(1),
     reorderNodes,
+    applyQuickFixSuggestion,
     undo,
     redo,
     reloadFromQuestion,

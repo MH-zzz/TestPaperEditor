@@ -53,6 +53,8 @@ function lintLinearSteps(steps: VisualLinearStep[]): VisualLinearLintResult {
   let answerChoiceCount = 0
   let countdownCount = 0
   let firstPlayAudioIndex = -1
+  let introCount = 0
+  let firstIntroIndex = -1
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i]
     const kind = String(step?.kind || '').trim()
@@ -60,6 +62,11 @@ function lintLinearSteps(steps: VisualLinearStep[]): VisualLinearLintResult {
     if (!kind) {
       warnings.push(createIssue('step_kind_empty', `第 ${i + 1} 步未配置步骤类型。`, path))
       continue
+    }
+
+    if (kind === 'intro') {
+      introCount += 1
+      if (firstIntroIndex < 0) firstIntroIndex = i
     }
 
     if (kind === 'playAudio') {
@@ -96,6 +103,18 @@ function lintLinearSteps(steps: VisualLinearStep[]): VisualLinearLintResult {
   }
   if (countdownCount <= 0) {
     warnings.push(createIssue('missing_countdown', '流程中未配置倒计时步骤。', 'graph.nodes'))
+  }
+
+  if (introCount > 1) {
+    errors.push(createIssue('intro_duplicate', `流程中存在 ${introCount} 个介绍页步骤。`, 'graph.nodes'))
+  }
+  if (firstIntroIndex > 0) {
+    const step = steps[firstIntroIndex]
+    errors.push(createIssue(
+      'intro_not_first',
+      `介绍页步骤出现在第 ${firstIntroIndex + 1} 步，需位于第一步。`,
+      `graph.nodes(${String(step?.id || '')})`
+    ))
   }
 
   if (firstPlayAudioIndex > 0) {

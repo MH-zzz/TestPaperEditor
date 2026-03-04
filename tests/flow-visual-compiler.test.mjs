@@ -174,3 +174,26 @@ test('flow visual compiler should return stable warning codes for unusual but co
   assert.ok(warningCodes.includes('prompt_tone_context_unusual'))
   assert.equal(result.errors.length, 0)
 })
+
+test('flow visual compiler should block intro placement issues with stable error codes', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'playAudio', { stepKind: 'playAudio', autoNext: 'audioEnded' }),
+      createNode('n2', 'intro', { stepKind: 'intro' }),
+      createNode('n3', 'intro', { stepKind: 'intro' }),
+      createNode('n4', 'answerChoice', { stepKind: 'answerChoice', autoNext: 'timeEnded' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2'),
+      createEdge('e2', 'n2', 'n3'),
+      createEdge('e3', 'n3', 'n4')
+    ],
+    canvas: { width: 440, height: 320 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph)
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'intro_not_first'))
+  assert.ok(result.errors.some((item) => item.code === 'intro_duplicate'))
+})
