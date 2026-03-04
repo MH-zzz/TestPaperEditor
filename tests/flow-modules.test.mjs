@@ -28,8 +28,8 @@ function makeListeningChoiceQuestion({ introCountdownSeconds = 3, groupCount = 2
       prompt: { type: 'richtext', content: [{ type: 'text', text: `P${gi + 1}` }] },
       prepareSeconds,
       answerSeconds,
-      descriptionAudio: { url: '', playCount: 1 },
-      audio: { url: '', playCount: 2 },
+      descriptionAudio: { url: `/static/audio/g${gi + 1}_desc.mp3`, playCount: 1 },
+      audio: { url: `/static/audio/g${gi + 1}_content.mp3`, playCount: 2 },
       subQuestions
     }
   })
@@ -41,7 +41,7 @@ function makeListeningChoiceQuestion({ introCountdownSeconds = 3, groupCount = 2
       intro: {
         title: 'Intro',
         text: { type: 'richtext', content: [{ type: 'text', text: 'Intro text' }] },
-        audio: { url: '', playCount: 1 },
+        audio: { url: '/static/audio/intro.mp3', playCount: 1 },
         countdown: {
           seconds: introCountdownSeconds,
           label: '准备',

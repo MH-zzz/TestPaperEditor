@@ -26,7 +26,7 @@ function makeQuestion() {
         title: '听后选择',
         title_description: '(共9分,每小题1.5分)',
         text: { type: 'richtext', content: [{ type: 'text', text: 'intro' }] },
-        audio: { url: '', playCount: 1 }
+        audio: { url: '/static/audio/intro.mp3', playCount: 1 }
       },
       groups: [
         {
@@ -34,9 +34,21 @@ function makeQuestion() {
           title: '题组1',
           prepareSeconds: 5,
           answerSeconds: 60,
-          descriptionAudio: { url: '', playCount: 1 },
-          audio: { url: '', playCount: 2 },
-          subQuestions: []
+          descriptionAudio: { url: '/static/audio/g1_desc.mp3', playCount: 1 },
+          audio: { url: '/static/audio/g1_content.mp3', playCount: 2 },
+          subQuestions: [
+            {
+              id: 'q1',
+              order: 1,
+              stem: { type: 'richtext', content: [{ type: 'text', text: 'Q1' }] },
+              options: [
+                { key: 'A', content: { type: 'richtext', content: [{ type: 'text', text: 'A' }] } },
+                { key: 'B', content: { type: 'richtext', content: [{ type: 'text', text: 'B' }] } }
+              ],
+              answerMode: 'single',
+              answer: ['A']
+            }
+          ]
         }
       ]
     },
