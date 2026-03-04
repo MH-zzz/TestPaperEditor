@@ -14,11 +14,12 @@
 
 ### 已完成
 1. Week 1 / Task 1：步骤能力矩阵已接入插件 schema（`configFields`），并驱动每题组配置 UI 显隐；不支持字段写入会被拦截。
-2. Week 1 / Task 3（关键路径部分）：修复流程编辑关键路径 `any` 守卫冲突，统一为无 `any` 写法，并同步修正对应预览测试断言。
+2. Week 1 / Task 2：新增步骤配置索引映射工具函数，`usePerGroupStepEditor` 改为仅依赖 `stepConfigRefs` 映射（不再使用偏移推算），覆盖插入/删除/重排后的定位场景。
+3. Week 1 / Task 3（关键路径部分）：修复流程编辑关键路径 `any` 守卫冲突，统一为无 `any` 写法，并同步修正对应预览测试断言。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
-2. `npm run test`：173/173 全通过。
+2. `npm run test`：174/174 全通过。
 
 ---
 

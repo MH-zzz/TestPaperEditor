@@ -62,6 +62,75 @@ export type ListeningChoiceStandardStepConfigRef =
     }
   | { type: 'other' }
 
+export function resolveListeningChoiceStandardStepConfigRefByFlowIndex(
+  refs: ListeningChoiceStandardStepConfigRef[] | null | undefined,
+  flowIndex: number
+): ListeningChoiceStandardStepConfigRef {
+  if (!Array.isArray(refs) || refs.length <= 0) return { type: 'other' }
+  const idx = Math.floor(Number(flowIndex))
+  if (!Number.isFinite(idx) || idx < 0 || idx >= refs.length) return { type: 'other' }
+  const ref = refs[idx]
+  if (!ref || typeof ref !== 'object') return { type: 'other' }
+  if (ref.type === 'intro' || ref.type === 'intro_countdown' || ref.type === 'other') return ref
+  if (
+    ref.type === 'per_group'
+    && Number.isFinite(ref.index)
+    && ref.index >= 0
+    && (
+      ref.kind === 'playAudio'
+      || ref.kind === 'countdown'
+      || ref.kind === 'promptTone'
+      || ref.kind === 'recordGuide'
+      || ref.kind === 'answerChoice'
+    )
+  ) {
+    return ref
+  }
+  return { type: 'other' }
+}
+
+export function findListeningChoiceStandardFlowIndexByPerGroupIndex(
+  refs: ListeningChoiceStandardStepConfigRef[] | null | undefined,
+  perGroupIndex: number,
+  opts?: { fallbackFlowIndex?: number }
+): number {
+  const fallbackRaw = Math.floor(Number(opts?.fallbackFlowIndex ?? 0))
+  const fallback = Number.isFinite(fallbackRaw) && fallbackRaw >= 0 ? fallbackRaw : 0
+  if (!Array.isArray(refs) || refs.length <= 0) return fallback
+
+  const targetRaw = Math.floor(Number(perGroupIndex))
+  const target = Number.isFinite(targetRaw) && targetRaw >= 0 ? targetRaw : 0
+
+  let nearestFlowIndex = -1
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (let i = 0; i < refs.length; i += 1) {
+    const ref = refs[i]
+    if (ref?.type !== 'per_group') continue
+    if (!Number.isFinite(ref.index)) continue
+    if (ref.index === target) return i
+
+    const distance = Math.abs(ref.index - target)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestFlowIndex = i
+    }
+  }
+
+  if (nearestFlowIndex >= 0) return nearestFlowIndex
+  return Math.max(0, Math.min(refs.length - 1, fallback))
+}
+
+export function collectListeningChoiceStandardPerGroupFlowIndices(
+  refs: ListeningChoiceStandardStepConfigRef[] | null | undefined
+): number[] {
+  if (!Array.isArray(refs) || refs.length <= 0) return []
+  const out: number[] = []
+  for (let i = 0; i < refs.length; i += 1) {
+    if (refs[i]?.type === 'per_group') out.push(i)
+  }
+  return out
+}
+
 export type ListeningChoiceFlowModuleIssueLevel = 'error' | 'warning'
 
 export interface ListeningChoiceFlowModuleValidationIssue {

@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
-import type { ListeningChoiceFlowStep, ListeningChoiceQuestion } from '/types'
+import type { ListeningChoiceQuestion } from '/types'
 import type { FlowStepConfigField } from '/engine/flow/plugins/types'
 import { supportsListeningChoiceStepConfigField } from '/engine/flow/plugins/listening-choice/index.ts'
 import type {
@@ -7,7 +7,12 @@ import type {
   ListeningChoiceStandardPerGroupStepDef,
   ListeningChoiceStandardStepConfigRef
 } from '/flows/listeningChoiceFlowModules'
-import { resolveListeningChoiceStandardStepConfigRefs } from '/flows/listeningChoiceFlowModules'
+import {
+  collectListeningChoiceStandardPerGroupFlowIndices,
+  findListeningChoiceStandardFlowIndexByPerGroupIndex,
+  resolveListeningChoiceStandardStepConfigRefByFlowIndex,
+  resolveListeningChoiceStandardStepConfigRefs
+} from '/flows/listeningChoiceFlowModules'
 
 export type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'recordGuide' | 'answerChoice'
 export type AudioSource = 'description' | 'content'
@@ -115,10 +120,6 @@ function getAudioSource(step: ListeningChoiceStandardPerGroupStepDef | undefined
   return step.audioSource === 'description' ? 'description' : 'content'
 }
 
-function getStepKinds(steps: ListeningChoiceFlowStep[]): string[] {
-  return steps.map((step) => step.kind)
-}
-
 export function usePerGroupStepEditor(options: {
   demoQuestion: ComputedRef<ListeningChoiceQuestion>
   listeningChoiceDraft: Ref<ListeningChoiceStandardFlowModuleV1>
@@ -134,22 +135,10 @@ export function usePerGroupStepEditor(options: {
     }
   }
 
-  function calcPerGroupOffset(): number {
-    const stepKinds = getStepKinds(demoQuestion.value.flow?.steps || [])
-    let offset = 0
-    if (stepKinds[0] === 'intro') offset += 1
-    if (stepKinds[1] === 'countdown' && stepKinds[0] === 'intro') offset += 1
-    return offset
-  }
-
   function flowIndexByPerGroupIndex(perGroupIndex: number): number {
-    const target = Math.max(0, perGroupIndex)
-    const refs = stepConfigRefs.value
-    for (let i = 0; i < refs.length; i += 1) {
-      const ref = refs[i]
-      if (ref?.type === 'per_group' && ref.index === target) return i
-    }
-    return calcPerGroupOffset() + target
+    return findListeningChoiceStandardFlowIndexByPerGroupIndex(stepConfigRefs.value, perGroupIndex, {
+      fallbackFlowIndex: currentStepIndex.value
+    })
   }
 
   const stepConfigRefs = computed<ListeningChoiceStandardStepConfigRef[]>(() => {
@@ -163,47 +152,24 @@ export function usePerGroupStepEditor(options: {
   })
 
   function resolveConfigByFlowIndex(idx: number): SelectedConfig | null {
-    const steps = demoQuestion.value.flow?.steps || []
     if (idx < 0) return null
-    const step = steps[idx]
-    if (!step) return null
-
-    const fromRef = stepConfigRefs.value[idx]
-    if (fromRef?.type === 'intro') return { type: 'intro' }
-    if (fromRef?.type === 'intro_countdown') return { type: 'intro_countdown' }
-    if (fromRef?.type === 'per_group') {
-      const def = listeningChoiceDraft.value?.perGroupSteps?.[fromRef.index]
-      const kind = String(def?.kind || fromRef.kind)
+    const ref = resolveListeningChoiceStandardStepConfigRefByFlowIndex(stepConfigRefs.value, idx)
+    if (ref.type === 'intro') return { type: 'intro' }
+    if (ref.type === 'intro_countdown') return { type: 'intro_countdown' }
+    if (ref.type === 'per_group') {
+      const def = listeningChoiceDraft.value?.perGroupSteps?.[ref.index]
+      const kind = String(def?.kind || ref.kind)
       if (isPerGroupKind(kind)) {
-        return { type: 'per_group', index: fromRef.index, kind }
+        return { type: 'per_group', index: ref.index, kind }
       }
     }
-
-    if (step.kind === 'intro') return { type: 'intro' }
-
-    const prev = steps[idx - 1]
-    if (step.kind === 'countdown' && prev?.kind === 'intro') return { type: 'intro_countdown' }
-
-    const perGroupIndex = idx - calcPerGroupOffset()
-    const def = listeningChoiceDraft.value?.perGroupSteps?.[perGroupIndex]
-    const kind = String(def?.kind || '')
-    if (isPerGroupKind(kind)) {
-      return { type: 'per_group', index: perGroupIndex, kind }
-    }
-
     return { type: 'other' }
   }
 
   const selectedConfig = computed<SelectedConfig | null>(() => resolveConfigByFlowIndex(configStepIndex.value))
 
   const reorderableFlowIndices = computed<number[]>(() => {
-    const steps = demoQuestion.value.flow?.steps || []
-    const indices: number[] = []
-    for (let i = 0; i < steps.length; i += 1) {
-      const cfg = resolveConfigByFlowIndex(i)
-      if (cfg?.type === 'per_group') indices.push(i)
-    }
-    return indices
+    return collectListeningChoiceStandardPerGroupFlowIndices(stepConfigRefs.value)
   })
 
   const introShowTitle = computed(() => listeningChoiceDraft.value?.introShowTitle !== false)
