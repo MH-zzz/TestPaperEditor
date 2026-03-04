@@ -21,6 +21,15 @@
       <text class="preview-runtime__item">版本：{{ runtimeMeta?.moduleVersionText || '-' }}</text>
     </view>
 
+    <view v-if="isPartialPreview" class="preview-partial">
+      <view class="preview-partial__head">
+        <text class="preview-partial__badge">局部预览模式</text>
+        <button class="btn btn-outline btn-xs" @click="emit('clear-preview-scope')">退出局部预览</button>
+      </view>
+      <text v-if="previewScopeLabelText" class="preview-partial__line">起播点：{{ previewScopeLabelText }}</text>
+      <text v-if="previewScopeHintText" class="preview-partial__line">{{ previewScopeHintText }}</text>
+    </view>
+
     <view class="preview-container">
       <view class="phone-frame">
         <view class="phone-content" :class="{ 'phone-content--speaking': isSpeakingSteps }">
@@ -70,6 +79,9 @@ const props = withDefaults(defineProps<{
   renderMode?: RenderMode
   runtimeMeta?: RuntimeMetaInfo | null
   showRuntimeMeta?: boolean
+  previewScope?: 'full' | 'partial'
+  previewScopeLabel?: string
+  previewScopeHint?: string
 }>(), {
   title: '预览',
   answers: () => ({}),
@@ -83,7 +95,10 @@ const props = withDefaults(defineProps<{
   showAnswerToggle: true,
   renderMode: 'preview',
   runtimeMeta: null,
-  showRuntimeMeta: true
+  showRuntimeMeta: true,
+  previewScope: 'full',
+  previewScopeLabel: '',
+  previewScopeHint: ''
 })
 
 const emit = defineEmits<{
@@ -92,6 +107,7 @@ const emit = defineEmits<{
   (e: 'toggle-answer'): void
   (e: 'select', subQuestionId: string, value: any): void
   (e: 'step-change', step: number): void
+  (e: 'clear-preview-scope'): void
 }>()
 
 const isSpeakingSteps = computed(() => props.data?.type === 'speaking_steps')
@@ -119,6 +135,12 @@ const hasRuntimeMeta = computed(() => {
   const meta = props.runtimeMeta || {}
   return Boolean(meta.sourceKind || meta.profileId || meta.moduleDisplayRef || meta.moduleVersionText)
 })
+const isPartialPreview = computed(() => {
+  if (props.previewScope === 'partial') return true
+  return false
+})
+const previewScopeLabelText = computed(() => String(props.previewScopeLabel || '').trim())
+const previewScopeHintText = computed(() => String(props.previewScopeHint || '').trim())
 
 function onSelect(subQuestionId: string, value: any) {
   emit('select', subQuestionId, value)
@@ -189,6 +211,35 @@ function onStepChange(step: number) {
 }
 
 .preview-runtime__item {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.preview-partial {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.88);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-partial__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-partial__badge {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(29, 78, 216, 0.95);
+}
+
+.preview-partial__line {
   font-size: 12px;
   color: rgba(15, 23, 42, 0.72);
 }

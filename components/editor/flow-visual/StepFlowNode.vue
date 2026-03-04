@@ -20,6 +20,7 @@
     @pointer-down="onPointerDown"
     @pointer-move="onPointerMove"
     @pointer-up="onPointerUp"
+    @context-menu="onContextMenu"
   >
     <text class="step-flow-node__title">{{ node.label }}</text>
     <text class="step-flow-node__subtitle">{{ node.subtitle || '无附加信息' }}</text>
@@ -62,6 +63,7 @@ const emit = defineEmits<{
   (e: 'pointer-drag-over', payload: { nodeId: string; position: FlowNodeDropPosition }): void
   (e: 'pointer-drag-drop', payload: { targetId: string; position: FlowNodeDropPosition }): void
   (e: 'pointer-drag-end'): void
+  (e: 'context-menu', payload: { nodeId: string; clientX: number; clientY: number }): void
 }>()
 
 const metaLine = computed(() => {
@@ -150,6 +152,15 @@ function onPointerUp(event: Event) {
     position: resolveDropPosition(event)
   })
   emit('pointer-drag-end')
+}
+
+function onContextMenu(event: Event) {
+  const mouse = event as MouseEvent
+  emit('context-menu', {
+    nodeId: props.node.id,
+    clientX: Number(mouse.clientX || 0),
+    clientY: Number(mouse.clientY || 0)
+  })
 }
 </script>
 

@@ -21,6 +21,11 @@ test('runQuestionFlow usecase should provide a unified runtime entry + reducer',
   assert.ok(src.includes('resolveListeningChoiceQuestion'))
   assert.ok(src.includes('resolveModuleDisplay'))
   assert.ok(src.includes('moduleDisplayRef'))
+  assert.ok(src.includes('entry?: QuestionFlowRuntimeEntry'))
+  assert.ok(src.includes('entryMode'))
+  assert.ok(src.includes('entryStepIndex'))
+  assert.ok(src.includes('entryTimerState'))
+  assert.ok(src.includes('resolveRuntimeEntryStepIndex'))
 })
 
 test('editor workspace should run preview flow via unified runtime usecase', async () => {

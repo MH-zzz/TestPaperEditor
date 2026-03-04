@@ -655,11 +655,15 @@
             :display-step-index="previewDisplayStepIndex"
             :display-total-steps="previewDisplayTotalSteps"
             :show-runtime-meta="false"
+            :preview-scope="readonlyFlowPartialPreviewActive ? 'partial' : 'full'"
+            :preview-scope-label="readonlyFlowPartialPreviewLabel"
+            :preview-scope-hint="readonlyFlowPartialPreviewHint"
             @prev="previewPrevStep"
             @next="previewNextStep"
             @toggle-answer="showAnswer = !showAnswer"
             @select="onPreviewSelect"
             @step-change="onPreviewStepChange"
+            @clear-preview-scope="clearReadonlyFlowPartialPreviewMode"
           />
         </view>
       </view>
@@ -764,6 +768,7 @@
                 @select-node="selectReadonlyFlowVisualNode"
                 @reorder-node="reorderReadonlyFlowVisualNode"
                 @insert-stencil-near-node="insertReadonlyFlowVisualStepNearNode"
+                @preview-from-node="previewReadonlyFlowVisualFromNode"
               />
             </view>
           </view>
@@ -1985,6 +1990,8 @@ function confirmCreateFlowLineFromWizard() {
     id: nextId,
     version: 1
   }))
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
   clearCommitValidationIssues()
   flowVisualEditor.clearDirty()
@@ -2578,6 +2585,31 @@ const hasVisualPreviewOverride = computed(() => {
   return Array.isArray(visualPreviewOverrideSteps.value) && visualPreviewOverrideSteps.value.length > 0
 })
 
+type FlowVisualPartialPreviewState = {
+  nodeId: string
+  stepKind: string
+  logicalStepIndex: number
+  groupId: string
+  questionCount: number
+  timerState: 'reset'
+}
+
+const readonlyFlowPartialPreviewState = ref<FlowVisualPartialPreviewState | null>(null)
+const readonlyFlowPartialPreviewRestoreOverride = ref<ListeningChoiceQuestion['flow']['steps'] | null | undefined>(undefined)
+const readonlyFlowPartialPreviewActive = computed(() => !!readonlyFlowPartialPreviewState.value)
+const readonlyFlowPartialPreviewLabel = computed(() => {
+  const state = readonlyFlowPartialPreviewState.value
+  if (!state) return ''
+  return `局部预览模式 · 步骤 ${state.logicalStepIndex + 1}（${state.stepKind || '-'})`
+})
+const readonlyFlowPartialPreviewHint = computed(() => {
+  const state = readonlyFlowPartialPreviewState.value
+  if (!state) return ''
+  const groupText = state.groupId ? `题组：${state.groupId}` : '题组：未绑定'
+  const questionText = state.questionCount > 0 ? `题号数：${state.questionCount}` : '题号数：自动'
+  return `${groupText} · ${questionText} · 计时状态：reset`
+})
+
 const demoQuestion = computed<ListeningChoiceQuestion>(() => {
   const base = demoBase.value
   const module = toLegacyStandardModule({
@@ -2667,6 +2699,15 @@ function closeReadonlyFlowVisual() {
   flowVisualEditor.clearSnippetSelectionAnchor()
 }
 
+function clearReadonlyFlowPartialPreviewMode() {
+  const restore = readonlyFlowPartialPreviewRestoreOverride.value
+  if (restore !== undefined) {
+    visualPreviewOverrideSteps.value = restore ? clone(restore) : null
+  }
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
+}
+
 function selectReadonlyFlowVisualNode(id: string) {
   flowVisualEditor.selectNode(id)
 }
@@ -2704,6 +2745,45 @@ function applyReadonlyFlowVisualQuickFix(key: string) {
     return
   }
   uni.showToast({ title: '已应用修复建议', icon: 'none' })
+}
+
+function previewReadonlyFlowVisualFromNode(nodeId: string) {
+  const targetNodeId = String(nodeId || '').trim()
+  if (!targetNodeId) return
+  if (!readonlyFlowCompileResult.value.ok) {
+    uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
+    return
+  }
+
+  const compiledSteps = readonlyFlowCompileResult.value.steps || []
+  const logicalStepIndex = compiledSteps.findIndex((item) => String(item?.id || '') === targetNodeId)
+  if (logicalStepIndex < 0) {
+    uni.showToast({ title: '目标节点未命中编译步骤', icon: 'none' })
+    return
+  }
+
+  if (readonlyFlowPartialPreviewRestoreOverride.value === undefined) {
+    const currentOverride = visualPreviewOverrideSteps.value
+    readonlyFlowPartialPreviewRestoreOverride.value = currentOverride ? clone(currentOverride) : null
+  }
+
+  visualPreviewOverrideSteps.value = buildPreviewStepsFromVisual(compiledSteps)
+  flowVisualEditor.selectNode(targetNodeId)
+
+  const node = (readonlyFlowGraph.value.nodes || []).find((item) => item.id === targetNodeId)
+  readonlyFlowPartialPreviewState.value = {
+    nodeId: targetNodeId,
+    stepKind: String(node?.data?.stepKind || node?.kind || ''),
+    logicalStepIndex,
+    groupId: String(node?.data?.groupId || ''),
+    questionCount: Math.max(0, toInt(node?.data?.questionCount || 0)),
+    timerState: 'reset'
+  }
+
+  const nextVirtualIndex = firstVirtualIndexOfLogicalStep(logicalStepIndex)
+  setPreviewVirtualIndex(nextVirtualIndex)
+  configStepIndex.value = logicalStepIndex
+  uni.showToast({ title: `已从第 ${logicalStepIndex + 1} 步开始预览`, icon: 'none' })
 }
 
 function formatFlowSnippetStepsText(steps: FlowSnippetTemplateStep[]): string {
@@ -2968,11 +3048,15 @@ function applyReadonlyFlowVisualToPreview() {
     uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
     return
   }
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = buildPreviewStepsFromVisual(readonlyFlowCompileResult.value.steps)
   uni.showToast({ title: '已应用到预览', icon: 'success' })
 }
 
 function clearReadonlyFlowVisualPreviewOverride() {
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
   uni.showToast({ title: '已清除预览覆盖', icon: 'none' })
 }
@@ -3046,6 +3130,8 @@ function applyReadonlyFlowVisualToDraft() {
       return
     }
 
+    readonlyFlowPartialPreviewRestoreOverride.value = undefined
+    readonlyFlowPartialPreviewState.value = null
     visualPreviewOverrideSteps.value = null
     clearCommitValidationIssues()
     flowVisualEditor.clearDirty()
@@ -3516,6 +3602,8 @@ function switchDraftToModuleRef(ref: FlowModuleRef) {
   draftModuleVersion.value = targetRef.version
   syncDraftModuleMeta(module)
   listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
   clearCommitValidationIssues()
   flowVisualEditor.clearDirty()
@@ -3555,6 +3643,9 @@ function openListeningChoice() {
   draftModuleVersion.value = Number(module.version || 1)
   syncDraftModuleMeta(module)
   listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
+  visualPreviewOverrideSteps.value = null
   previewAnswers.value = {}
   showAnswer.value = false
   currentStepIndex.value = 0
@@ -3571,6 +3662,9 @@ function openSpeakingHearAnswer() {
   draftModuleVersion.value = Number(module.version || 1)
   syncDraftModuleMeta(module)
   listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
+  visualPreviewOverrideSteps.value = null
   previewAnswers.value = {}
   showAnswer.value = false
   currentStepIndex.value = 0
@@ -3580,6 +3674,9 @@ function openSpeakingHearAnswer() {
 
 function reloadDemoBaseFromTemplate() {
   const synced = syncTemplateFromLibraryQuestion(activeFlowPageType.value)
+  readonlyFlowPartialPreviewRestoreOverride.value = undefined
+  readonlyFlowPartialPreviewState.value = null
+  visualPreviewOverrideSteps.value = null
   previewAnswers.value = {}
   currentStepIndex.value = 0
   configStepIndex.value = 0

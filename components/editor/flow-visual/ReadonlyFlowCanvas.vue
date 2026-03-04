@@ -1,5 +1,5 @@
 <template>
-  <view class="readonly-flow-canvas">
+  <view class="readonly-flow-canvas" @click="closeContextMenu">
     <view class="readonly-flow-canvas__legend">
       <view
         v-for="item in legendItems"
@@ -12,6 +12,7 @@
     </view>
 
     <view
+      ref="graphRef"
       class="readonly-flow-canvas__graph"
       :style="{ width: `${graph.canvas.width}px`, height: `${graph.canvas.height}px` }"
     >
@@ -45,7 +46,20 @@
         @pointer-drag-over="onPointerDragOver"
         @pointer-drag-drop="onPointerDragDrop"
         @pointer-drag-end="onPointerDragEnd"
+        @context-menu="onNodeContextMenu"
       />
+
+      <view
+        v-if="contextMenu"
+        class="readonly-flow-canvas__context-menu"
+        :style="{ left: `${contextMenu.left}px`, top: `${contextMenu.top}px` }"
+        @click.stop
+      >
+        <button
+          class="readonly-flow-canvas__context-action"
+          @click="previewFromNodeInContextMenu"
+        >从此步预览</button>
+      </view>
     </view>
   </view>
 </template>
@@ -72,10 +86,13 @@ const emit = defineEmits<{
   (e: 'select-node', nodeId: string): void
   (e: 'reorder-node', payload: { sourceId: string; targetId: string; position: 'before' | 'after' }): void
   (e: 'insert-stencil-near-node', payload: { kind: string; targetId: string; position: 'before' | 'after' }): void
+  (e: 'preview-from-node', payload: { nodeId: string }): void
 }>()
 
 const draggingNodeId = ref('')
 const dropTarget = ref<{ nodeId: string; position: 'before' | 'after' } | null>(null)
+const graphRef = ref<HTMLElement | null>(null)
+const contextMenu = ref<{ nodeId: string; left: number; top: number } | null>(null)
 
 type PointerPoint = {
   clientX: number
@@ -101,6 +118,7 @@ function onNodeDragStart(nodeId: string) {
   console.log('[ReadonlyFlowCanvas] onNodeDragStart', nodeId)
   draggingNodeId.value = String(nodeId || '')
   dropTarget.value = null
+  contextMenu.value = null
 }
 
 function onNodeDragOver(payload: { nodeId: string; position: 'before' | 'after' }) {
@@ -180,6 +198,43 @@ function clearDragState() {
   dropTarget.value = null
 }
 
+function clampContextMenuPosition(left: number, top: number): { left: number; top: number } {
+  const menuWidth = 122
+  const menuHeight = 38
+  const maxLeft = Math.max(8, Number(props.graph.canvas.width || 0) - menuWidth - 8)
+  const maxTop = Math.max(8, Number(props.graph.canvas.height || 0) - menuHeight - 8)
+  return {
+    left: Math.max(8, Math.min(left, maxLeft)),
+    top: Math.max(8, Math.min(top, maxTop))
+  }
+}
+
+function onNodeContextMenu(payload: { nodeId: string; clientX: number; clientY: number }) {
+  const nodeId = String(payload?.nodeId || '')
+  if (!nodeId) return
+  const graphEl = graphRef.value
+  if (!graphEl) return
+  const rect = graphEl.getBoundingClientRect()
+  const rawLeft = Number(payload.clientX || 0) - rect.left + 6
+  const rawTop = Number(payload.clientY || 0) - rect.top + 6
+  const next = clampContextMenuPosition(rawLeft, rawTop)
+  contextMenu.value = {
+    nodeId,
+    left: next.left,
+    top: next.top
+  }
+}
+
+function closeContextMenu() {
+  contextMenu.value = null
+}
+
+function previewFromNodeInContextMenu() {
+  if (!contextMenu.value) return
+  emit('preview-from-node', { nodeId: contextMenu.value.nodeId })
+  closeContextMenu()
+}
+
 function resolveDropTargetFromPoint(point: PointerPoint): { nodeId: string; position: 'before' | 'after' } | null {
   if (typeof document === 'undefined') return null
   const el = document.elementFromPoint(point.clientX, point.clientY) as HTMLElement | null
@@ -215,6 +270,13 @@ function onWindowPointerRelease(event: MouseEvent) {
     })
   }
   clearDragState()
+}
+
+function onWindowClickOutside(event: MouseEvent) {
+  if (!contextMenu.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest?.('.readonly-flow-canvas__context-menu')) return
+  closeContextMenu()
 }
 
 function readTouchPoint(evt: TouchEvent): PointerPoint | null {
@@ -253,6 +315,7 @@ onMounted(() => {
   window.addEventListener('mouseup', onWindowPointerRelease)
   window.addEventListener('touchmove', onWindowTouchMove)
   window.addEventListener('touchend', onWindowTouchEnd)
+  window.addEventListener('mousedown', onWindowClickOutside)
 })
 
 onBeforeUnmount(() => {
@@ -261,6 +324,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onWindowPointerRelease)
   window.removeEventListener('touchmove', onWindowTouchMove)
   window.removeEventListener('touchend', onWindowTouchEnd)
+  window.removeEventListener('mousedown', onWindowClickOutside)
 })
 </script>
 
@@ -309,5 +373,28 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   background: rgba(59, 130, 246, 0.42);
   border-radius: 999px;
+}
+
+.readonly-flow-canvas__context-menu {
+  position: absolute;
+  z-index: 12;
+  min-width: 118px;
+  padding: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
+}
+
+.readonly-flow-canvas__context-action {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.08);
+  color: rgba(29, 78, 216, 0.95);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 8px;
+  line-height: 1;
 }
 </style>

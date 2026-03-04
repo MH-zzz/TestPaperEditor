@@ -130,6 +130,40 @@ test('FlowModulesManager preview replay expansion should prioritize compiled ste
   assert.ok(src.includes('return Math.max(1, explicit)'))
 })
 
+test('FlowModulesManager should support play-from-here partial preview from visual node context menu', async () => {
+  const managerSrc = await readFile('components/views/FlowModulesManager.vue')
+  const canvasSrc = await readFile('components/editor/flow-visual/ReadonlyFlowCanvas.vue')
+  const stepNodeSrc = await readFile('components/editor/flow-visual/StepFlowNode.vue')
+  const baseNodeSrc = await readFile('components/editor/flow-visual/BaseFlowNode.vue')
+  const phoneSrc = await readFile('components/layout/PhonePreviewPanel.vue')
+
+  assert.ok(managerSrc.includes('@preview-from-node="previewReadonlyFlowVisualFromNode"'))
+  assert.ok(managerSrc.includes('function previewReadonlyFlowVisualFromNode(nodeId: string)'))
+  assert.ok(managerSrc.includes('readonlyFlowPartialPreviewState'))
+  assert.ok(managerSrc.includes('readonlyFlowPartialPreviewActive'))
+  assert.ok(managerSrc.includes('readonlyFlowPartialPreviewHint'))
+  assert.ok(managerSrc.includes(':preview-scope="readonlyFlowPartialPreviewActive ? \'partial\' : \'full\'"'))
+  assert.ok(managerSrc.includes('@clear-preview-scope="clearReadonlyFlowPartialPreviewMode"'))
+  assert.ok(managerSrc.includes('计时状态：reset'))
+  assert.ok(managerSrc.includes('局部预览模式'))
+
+  assert.ok(canvasSrc.includes("(e: 'preview-from-node', payload: { nodeId: string }): void"))
+  assert.ok(canvasSrc.includes("@context-menu=\"onNodeContextMenu\""))
+  assert.ok(canvasSrc.includes("emit('preview-from-node', { nodeId: contextMenu.value.nodeId })"))
+  assert.ok(canvasSrc.includes('从此步预览'))
+
+  assert.ok(stepNodeSrc.includes("(e: 'context-menu', payload: { nodeId: string; clientX: number; clientY: number }): void"))
+  assert.ok(stepNodeSrc.includes("@context-menu=\"onContextMenu\""))
+
+  assert.ok(baseNodeSrc.includes("@contextmenu.stop.prevent=\"emit('context-menu', $event)\""))
+  assert.ok(baseNodeSrc.includes("(e: 'context-menu', event: Event): void"))
+
+  assert.ok(phoneSrc.includes("previewScope?: 'full' | 'partial'"))
+  assert.ok(phoneSrc.includes("if (props.previewScope === 'partial')"))
+  assert.ok(phoneSrc.includes("emit('clear-preview-scope')"))
+  assert.ok(phoneSrc.includes('局部预览模式'))
+})
+
 test('ListeningChoiceRenderer answerChoice should not render early-next button', async () => {
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
   assert.ok(!src.includes('提前进入下一步'))

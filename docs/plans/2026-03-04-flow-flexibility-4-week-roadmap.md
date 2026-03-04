@@ -20,11 +20,13 @@
 5. Week 2 / Task 5（第一版）：新增“一键修复建议”领域 usecase 与画布应用入口，针对核心缺失/顺序异常（缺播放、缺答题、缺倒计时、答题先于播放、介绍页位置/重复）提供可执行修复按钮。
 6. Week 2 / Task 6（第一版）：提交门禁改为区分 `save/publish` 模式；发布前新增可视流程 warning 门禁，且可视流程 compile error 在提交前统一阻断，形成“编辑期 lint + 发布门禁”同源校验链路。
 7. Week 3 / Task 7（第一版）：新增流程片段能力（连续选区保存、片段版本化、片段回插），并接入可视流程侧栏；插入时自动尝试继承上下文题组绑定，且保留原有 lint/门禁链路。
+8. Week 3 / Task 8（第一版）：可视画布新增节点右键菜单“从此步预览”，支持按节点启动局部预览并注入最小上下文（题组/题号数/计时状态）；预览面板新增“局部预览模式”标识与退出入口。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
 2. `node --test tests/flow-visual-snippets.test.mjs tests/flow-visual-history.test.mjs`：通过。
-3. `npm run test`：183/183 全通过。
+3. `node --test tests/preview-mode.test.mjs tests/runtime-unified-entry.test.mjs`：通过。
+4. `npm run test`：184/184 全通过。
 
 ---
 

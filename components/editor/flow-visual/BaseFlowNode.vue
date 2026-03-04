@@ -20,6 +20,7 @@
     @mousedown.stop="emit('pointer-down', $event)"
     @mousemove.stop="emit('pointer-move', $event)"
     @mouseup.stop="emit('pointer-up', $event)"
+    @contextmenu.stop.prevent="emit('context-menu', $event)"
   >
     <slot />
   </view>
@@ -61,6 +62,7 @@ const emit = defineEmits<{
   (e: 'pointer-down', event: Event): void
   (e: 'pointer-move', event: Event): void
   (e: 'pointer-up', event: Event): void
+  (e: 'context-menu', event: Event): void
 }>()
 
 const nodeStyle = computed(() => {

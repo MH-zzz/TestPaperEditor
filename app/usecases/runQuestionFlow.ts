@@ -37,6 +37,17 @@ export type RuntimeModuleDisplayResolver = (
   ref: { id: string; version: number }
 ) => RuntimeModuleDisplay | null | undefined
 
+export type QuestionFlowRuntimeEntryMode = 'full' | 'partial'
+export type QuestionFlowRuntimeEntryTimerState = 'reset' | 'resume'
+
+export type QuestionFlowRuntimeEntry = {
+  mode?: QuestionFlowRuntimeEntryMode
+  stepIndex?: number
+  groupId?: string
+  questionId?: string
+  timerState?: QuestionFlowRuntimeEntryTimerState
+}
+
 export type QuestionFlowRuntimeMeta = {
   sourceKind: string
   profileId: string
@@ -45,12 +56,18 @@ export type QuestionFlowRuntimeMeta = {
   moduleDisplayRef: string
   moduleNote: string
   moduleVersionText: string
+  entryMode?: QuestionFlowRuntimeEntryMode
+  entryStepIndex?: number
+  entryGroupId?: string
+  entryQuestionId?: string
+  entryTimerState?: string
 }
 
 export type RunQuestionFlowOptions = {
   generateId?: () => string
   ctx?: FlowRoutingContext
   initialStepIndex?: number
+  entry?: QuestionFlowRuntimeEntry
   resolveModuleDisplay?: RuntimeModuleDisplayResolver
 }
 
@@ -85,6 +102,12 @@ function toInt(v: unknown, fallback = 0): number {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.floor(n)
+}
+
+function clampStepIndex(stepIndex: number, total: number): number {
+  const safe = Math.max(0, Math.floor(Number(stepIndex) || 0))
+  if (!Number.isFinite(total) || total <= 0) return safe
+  return Math.max(0, Math.min(safe, total - 1))
 }
 
 function normalizeRoutingContext(ctx?: FlowRoutingContext): FlowRoutingContext {
@@ -209,11 +232,30 @@ function resolveQuestion(question: Question, opts?: RunQuestionFlowOptions): Que
   }) as Question
 }
 
+function resolveRuntimeEntryMode(entry?: QuestionFlowRuntimeEntry): QuestionFlowRuntimeEntryMode {
+  return entry?.mode === 'partial' ? 'partial' : 'full'
+}
+
+function resolveRuntimeEntryStepIndex(
+  steps: RuntimeStepProtocol[],
+  opts?: RunQuestionFlowOptions
+): number {
+  const total = Array.isArray(steps) ? steps.length : 0
+  const raw = opts?.entry?.stepIndex ?? opts?.initialStepIndex ?? 0
+  return clampStepIndex(toInt(raw, 0), total)
+}
+
 function resolveRuntimeMeta(
   question: Question,
+  entryStepIndex: number,
   opts?: RunQuestionFlowOptions
 ): QuestionFlowRuntimeMeta {
   const isListeningLike = question.type === 'listening_choice' || question.type === 'speaking_hear_answer'
+  const entry = opts?.entry
+  const entryMode = resolveRuntimeEntryMode(entry)
+  const entryGroupId = normalizeText(entry?.groupId)
+  const entryQuestionId = normalizeText(entry?.questionId)
+  const entryTimerState = entry?.timerState === 'resume' ? 'resume' : 'reset'
   if (!isListeningLike) {
     return {
       sourceKind: 'inline',
@@ -222,7 +264,12 @@ function resolveRuntimeMeta(
       moduleVersion: 0,
       moduleDisplayRef: '-',
       moduleNote: '',
-      moduleVersionText: '-'
+      moduleVersionText: '-',
+      entryMode,
+      entryStepIndex,
+      entryGroupId,
+      entryQuestionId,
+      entryTimerState
     }
   }
 
@@ -253,7 +300,12 @@ function resolveRuntimeMeta(
     moduleVersion,
     moduleDisplayRef,
     moduleNote: String(display?.note || ''),
-    moduleVersionText: sourceKind === 'standard' ? `v${moduleVersion}` : '-'
+    moduleVersionText: sourceKind === 'standard' ? `v${moduleVersion}` : '-',
+    entryMode,
+    entryStepIndex,
+    entryGroupId,
+    entryQuestionId,
+    entryTimerState
   }
 }
 
@@ -269,15 +321,16 @@ export function runQuestionFlow(
   opts?: RunQuestionFlowOptions
 ): RunQuestionFlowResult {
   const resolvedQuestion = resolveQuestion(question, opts)
-  const runtimeState = createQuestionFlowRuntimeState(resolvedQuestion, opts?.initialStepIndex || 0)
   const steps = getQuestionFlowSteps(resolvedQuestion)
+  const entryStepIndex = resolveRuntimeEntryStepIndex(steps, opts)
+  const runtimeState = createQuestionFlowRuntimeState(resolvedQuestion, entryStepIndex)
 
   return {
     resolvedQuestion,
     runtimeState,
     totalSteps: steps.length,
     activeStepKind: getQuestionActiveStepKind(resolvedQuestion, runtimeState.stepIndex),
-    meta: resolveRuntimeMeta(resolvedQuestion, opts),
+    meta: resolveRuntimeMeta(resolvedQuestion, runtimeState.stepIndex, opts),
     ctx: mergeRoutingContext(question, opts?.ctx)
   }
 }
