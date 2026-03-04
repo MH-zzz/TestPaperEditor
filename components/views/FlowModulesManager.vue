@@ -635,12 +635,23 @@
                     <text class="region-overview__stat">地区数：{{ regionOverviewRows.length }}</text>
                     <text class="region-overview__stat">当前流程线命中：{{ currentFlowBoundRegionCount }}</text>
                   </view>
+                  <view class="region-overview__sim">
+                    <view class="region-overview__sim-main">
+                      <text class="region-overview__sim-line">当前模拟地区：{{ routeSimCurrentRegionText }}</text>
+                      <text class="region-overview__sim-line">命中流程：{{ routeSimHitSummaryText }}</text>
+                      <text class="region-overview__sim-line">{{ routeSimScoreSummaryText }}</text>
+                    </view>
+                    <view class="region-overview__sim-actions">
+                      <button class="btn btn-outline btn-xs" @click="loadRouteSimFromCurrentQuestion">读取题目上下文</button>
+                      <button class="btn btn-outline btn-xs" @click="syncRouteSimToCurrentQuestion">写回题目上下文</button>
+                    </view>
+                  </view>
                   <view class="region-overview__list">
                     <view
                       v-for="item in regionOverviewRows"
                       :key="`region-overview:${item.region}`"
                       class="region-overview__item"
-                      :class="{ 'is-current': item.isCurrentFlowLine }"
+                      :class="{ 'is-current': item.isCurrentFlowLine, 'is-simulated': isRegionSimulationTarget(item.region) }"
                     >
                       <view class="region-overview__main">
                         <text class="region-overview__region">{{ item.region }}</text>
@@ -648,6 +659,7 @@
                         <text class="region-overview__state">{{ item.stateText }}</text>
                       </view>
                       <view class="region-overview__actions">
+                        <button class="btn btn-outline btn-xs" @click="runRegionOverviewRouteSimulation(item.region)">模拟命中</button>
                         <button class="btn btn-outline btn-xs" @click="toggleRegionBindingForCurrentFlowLine(item.region)">
                           {{ item.isCurrentFlowLine ? '取消绑定' : '绑定到当前流程线' }}
                         </button>
@@ -2295,6 +2307,41 @@ const {
   simulatedProfile,
   simulatedModule
 } = routeSimulator
+const routeSimCurrentRegionText = computed(() => {
+  const region = normalizeNullableText(routeSimRegion.value)
+  return region || REGION_GENERAL_LABEL
+})
+const routeSimHitSummaryText = computed(() => {
+  if (!simulatedProfile.value?.module) return '未命中流程线'
+  const profileText = formatFlowProfileLabel(simulatedProfile.value)
+  const moduleText = formatModuleDisplayRef(simulatedProfile.value.module)
+  return `${profileText} -> ${moduleText}`
+})
+const routeSimScoreSummaryText = computed(() => {
+  const ranked = simulatedRankedCandidates.value.length
+  const score = simulatedBestCandidate.value?.totalScore || 0
+  return `候选规则 ${ranked} 条 · 命中得分 ${score}`
+})
+
+function isRegionSimulationTarget(rawRegion: string): boolean {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return false
+  const activeRegion = normalizeNullableText(routeSimRegion.value)
+  if (isGeneralRegion(region)) return !activeRegion
+  return region === activeRegion
+}
+
+function runRegionOverviewRouteSimulation(rawRegion: string) {
+  const region = normalizeNullableText(rawRegion)
+  if (!region) return
+  routeSimRegion.value = isGeneralRegion(region) ? '' : region
+  syncFlowCenterDebugMeta()
+  uni.showToast({
+    title: isGeneralRegion(region) ? '已模拟通用地区' : `已模拟 ${region}`,
+    icon: 'none'
+  })
+}
+
 const flowProfileDiagnostics = computed<FlowProfileDiagnosticsUsecase>(() => diagnoseFlowProfileRules(flowProfileRules.value || []))
 const flowProfileFixSuggestions = computed(() => {
   return buildFlowProfileFixSuggestions(flowProfileDiagnostics.value, flowProfileRules.value || [])
@@ -4791,6 +4838,39 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(15, 23, 42, 0.62);
 }
 
+.region-overview__sim {
+  margin-top: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.78);
+  padding: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.region-overview__sim-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.region-overview__sim-line {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+.region-overview__sim-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .region-overview__list {
   margin-top: 8px;
   display: flex;
@@ -4812,6 +4892,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 .region-overview__item.is-current {
   border-color: rgba(37, 99, 235, 0.36);
   background: rgba(239, 246, 255, 0.9);
+}
+
+.region-overview__item.is-simulated {
+  border-color: rgba(245, 158, 11, 0.42);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.16);
 }
 
 .region-overview__main {
@@ -6165,6 +6250,14 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 
   .route-sim__grid {
     grid-template-columns: 1fr;
+  }
+
+  .region-overview__sim {
+    flex-direction: column;
+  }
+
+  .region-overview__sim-actions {
+    justify-content: flex-start;
   }
 
   .col--template {

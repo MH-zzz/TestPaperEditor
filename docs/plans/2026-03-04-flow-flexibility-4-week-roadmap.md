@@ -25,6 +25,7 @@
 10. Week 4 / Task 10（第一版）：新增 `branchScore` 受控分支 MVP。编译层支持 `compileFlowVisualGraphToBranchMvpSteps`（阈值条件、pass/fail/default 路径、分支合法性校验），运行时新增 `reduceFlowRuntimeStateWithBranch` 按评分上下文执行跳转。
 11. Week 4 / Task 11（第一版）：新增 `loopNode` 受限循环 MVP。编译层支持 `compileFlowVisualGraphToLoopMvpSteps`（`maxIterations` 校验、continue/exit 路径约束），运行时新增 `reduceFlowRuntimeStateWithLoop`（循环计数与上限退出），并扩展步骤能力字段支持 `maxIterations`。
 12. Week 4 / Task 12（第一版）：新增流程导出包 V2 迁移闭环。导出端改为 `schemaVersion: 2 + exportCapabilities + migrationReport`；导入端新增 `migrateFlowExportPayloadToV2`，兼容旧字段（`modules/profiles/logs`）并输出迁移轨迹（字段变更路径 + 原因）。
+13. 教研直观性增强（补充）：在“地区视角总览”中接入路由模拟快捷入口，支持按地区一键模拟命中、读取/写回题目上下文，并在列表中高亮当前模拟地区与命中摘要。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
@@ -36,6 +37,8 @@
 7. `node --test tests/flow-visual-loop-mvp.test.mjs tests/runtime-loop-mvp.test.mjs`：通过。
 8. `node --test tests/flow-export-migration.test.mjs tests/preview-mode.test.mjs tests/mobile-learning-local-page.test.mjs`：通过。
 9. `npm run test`：201/201 全通过。
+10. `node --test tests/flow-research-editor-mode.test.mjs tests/flow-profile-routing.test.mjs tests/preview-mode.test.mjs`：通过（新增地区总览路由模拟断言）。
+11. `npm run test`：224/224 全通过。
 
 ---
 

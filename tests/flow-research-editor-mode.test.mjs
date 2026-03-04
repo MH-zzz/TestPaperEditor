@@ -29,6 +29,11 @@ test('flow modules manager should provide region overview list for teaching work
   assert.ok(src.includes('currentFlowBoundRegionCount'))
   assert.ok(src.includes('focusRegionBindingSection'))
   assert.ok(src.includes("class=\"region-overview__item\""))
+  assert.ok(src.includes('当前模拟地区'))
+  assert.ok(src.includes('runRegionOverviewRouteSimulation'))
+  assert.ok(src.includes('isRegionSimulationTarget'))
+  assert.ok(src.includes('loadRouteSimFromCurrentQuestion'))
+  assert.ok(src.includes('syncRouteSimToCurrentQuestion'))
 })
 
 test('flow modules manager should provide macro expansion preview in visual detail panel', async () => {

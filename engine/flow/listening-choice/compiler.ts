@@ -35,6 +35,17 @@ function nonEmptyString(v: unknown): string | undefined {
   return s ? s : undefined
 }
 
+function hasRichTextContent(v: unknown): boolean {
+  if (!isObjectRecord(v)) return false
+  if (v.type !== 'richtext' || !Array.isArray(v.content)) return false
+  return v.content.some((node) => {
+    if (!isObjectRecord(node)) return false
+    if (node.type === 'text') return Boolean(nonEmptyString(node.text))
+    if (node.type === 'image') return Boolean(nonEmptyString(node.url))
+    return false
+  })
+}
+
 function normalizeAudioSource(v: unknown): 'description' | 'content' {
   return v === 'description' ? 'description' : 'content'
 }
@@ -233,6 +244,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
   const groups = question?.content?.groups || []
   groups.forEach((g: ListeningChoiceGroup, gIndex: number) => {
     const groupId = g?.id ? String(g.id) : ''
+    if (!groupId) return
     const perSteps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
     const kindCount: Record<string, number> = {}
     const perQuestionIds = Array.isArray(g?.subQuestions) && g.subQuestions.length > 0
@@ -244,9 +256,18 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       kindCount[kind] = (kindCount[kind] || 0) + 1
       const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
       const key = `g${gIndex}.${kind}${suffix}`
+      const isPerQuestionStep = def.kind === 'promptTone' || def.kind === 'recordGuide' || def.kind === 'answerChoice'
+      const targetSubQuestion = isPerQuestionStep
+        ? resolveSubQuestionById(g, questionId)
+        : null
+      if (hearAnswerVariant && isPerQuestionStep && !targetSubQuestion) return
 
       if (def.kind === 'playAudio') {
         const audioSource = normalizeAudioSource(def?.audioSource)
+        const audioUrl = audioSource === 'description'
+          ? nonEmptyString(g?.descriptionAudio?.url)
+          : nonEmptyString(g?.audio?.url)
+        if (!audioUrl) return
         const repeatGapRaw = (def as { repeatGapSeconds?: unknown }).repeatGapSeconds
         const repeatGapSeconds = audioSource === 'content'
           ? normalizeOptionalNonNegativeInt(repeatGapRaw)
@@ -254,7 +275,8 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
         const rawPlayCount = audioSource === 'description'
           ? toInt(g?.descriptionAudio?.playCount, 1)
           : toInt(g?.audio?.playCount, 1)
-        const totalPlayTimes = Math.max(1, rawPlayCount)
+        const totalPlayTimes = Math.max(0, rawPlayCount)
+        if (totalPlayTimes <= 0) return
         const showTitle = typeof def.showTitle === 'boolean' ? def.showTitle : true
         const showQuestionTitle = typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true
         const showQuestionTitleDescription = typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true
@@ -283,6 +305,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
 
           const fallbackGapSeconds = Math.max(0, toInt(g?.prepareSeconds, 3))
           const gapSeconds = repeatGapSeconds == null ? fallbackGapSeconds : repeatGapSeconds
+          if (gapSeconds <= 0) continue
           plan.push({
             key: `${key}.gap${playIndex + 1}`,
             step: {
@@ -303,6 +326,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
           return
         }
         const seconds = Math.max(0, toInt(g.prepareSeconds, Math.max(0, toInt(def.seconds, 3))))
+        if (seconds <= 0) return
         const label = typeof def?.label === 'string' ? def.label : '准备'
         plan.push({
           key,
@@ -319,7 +343,10 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       }
 
       if (def.kind === 'promptTone') {
-        const url = typeof def?.url === 'string' ? def.url : '/static/audio/small_time.mp3'
+        const url = typeof def?.url === 'string'
+          ? (nonEmptyString(def.url) || '')
+          : '/static/audio/small_time.mp3'
+        if (!url) return
         plan.push({
           key,
           step: {
@@ -334,7 +361,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       }
 
       if (def.kind === 'recordGuide') {
-        const sq = resolveSubQuestionById(g, questionId)
+        const sq = targetSubQuestion
         const textSource = def.textSource === 'group' ? 'group' : 'question'
         const audioSource = def.audioSource === 'group' || def.audioSource === 'fixed'
           ? def.audioSource
@@ -342,11 +369,14 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
         const guideText = textSource === 'group'
           ? g.recordGuideText || g.prompt
           : (sq?.recordGuideText || g.recordGuideText || g.prompt)
-        const guideAudioUrl = audioSource === 'fixed'
+        const guideAudioUrlRaw = audioSource === 'fixed'
           ? String(def.url || '')
           : (audioSource === 'group'
             ? String((g.recordGuideAudio?.url) || '')
             : String((sq?.recordGuideAudio?.url) || (g.recordGuideAudio?.url) || ''))
+        const guideAudioUrl = nonEmptyString(guideAudioUrlRaw)
+        const hasGuideText = hasRichTextContent(guideText)
+        if (!hasGuideText && !guideAudioUrl) return
         plan.push({
           key,
           step: {
@@ -367,6 +397,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       }
 
       if (def.kind === 'answerChoice') {
+        if (!Array.isArray(g?.subQuestions) || g.subQuestions.length <= 0) return
         const answerSeconds = hearAnswerVariant
           ? resolveHearAnswerAnswerSeconds(g, questionId)
           : Math.max(0, toInt(g.answerSeconds, 0))
