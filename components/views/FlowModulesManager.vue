@@ -21,9 +21,10 @@
 
       <view class="header-right">
         <template v-if="page !== 'home'">
-          <button class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
+          <button class="btn btn-outline btn-sm" @click="toggleResearchEditorMode">{{ researchEditorModeSwitchText }}</button>
+          <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
           <button class="btn btn-outline btn-sm" @click="showPublishLogs">发布日志</button>
-          <button class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
+          <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
           <button class="btn btn-primary btn-sm" :disabled="!canSaveCurrentStandard" @click="updateCurrentFlowLine">更新当前流程线</button>
         </template>
       </view>
@@ -116,6 +117,20 @@
                     <text class="module-state__ref">当前流程线：{{ draftModuleDisplayRef }}</text>
                     <text class="module-state__tag" :class="`is-${currentModuleStatus}`">{{ currentModuleStatusLabel }}</text>
                   </view>
+                  <view class="research-mode-hint">
+                    <text class="research-mode-hint__title">当前模式：{{ isResearchSimpleMode ? '教研模式' : '专业模式' }}</text>
+                    <text class="research-mode-hint__desc">{{ isResearchSimpleMode ? '隐藏高级流程编排入口，仅保留题型编辑、地区绑定和发布链路。' : '显示全部能力（可视流程、片段、宏节点、局部调试）。' }}</text>
+                  </view>
+                  <view
+                    v-if="researchGuidedNextAction"
+                    class="research-next-card"
+                  >
+                    <view class="research-next-card__main">
+                      <text class="research-next-card__title">推荐下一步：{{ researchGuidedNextAction.title }}</text>
+                      <text class="research-next-card__desc">{{ researchGuidedNextAction.detail }}</text>
+                    </view>
+                    <button class="btn btn-outline btn-xs research-next-card__btn" @click="runResearchGuidedNextAction">{{ researchGuidedNextAction.cta }}</button>
+                  </view>
                   <view class="flow-line-switch">
                     <text class="flow-line-switch__label">流程线切换</text>
                     <view class="flow-line-switch__chips">
@@ -131,7 +146,7 @@
                       </view>
                     </view>
                   </view>
-                  <view class="module-meta-grid">
+                  <view v-if="!isResearchSimpleMode" class="module-meta-grid">
                     <view class="form-item">
                       <text class="form-item__label">流程名称</text>
                       <input
@@ -155,10 +170,10 @@
                       <button class="btn btn-outline btn-sm" @click="openFlowLineCreateWizard">新建流程线（向导）</button>
                     </view>
                   </view>
-                  <text class="module-state__hint">{{ currentModuleStatusHint }}</text>
+                  <text v-if="!isResearchSimpleMode" class="module-state__hint">{{ currentModuleStatusHint }}</text>
                 </view>
                 <view class="panel__header-actions">
-                  <button class="btn btn-outline btn-xs" @click="openReadonlyFlowVisual">查看流程图</button>
+                  <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-xs" @click="openReadonlyFlowVisual">查看流程图</button>
                 </view>
               </view>
               <view class="panel__body">
@@ -588,7 +603,11 @@
                   <text class="diagram-hint__text">点击步骤可展开配置；拖动右侧手柄可排序每题组步骤；再次点击同一步骤可收起</text>
                 </view>
 
-                <view v-if="isRegionRoutingEnabled" class="region-binding">
+                <view
+                  v-if="isRegionRoutingEnabled"
+                  class="region-binding"
+                  :class="{ 'is-focus': regionBindingFocusPulse }"
+                >
                   <view class="region-binding__head">
                     <text class="region-binding__title">地区匹配</text>
                     <text class="region-binding__desc">一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线。「通用」就是默认/标准流程，未命中地区走「通用」。</text>
@@ -604,6 +623,35 @@
                     >
                       <text class="region-chip__name">{{ region }}</text>
                       <text class="region-chip__target">{{ formatRegionBindingTarget(region) }}</text>
+                    </view>
+                  </view>
+                </view>
+                <view v-if="isRegionRoutingEnabled" class="region-overview">
+                  <view class="region-overview__head">
+                    <text class="region-overview__title">地区视角总览</text>
+                    <text class="region-overview__desc">按地区查看当前生效流程线，支持快速核对教研发布范围。</text>
+                  </view>
+                  <view class="region-overview__stats">
+                    <text class="region-overview__stat">地区数：{{ regionOverviewRows.length }}</text>
+                    <text class="region-overview__stat">当前流程线命中：{{ currentFlowBoundRegionCount }}</text>
+                  </view>
+                  <view class="region-overview__list">
+                    <view
+                      v-for="item in regionOverviewRows"
+                      :key="`region-overview:${item.region}`"
+                      class="region-overview__item"
+                      :class="{ 'is-current': item.isCurrentFlowLine }"
+                    >
+                      <view class="region-overview__main">
+                        <text class="region-overview__region">{{ item.region }}</text>
+                        <text class="region-overview__target">{{ item.targetName }} · {{ item.targetVersionText }}</text>
+                        <text class="region-overview__state">{{ item.stateText }}</text>
+                      </view>
+                      <view class="region-overview__actions">
+                        <button class="btn btn-outline btn-xs" @click="toggleRegionBindingForCurrentFlowLine(item.region)">
+                          {{ item.isCurrentFlowLine ? '取消绑定' : '绑定到当前流程线' }}
+                        </button>
+                      </view>
                     </view>
                   </view>
                 </view>
@@ -788,6 +836,20 @@
                 <text class="flow-visual-detail__line">上下文题组：{{ readonlyFlowVisualActiveNode.data.groupId || '-' }}</text>
                 <text class="flow-visual-detail__line">推进策略：{{ readonlyFlowVisualActiveNode.data.binding?.autoNextMode || '-' }}</text>
                 <text class="flow-visual-detail__line">推进覆盖：{{ readonlyFlowVisualActiveNode.data.binding?.autoNext || '-' }}</text>
+                <view class="flow-visual-macro-expand">
+                  <text class="flow-visual-macro-expand__title">宏展开预览</text>
+                  <view
+                    v-if="readonlyFlowSelectedMacroExpandedSteps.length > 0"
+                    class="flow-visual-macro-expand__list"
+                  >
+                    <text
+                      v-for="(item, idx) in readonlyFlowSelectedMacroExpandedSteps"
+                      :key="`macro-expand:${item.id}`"
+                      class="flow-visual-detail__line"
+                    >{{ idx + 1 }}. {{ item.kind }} · {{ item.autoNext || 'manual' }} · {{ item.groupId || '-' }}</text>
+                  </view>
+                  <text v-else class="flow-visual-detail__line">当前宏节点尚未展开（请检查片段引用或编译错误）。</text>
+                </view>
               </template>
               <template v-else>
                 <text class="flow-visual-detail__line">autoNext：{{ readonlyFlowVisualActiveNode.data.autoNext || '-' }}</text>
@@ -1566,6 +1628,8 @@ const flowNamePlaceholder = computed(() => activeFlowPageType.value === 'speakin
   : '例如：听后选择标准 / 广东-听后选择流程')
 const flowWizardNamePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：听后回答-北京' : '例如：听后选择-北京')
 const flowWizardNotePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：北京地区听后回答流程' : '例如：北京地区听后选择流程')
+const isResearchSimpleMode = ref(true)
+const researchEditorModeSwitchText = computed(() => isResearchSimpleMode.value ? '切到专业模式' : '切到教研模式')
 type FlowLineWizardBaseline = 'current' | 'standard'
 const flowLineWizardVisible = ref(false)
 const flowLineWizardBaseline = ref<FlowLineWizardBaseline>('current')
@@ -1659,6 +1723,15 @@ function countFlowLinesByPageType(pageType: FlowPageType): number {
 
 const listeningChoiceFlowLineCount = computed(() => countFlowLinesByPageType('listening_choice'))
 const speakingHearAnswerFlowLineCount = computed(() => countFlowLinesByPageType('speaking_hear_answer'))
+const regionBindingFocusPulse = ref(false)
+let regionBindingFocusTimer: ReturnType<typeof setTimeout> | null = null
+
+type ResearchGuidedNextAction = {
+  key: 'fix_blockers' | 'bind_region' | 'save_flow' | 'idle'
+  title: string
+  detail: string
+  cta: string
+}
 const REGION_FLOW_PROFILE_PRIORITY = 10
 const REGION_GENERAL_LABEL = '通用'
 
@@ -1864,6 +1937,95 @@ const regionBindingOptions = computed<string[]>(() => {
   })
 })
 
+type RegionOverviewRow = {
+  region: string
+  targetName: string
+  targetVersionText: string
+  stateText: string
+  isCurrentFlowLine: boolean
+}
+
+const currentFlowBoundRegionCount = computed(() => {
+  if (!isRegionRoutingEnabled.value) return 0
+  return regionBindingOptions.value.filter((region) => isRegionBoundToCurrentFlowLine(region)).length
+})
+
+const regionOverviewRows = computed<RegionOverviewRow[]>(() => {
+  if (!isRegionRoutingEnabled.value) return []
+  return regionBindingOptions.value.map((region) => {
+    const normalizedRegion = normalizeNullableText(region) || region
+    if (isGeneralRegion(normalizedRegion)) {
+      const ref = defaultRoutingModuleRef.value
+      const isCurrent = isRegionBoundToCurrentFlowLine(normalizedRegion)
+      return {
+        region: normalizedRegion,
+        targetName: formatModuleDisplayRef(ref),
+        targetVersionText: `v${Math.max(1, toInt(ref.version || 1))}`,
+        stateText: isCurrent ? '当前默认流程线' : '默认回退流程线',
+        isCurrentFlowLine: isCurrent
+      }
+    }
+
+    const binding = regionBindingMap.value.get(normalizedRegion)
+    if (!binding) {
+      const ref = defaultRoutingModuleRef.value
+      return {
+        region: normalizedRegion,
+        targetName: formatModuleDisplayRef(ref),
+        targetVersionText: `v${Math.max(1, toInt(ref.version || 1))}`,
+        stateText: '未单独绑定（走通用）',
+        isCurrentFlowLine: false
+      }
+    }
+
+    const isCurrent = isRegionBoundToCurrentFlowLine(normalizedRegion)
+    return {
+      region: normalizedRegion,
+      targetName: formatModuleDisplayRef(binding.module),
+      targetVersionText: `v${Math.max(1, toInt(binding.module.version || 1))}`,
+      stateText: isCurrent ? '当前流程线' : '已绑定其他流程线',
+      isCurrentFlowLine: isCurrent
+    }
+  })
+})
+
+const researchGuidedNextAction = computed<ResearchGuidedNextAction | null>(() => {
+  if (!isResearchSimpleMode.value) return null
+  if (commitValidationIssues.value.length > 0) {
+    return {
+      key: 'fix_blockers',
+      title: '先修复更新阻断项',
+      detail: `当前有 ${commitValidationIssues.value.length} 个阻断项，修复后才能更新流程线。`,
+      cta: '定位问题'
+    }
+  }
+
+  if (isRegionRoutingEnabled.value && currentFlowBoundRegionCount.value <= 0) {
+    return {
+      key: 'bind_region',
+      title: '先绑定地区到当前流程线',
+      detail: '至少绑定 1 个地区（或“通用”），才能明确教研投放范围。',
+      cta: '去绑定地区'
+    }
+  }
+
+  if (canSaveCurrentStandard.value) {
+    return {
+      key: 'save_flow',
+      title: '更新当前流程线',
+      detail: '配置已就绪，建议先更新并发布当前流程线。',
+      cta: '立即更新'
+    }
+  }
+
+  return {
+    key: 'idle',
+    title: '继续检查步骤配置',
+    detail: '当前没有阻断项，按需微调步骤后再更新流程线。',
+    cta: '保持当前'
+  }
+})
+
 const canCreateFlowLineFromWizard = computed(() => {
   return String(flowLineWizardName.value || '').trim().length > 0
 })
@@ -1879,6 +2041,45 @@ function getStandardBaselineModule(): ListeningChoiceFlowModuleV1 {
   const standardId = getStandardModuleIdByPageType(activeFlowPageType.value)
   const standard = flowModules.getListeningChoiceLatestPublished(standardId)
   return standard || getDefaultModule(activeFlowPageType.value)
+}
+
+function toggleResearchEditorMode() {
+  isResearchSimpleMode.value = !isResearchSimpleMode.value
+  if (isResearchSimpleMode.value && readonlyFlowVisualVisible.value) {
+    closeReadonlyFlowVisual()
+  }
+}
+
+function focusRegionBindingSection() {
+  if (typeof document !== 'undefined') {
+    const el = document.querySelector('.region-binding')
+    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+      ;(el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+  regionBindingFocusPulse.value = true
+  if (regionBindingFocusTimer) clearTimeout(regionBindingFocusTimer)
+  regionBindingFocusTimer = setTimeout(() => {
+    regionBindingFocusPulse.value = false
+    regionBindingFocusTimer = null
+  }, 1400)
+}
+
+function runResearchGuidedNextAction() {
+  const next = researchGuidedNextAction.value
+  if (!next) return
+  if (next.key === 'fix_blockers') {
+    jumpToFirstCommitValidationIssue()
+    return
+  }
+  if (next.key === 'bind_region') {
+    focusRegionBindingSection()
+    return
+  }
+  if (next.key === 'save_flow') {
+    updateCurrentFlowLine()
+    return
+  }
 }
 
 function openFlowLineCreateWizard() {
@@ -2710,6 +2911,15 @@ const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
 const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
 const readonlyFlowVisualActiveNodeId = flowVisualEditor.selectedNodeId
 const readonlyFlowVisualActiveNode = flowVisualEditor.selectedNode
+const readonlyFlowSelectedMacroExpandedSteps = computed(() => {
+  const activeNodeId = String(readonlyFlowVisualActiveNodeId.value || '').trim()
+  if (!activeNodeId) return []
+  const activeNode = readonlyFlowVisualActiveNode.value
+  if (!activeNode || String(activeNode.data?.stepKind || '') !== 'macroNode') return []
+  return (readonlyFlowCompileResult.value.steps || []).filter((item) => {
+    return String(item?.id || '').startsWith(`${activeNodeId}::macro::`)
+  })
+})
 const readonlyFlowVisualSnippets = computed(() => flowSnippets.listLatest(16))
 const readonlyFlowSnippetSelectionLabel = computed(() => {
   const count = readonlyFlowSnippetSelectionNodeIds.value.length
@@ -3579,6 +3789,10 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', onFlowVisualKeydown)
   }
+  if (regionBindingFocusTimer) {
+    clearTimeout(regionBindingFocusTimer)
+    regionBindingFocusTimer = null
+  }
   setFlowVisualBodyScrollLocked(false)
 })
 
@@ -4344,6 +4558,64 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(15, 23, 42, 0.56);
 }
 
+.research-mode-hint {
+  margin-top: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.research-mode-hint__title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.research-mode-hint__desc {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+  line-height: 1.45;
+}
+
+.research-next-card {
+  margin-top: 8px;
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.86);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.research-next-card__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.research-next-card__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.86);
+}
+
+.research-next-card__desc {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+  line-height: 1.4;
+}
+
+.research-next-card__btn {
+  flex-shrink: 0;
+}
+
 .flow-line-switch {
   margin-top: 10px;
   display: flex;
@@ -4425,6 +4697,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   padding: 10px;
 }
 
+.region-binding.is-focus {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+}
+
 .region-binding__head {
   display: flex;
   flex-direction: column;
@@ -4474,6 +4751,90 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   margin-top: 2px;
   font-size: 11px;
   color: rgba(15, 23, 42, 0.56);
+}
+
+.region-overview {
+  margin-top: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 10px;
+}
+
+.region-overview__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.region-overview__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.region-overview__desc {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.56);
+  line-height: 1.45;
+}
+
+.region-overview__stats {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.region-overview__stat {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+.region-overview__list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.region-overview__item {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.region-overview__item.is-current {
+  border-color: rgba(37, 99, 235, 0.36);
+  background: rgba(239, 246, 255, 0.9);
+}
+
+.region-overview__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.region-overview__region {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.region-overview__target,
+.region-overview__state {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+}
+
+.region-overview__actions {
+  flex-shrink: 0;
 }
 
 .quick-add-row {
@@ -5575,6 +5936,28 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   font-size: 12px;
   color: rgba(15, 23, 42, 0.66);
   line-height: 1.45;
+}
+
+.flow-visual-macro-expand {
+  margin-top: 4px;
+  border: 1px solid rgba(147, 51, 234, 0.24);
+  border-radius: 10px;
+  background: rgba(250, 245, 255, 0.82);
+  padding: 6px;
+}
+
+.flow-visual-macro-expand__title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(88, 28, 135, 0.88);
+}
+
+.flow-visual-macro-expand__list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .flow-visual-compile {
