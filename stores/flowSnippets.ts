@@ -35,7 +35,7 @@ class FlowSnippetsStore {
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (!stored) return
       const parsed = JSON.parse(stored)
-      const source = Array.isArray(parsed?.snippets) ? parsed.snippets : (Array.isArray(parsed) ? parsed : [])
+      const source = Array.isArray(parsed?.snippets) ? parsed.snippets : []
       const normalized = source
         .map((item) => normalizeFlowSnippetTemplate(item))
         .filter((item): item is FlowSnippetTemplate => !!item)

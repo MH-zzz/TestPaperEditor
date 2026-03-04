@@ -4,15 +4,13 @@ import { runQuestionFlow } from '/app/usecases/runQuestionFlow'
 import { flowModules } from '/stores/flowModules'
 import { flowProfiles } from '/stores/flowProfiles'
 import {
-  DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE,
-  LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
   normalizeListeningChoiceStandardModule
 } from '/flows/listeningChoiceFlowModules'
 import {
   loadLocalLearningFlows,
   loadLocalLearningQuestions
 } from '/infra/repository/localLearningRepository'
-import { migrateFlowExportPayloadToV2 } from '/infra/repository/flowExportPackage'
+import { readFlowExportPackageV2 } from '/infra/repository/flowExportPackage'
 
 export type LearningPartSummary = {
   name: string
@@ -33,15 +31,11 @@ export type LearningUnit = {
 }
 
 type FlowExportPayload = {
-  schemaVersion?: unknown
+  schemaVersion: 2
   exportCapabilities?: unknown
   listeningChoiceModules?: unknown
   flowProfiles?: unknown
   publishLogs?: unknown
-  migrationReport?: unknown
-  modules?: unknown
-  profiles?: unknown
-  logs?: unknown
 }
 
 type LocalLearningState = {
@@ -54,9 +48,6 @@ type LocalLearningState = {
   currentQuestionStepIndex: number
   answers: Record<string, string | string[]>
   runtimeQuestion: Question | null
-  flowImportSchemaVersion: number
-  flowImportMigrated: boolean
-  flowImportChangeCount: number
   flowImportCapabilities: string[]
 }
 
@@ -72,9 +63,6 @@ export const localLearningState = reactive<LocalLearningState>({
   currentQuestionStepIndex: 0,
   answers: {},
   runtimeQuestion: null,
-  flowImportSchemaVersion: 0,
-  flowImportMigrated: false,
-  flowImportChangeCount: 0,
   flowImportCapabilities: []
 })
 
@@ -255,17 +243,7 @@ function toListeningChoiceModules(raw: unknown): ListeningChoiceFlowModuleV1[] {
         ...base,
         kind: 'listening_choice'
       } as ListeningChoiceFlowModuleV1
-
-      if (String(merged.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return merged
-
-      const perGroupSteps = Array.isArray(merged.perGroupSteps) ? merged.perGroupSteps : []
-      const hasRecordGuide = perGroupSteps.some((step) => String((step as { kind?: unknown })?.kind || '') === 'recordGuide')
-      if (hasRecordGuide) return merged
-
-      return {
-        ...merged,
-        perGroupSteps: (DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps || []).map((step) => ({ ...step }))
-      }
+      return merged
     })
 }
 
@@ -286,23 +264,20 @@ function resolveEnabledCapabilities(raw: unknown): string[] {
   return out.sort((a, b) => a.localeCompare(b))
 }
 
-function applyFlowPayload(payload: FlowExportPayload | null) {
-  if (!payload || !isObjectRecord(payload)) return
+function applyFlowPayload(payload: FlowExportPayload) {
+  const pack = readFlowExportPackageV2(payload)
+  if (!pack) {
+    throw new Error('本地流程包格式不合法：仅支持 schemaVersion=2。')
+  }
 
-  const migratedPack = migrateFlowExportPayloadToV2(payload)
-  localLearningState.flowImportSchemaVersion = Number(migratedPack.migrationReport.fromVersion || 0)
-  localLearningState.flowImportMigrated = !!migratedPack.migrationReport.migrated
-  localLearningState.flowImportChangeCount = Array.isArray(migratedPack.migrationReport.entries)
-    ? migratedPack.migrationReport.entries.length
-    : 0
-  localLearningState.flowImportCapabilities = resolveEnabledCapabilities(migratedPack.exportCapabilities)
+  localLearningState.flowImportCapabilities = resolveEnabledCapabilities(pack.exportCapabilities)
 
-  const modules = toListeningChoiceModules(migratedPack.listeningChoiceModules)
+  const modules = toListeningChoiceModules(pack.listeningChoiceModules)
   if (modules.length > 0) {
     flowModules.state.listeningChoice = modules
   }
 
-  const profiles = toFlowProfiles(migratedPack.flowProfiles)
+  const profiles = toFlowProfiles(pack.flowProfiles)
   if (profiles.length > 0) {
     flowProfiles.state.profiles = profiles
   }
@@ -312,9 +287,9 @@ function readQuestionFlowContext(question: Question) {
   const metadata = readMetadata(question)
   const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
   return {
-    region: normalizeText(flowContext.region) || normalizeText(metadata.region),
-    scene: normalizeText(flowContext.scene) || normalizeText(metadata.scene),
-    grade: normalizeText(flowContext.grade) || normalizeText(metadata.grade)
+    region: normalizeText(flowContext.region),
+    scene: normalizeText(flowContext.scene),
+    grade: normalizeText(flowContext.grade)
   }
 }
 

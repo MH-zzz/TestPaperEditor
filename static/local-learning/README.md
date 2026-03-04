@@ -9,7 +9,6 @@ Place exported files here:
 
 - `schemaVersion: 2`
 - `exportCapabilities` marks supported flow abilities
-- `migrationReport` records import/export migration trace
 
 The mobile learning page loads:
 

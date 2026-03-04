@@ -5,6 +5,7 @@ import type {
   FlowVisualCompileResult,
   FlowVisualGraph
 } from '/types'
+import { normalizeFlowMacroNodePayload } from './flowMacroNodeModel.ts'
 
 export type VisualLinearStep = {
   id: string
@@ -23,6 +24,25 @@ export type VisualLoopMvpStep = VisualLinearStep & {
   loop?: FlowStepLoopProtocol
 }
 
+export type FlowMacroSnippetStep = {
+  kind?: unknown
+  autoNext?: unknown
+  groupBinding?: unknown
+}
+
+export type FlowMacroSnippetTemplate = {
+  baseId?: unknown
+  version?: unknown
+  hash?: unknown
+  steps?: unknown
+}
+
+export type ResolveFlowMacroSnippet = (ref: { baseId: string; version: number }) => FlowMacroSnippetTemplate | null | undefined
+
+export type CompileFlowVisualLinearOptions = {
+  resolveMacroSnippet?: ResolveFlowMacroSnippet
+}
+
 type VisualLinearLintResult = {
   errors: FlowVisualCompileIssue[]
   warnings: FlowVisualCompileIssue[]
@@ -32,6 +52,10 @@ type NodePayload = {
   stepKind?: unknown
   autoNext?: unknown
   groupId?: unknown
+  nodeKind?: unknown
+  snippet?: unknown
+  binding?: unknown
+  expandedStepCount?: unknown
   branchScoreThreshold?: unknown
   loopMaxIterations?: unknown
 }
@@ -58,6 +82,155 @@ function resolveNodeStepKind(node: { kind?: unknown; data?: unknown }): string {
   const normalized = normalizeOptionalString(payload.stepKind)
     || normalizeOptionalString(node.kind)
   return normalized || 'unknown'
+}
+
+type MacroNodeExpansionResult = {
+  steps: VisualLinearStep[]
+  errors: FlowVisualCompileIssue[]
+  warnings: FlowVisualCompileIssue[]
+}
+
+function normalizePositiveInt(value: unknown): number | null {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  const normalized = Math.floor(parsed)
+  if (normalized <= 0) return null
+  return normalized
+}
+
+function normalizeMacroSnippetGroupBinding(value: unknown): 'inherit' | 'empty' {
+  return String(value || '').trim() === 'inherit' ? 'inherit' : 'empty'
+}
+
+function isMacroNode(node: { kind?: unknown; data?: unknown }, payload: NodePayload): boolean {
+  const payloadNodeKind = normalizeOptionalString(payload.nodeKind)
+  if (payloadNodeKind === 'macroNode') return true
+  return normalizeOptionalString(node.kind) === 'macroNode'
+}
+
+function expandMacroNodeToLinearSteps(
+  node: { id: string; kind?: unknown; data?: unknown },
+  payload: NodePayload,
+  options: CompileFlowVisualLinearOptions
+): MacroNodeExpansionResult {
+  const errors: FlowVisualCompileIssue[] = []
+  const warnings: FlowVisualCompileIssue[] = []
+  const steps: VisualLinearStep[] = []
+  const nodePath = `graph.nodes(${String(node.id || '')})`
+  const macroPayload = normalizeFlowMacroNodePayload(payload)
+  if (!macroPayload) {
+    errors.push(createIssue(
+      'macro_payload_invalid',
+      `宏节点 ${node.id} 的 payload 不合法，无法展开。`,
+      `${nodePath}.data`
+    ))
+    return { steps, errors, warnings }
+  }
+
+  const resolveMacroSnippet = options.resolveMacroSnippet
+  if (typeof resolveMacroSnippet !== 'function') {
+    errors.push(createIssue(
+      'macro_snippet_resolver_missing',
+      `宏节点 ${node.id} 缺少片段解析器，无法展开。`,
+      `${nodePath}.data.snippet`
+    ))
+    return { steps, errors, warnings }
+  }
+
+  const snippet = resolveMacroSnippet({
+    baseId: macroPayload.snippet.baseId,
+    version: macroPayload.snippet.version
+  })
+  if (!snippet || typeof snippet !== 'object') {
+    errors.push(createIssue(
+      'macro_snippet_not_found',
+      `宏节点 ${node.id} 引用的片段 ${macroPayload.snippet.baseId}@v${macroPayload.snippet.version} 不存在。`,
+      `${nodePath}.data.snippet`
+    ))
+    return { steps, errors, warnings }
+  }
+
+  const snippetHash = normalizeOptionalString((snippet as { hash?: unknown }).hash)
+  if (macroPayload.snippet.hash && snippetHash && macroPayload.snippet.hash !== snippetHash) {
+    warnings.push(createIssue(
+      'macro_snippet_hash_mismatch',
+      `宏节点 ${node.id} 引用片段 hash 不一致，已按当前片段展开。`,
+      `${nodePath}.data.snippet.hash`
+    ))
+  }
+
+  const snippetBaseId = normalizeOptionalString((snippet as { baseId?: unknown }).baseId)
+  if (snippetBaseId && snippetBaseId !== macroPayload.snippet.baseId) {
+    warnings.push(createIssue(
+      'macro_snippet_ref_mismatch',
+      `宏节点 ${node.id} 片段 baseId 不一致（引用 ${macroPayload.snippet.baseId}，实际 ${snippetBaseId}）。`,
+      `${nodePath}.data.snippet.baseId`
+    ))
+  }
+
+  const snippetVersion = normalizePositiveInt((snippet as { version?: unknown }).version)
+  if (snippetVersion && snippetVersion !== macroPayload.snippet.version) {
+    warnings.push(createIssue(
+      'macro_snippet_ref_mismatch',
+      `宏节点 ${node.id} 片段 version 不一致（引用 v${macroPayload.snippet.version}，实际 v${snippetVersion}）。`,
+      `${nodePath}.data.snippet.version`
+    ))
+  }
+
+  const rawSteps = (snippet as { steps?: unknown }).steps
+  const sourceSteps = Array.isArray(rawSteps) ? rawSteps as FlowMacroSnippetStep[] : []
+  if (sourceSteps.length <= 0) {
+    errors.push(createIssue(
+      'macro_snippet_empty',
+      `宏节点 ${node.id} 引用片段为空，无法展开。`,
+      `${nodePath}.data.snippet.steps`
+    ))
+    return { steps, errors, warnings }
+  }
+
+  const contextGroupId = normalizeOptionalString(payload.groupId)
+  for (let i = 0; i < sourceSteps.length; i += 1) {
+    const raw = sourceSteps[i]
+    const kind = normalizeOptionalString(raw?.kind)
+    if (!kind) {
+      errors.push(createIssue(
+        'macro_snippet_step_kind_invalid',
+        `宏节点 ${node.id} 引用片段第 ${i + 1} 步缺少步骤类型。`,
+        `${nodePath}.data.snippet.steps(${i}).kind`
+      ))
+      continue
+    }
+
+    const snippetAutoNext = normalizeOptionalString(raw?.autoNext)
+    const autoNext = macroPayload.binding.autoNextMode === 'override'
+      ? macroPayload.binding.autoNext
+      : snippetAutoNext
+
+    let groupId: string | undefined
+    if (macroPayload.binding.groupBindingMode === 'fixed') {
+      groupId = macroPayload.binding.groupId
+    } else if (macroPayload.binding.groupBindingMode === 'inherit') {
+      const groupBinding = normalizeMacroSnippetGroupBinding(raw?.groupBinding)
+      groupId = groupBinding === 'inherit' ? contextGroupId : undefined
+    }
+
+    steps.push({
+      id: `${node.id}::macro::${i + 1}`,
+      kind,
+      autoNext,
+      groupId
+    })
+  }
+
+  if (steps.length <= 0) {
+    errors.push(createIssue(
+      'macro_snippet_empty',
+      `宏节点 ${node.id} 展开后无可执行步骤。`,
+      `${nodePath}.data.snippet.steps`
+    ))
+  }
+
+  return { steps, errors, warnings }
 }
 
 function normalizeBranchScoreThreshold(value: unknown): number | null {
@@ -606,7 +779,8 @@ export function validateFlowVisualGraph(graph: FlowVisualGraph): FlowVisualCompi
 }
 
 export function compileFlowVisualGraphToLinearSteps(
-  graph: FlowVisualGraph
+  graph: FlowVisualGraph,
+  options: CompileFlowVisualLinearOptions = {}
 ): FlowVisualCompileResult<VisualLinearStep> {
   const validation = validateFlowVisualGraph(graph)
   if (!validation.ok) {
@@ -631,6 +805,8 @@ export function compileFlowVisualGraphToLinearSteps(
 
   const idToNode = new Map((graph.nodes || []).map((node) => [node.id, node]))
   const steps: VisualLinearStep[] = []
+  const macroErrors: FlowVisualCompileIssue[] = []
+  const macroWarnings: FlowVisualCompileIssue[] = []
   const visited = new Set<string>()
   let current = entry.id
   while (current && !visited.has(current)) {
@@ -638,6 +814,17 @@ export function compileFlowVisualGraphToLinearSteps(
     const node = idToNode.get(current)
     if (!node) break
     const payload = readNodePayload(node)
+    if (isMacroNode(node, payload)) {
+      const expanded = expandMacroNodeToLinearSteps(node, payload, options)
+      if (expanded.steps.length > 0) steps.push(...expanded.steps)
+      if (expanded.errors.length > 0) macroErrors.push(...expanded.errors)
+      if (expanded.warnings.length > 0) macroWarnings.push(...expanded.warnings)
+      const next = adjacency.outMap.get(current)?.[0]
+      if (!next) break
+      current = next
+      continue
+    }
+
     const kind = String(payload.stepKind || node.kind || '').trim() || 'unknown'
     const autoNextRaw = payload.autoNext
     const autoNext = typeof autoNextRaw === 'string' && autoNextRaw.trim()
@@ -660,8 +847,8 @@ export function compileFlowVisualGraphToLinearSteps(
   }
 
   const lint = lintLinearSteps(steps)
-  const warnings = [...validation.warnings, ...lint.warnings]
-  const errors = [...lint.errors]
+  const warnings = [...validation.warnings, ...macroWarnings, ...lint.warnings]
+  const errors = [...macroErrors, ...lint.errors]
   return {
     ok: errors.length <= 0,
     steps,

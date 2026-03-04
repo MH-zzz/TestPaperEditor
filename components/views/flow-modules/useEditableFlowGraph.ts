@@ -1,6 +1,9 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { FlowVisualEdge, FlowVisualGraph, FlowVisualNode, ListeningChoiceQuestion } from '/types'
-import { compileFlowVisualGraphToLinearSteps } from '/domain/flow-visual/usecases/compileGraphToSteps'
+import {
+  compileFlowVisualGraphToLinearSteps,
+  type ResolveFlowMacroSnippet
+} from '/domain/flow-visual/usecases/compileGraphToSteps'
 import {
   buildLinearFlowFixSuggestions,
   type FlowLinearFixSuggestion
@@ -22,6 +25,19 @@ export type EditableFlowNodePayload = {
   categoryLabel: string
   groupId: string
   questionCount: number
+  nodeKind?: 'macroNode'
+  snippet?: {
+    baseId?: string
+    version?: number
+    hash?: string
+  }
+  binding?: {
+    groupBindingMode?: 'inherit' | 'fixed' | 'empty'
+    groupId?: string
+    autoNextMode?: 'inherit' | 'override'
+    autoNext?: string
+  }
+  expandedStepCount?: number
 }
 
 export type FlowStencilItem = {
@@ -38,6 +54,13 @@ export type FlowVisualNodePatch = {
   stepKind?: string
   autoNext?: string
   groupId?: string
+  macroSnippetBaseId?: string
+  macroSnippetVersion?: string
+  macroSnippetHash?: string
+  macroGroupBindingMode?: string
+  macroGroupId?: string
+  macroAutoNextMode?: string
+  macroAutoNext?: string
 }
 
 export type FlowNodeDropPosition = 'before' | 'after'
@@ -94,13 +117,21 @@ export type FlowVisualBulkPatchResult =
     message: string
   }
 
+export type FlowMacroSnippetRefInput = {
+  baseId: string
+  version: number
+  hash?: string
+  stepCount?: number
+}
+
 const STENCIL_ITEMS: FlowStencilItem[] = [
   { kind: 'intro', label: '介绍页', color: '#2563eb', category: 'control', categoryLabel: '控制', description: '展示题型介绍与说明', defaultAutoNext: 'tapNext' },
   { kind: 'countdown', label: '倒计时', color: '#f59e0b', category: 'control', categoryLabel: '控制', description: '等待倒计时结束自动推进', defaultAutoNext: 'countdownEnded' },
   { kind: 'playAudio', label: '播放音频', color: '#0284c7', category: 'media', categoryLabel: '媒体', description: '播放描述或正文音频', defaultAutoNext: 'audioEnded' },
   { kind: 'promptTone', label: '提示音', color: '#0ea5e9', category: 'media', categoryLabel: '媒体', description: '播放提示音后继续', defaultAutoNext: 'audioEnded' },
   { kind: 'answerChoice', label: '答题', color: '#16a34a', category: 'interaction', categoryLabel: '交互', description: '进入作答并等待时间结束', defaultAutoNext: 'timeEnded' },
-  { kind: 'contextInfo', label: '上下文提示', color: '#7c3aed', category: 'control', categoryLabel: '控制', description: '展示上下文信息后继续', defaultAutoNext: 'tapNext' }
+  { kind: 'contextInfo', label: '上下文提示', color: '#7c3aed', category: 'control', categoryLabel: '控制', description: '展示上下文信息后继续', defaultAutoNext: 'tapNext' },
+  { kind: 'macroNode', label: '宏节点', color: '#9333ea', category: 'control', categoryLabel: '复合', description: '引用流程片段并在编译阶段展开', defaultAutoNext: '' }
 ]
 
 const AUTO_NEXT_LABEL: Record<string, string> = {
@@ -120,6 +151,17 @@ const AUTO_NEXT_OPTIONS: FlowPropertyFieldOption[] = [
   { label: '音频结束', value: 'audioEnded' },
   { label: '倒计时结束', value: 'countdownEnded' },
   { label: '作答时间结束', value: 'timeEnded' }
+]
+
+const MACRO_GROUP_BINDING_OPTIONS: FlowPropertyFieldOption[] = [
+  { label: '继承上下文', value: 'inherit' },
+  { label: '固定题组', value: 'fixed' },
+  { label: '强制清空', value: 'empty' }
+]
+
+const MACRO_AUTO_NEXT_OPTIONS: FlowPropertyFieldOption[] = [
+  { label: '继承片段', value: 'inherit' },
+  { label: '覆盖触发', value: 'override' }
 ]
 
 const NODE_WIDTH = 190
@@ -150,7 +192,62 @@ function resolveAutoNextLabel(autoNext: string): string {
   return AUTO_NEXT_LABEL[value] || `触发：${value}`
 }
 
+function normalizeMacroGroupBindingMode(value: unknown): 'inherit' | 'fixed' | 'empty' {
+  const text = String(value || '').trim()
+  if (text === 'fixed') return 'fixed'
+  if (text === 'empty') return 'empty'
+  return 'inherit'
+}
+
+function normalizeMacroAutoNextMode(value: unknown): 'inherit' | 'override' {
+  return String(value || '').trim() === 'override' ? 'override' : 'inherit'
+}
+
+function normalizeMacroSnippetVersion(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.floor(parsed)
+}
+
+function normalizeMacroExpandedStepCount(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.max(1, Math.floor(parsed))
+}
+
+function isMacroNodeStep(stepKind: string): boolean {
+  return String(stepKind || '').trim() === 'macroNode'
+}
+
+function composeMacroNodeSubtitle(payload: EditableFlowNodePayload): string {
+  const snippetBaseId = String(payload.snippet?.baseId || '').trim()
+  const snippetVersion = Math.max(0, normalizeMacroSnippetVersion(payload.snippet?.version))
+  const groupBindingMode = normalizeMacroGroupBindingMode(payload.binding?.groupBindingMode)
+  const autoNextMode = normalizeMacroAutoNextMode(payload.binding?.autoNextMode)
+  const parts: string[] = [
+    snippetBaseId ? `片段 ${snippetBaseId}@v${snippetVersion || '?'}` : '片段未绑定'
+  ]
+
+  if (groupBindingMode === 'fixed') {
+    parts.push(`题组固定 ${String(payload.binding?.groupId || '').trim() || '-'}`)
+  } else if (groupBindingMode === 'inherit') {
+    parts.push(`题组继承 ${payload.groupId || '-'}`)
+  } else {
+    parts.push('题组清空')
+  }
+
+  if (autoNextMode === 'override') {
+    parts.push(`推进覆盖 ${String(payload.binding?.autoNext || '').trim() || '-'}`)
+  } else {
+    parts.push('推进继承片段')
+  }
+  return parts.join(' · ')
+}
+
 function composeNodeSubtitle(payload: EditableFlowNodePayload): string {
+  if (isMacroNodeStep(payload.stepKind)) {
+    return composeMacroNodeSubtitle(payload)
+  }
   const parts: string[] = [payload.autoNextLabel]
   if (payload.groupId) parts.push(`题组 ${payload.groupId}`)
   if (payload.questionCount > 0) parts.push(`小题 ${payload.questionCount}`)
@@ -159,6 +256,70 @@ function composeNodeSubtitle(payload: EditableFlowNodePayload): string {
 
 function buildPropertyFieldsByStepKind(stepKind: string): FlowPropertyField[] {
   const kind = String(stepKind || '').trim()
+  if (isMacroNodeStep(kind)) {
+    return [
+      {
+        key: 'stepKind',
+        label: '节点类型',
+        type: 'select',
+        options: STEP_KIND_OPTIONS,
+        hint: '宏节点在编译阶段展开为多个步骤。'
+      },
+      {
+        key: 'macroSnippetBaseId',
+        label: '片段 BaseId',
+        type: 'text',
+        placeholder: '例如：snippet_listen_answer_loop'
+      },
+      {
+        key: 'macroSnippetVersion',
+        label: '片段版本',
+        type: 'text',
+        placeholder: '例如：3',
+        hint: '版本必须为正整数。'
+      },
+      {
+        key: 'macroSnippetHash',
+        label: '片段 Hash（可选）',
+        type: 'text',
+        placeholder: '例如：ab12cd'
+      },
+      {
+        key: 'groupId',
+        label: '上下文题组 ID',
+        type: 'text',
+        placeholder: '例如：group_1',
+        hint: '当组绑定模式为“继承上下文”时生效。'
+      },
+      {
+        key: 'macroGroupBindingMode',
+        label: '题组绑定策略',
+        type: 'select',
+        options: MACRO_GROUP_BINDING_OPTIONS
+      },
+      {
+        key: 'macroGroupId',
+        label: '固定题组 ID',
+        type: 'text',
+        placeholder: '例如：group_2',
+        hint: '仅在“固定题组”模式下生效。'
+      },
+      {
+        key: 'macroAutoNextMode',
+        label: '自动推进策略',
+        type: 'select',
+        options: MACRO_AUTO_NEXT_OPTIONS
+      },
+      {
+        key: 'macroAutoNext',
+        label: '覆盖自动推进',
+        type: 'text',
+        placeholder: '例如：audioEnded',
+        hint: '仅在“覆盖触发”模式下生效。'
+      }
+    ]
+  }
+
   const fields: FlowPropertyField[] = [
     {
       key: 'stepKind',
@@ -199,11 +360,20 @@ function relayoutNode(
   node: FlowVisualNode<EditableFlowNodePayload>,
   index: number
 ): FlowVisualNode<EditableFlowNodePayload> {
-  const meta = readMeta(String(node.data?.stepKind || node.kind || ''))
+  const stepKind = String(node.data?.stepKind || node.kind || '').trim()
+  const meta = readMeta(stepKind)
+  const isMacro = isMacroNodeStep(stepKind)
+  const macroGroupBindingMode = normalizeMacroGroupBindingMode(node.data?.binding?.groupBindingMode)
+  const macroAutoNextMode = normalizeMacroAutoNextMode(node.data?.binding?.autoNextMode)
+  const macroGroupId = String(node.data?.binding?.groupId || '').trim()
+  const macroAutoNext = String(node.data?.binding?.autoNext || '').trim()
+  const macroSnippetBaseId = String(node.data?.snippet?.baseId || '').trim()
+  const macroSnippetHash = String(node.data?.snippet?.hash || '').trim()
+  const macroSnippetVersion = normalizeMacroSnippetVersion(node.data?.snippet?.version)
   const data: EditableFlowNodePayload = {
     ...node.data,
     index,
-    stepKind: String(node.data?.stepKind || node.kind || meta.kind),
+    stepKind: stepKind || meta.kind,
     autoNext: String(node.data?.autoNext || ''),
     autoNextLabel: resolveAutoNextLabel(String(node.data?.autoNext || '')),
     category: meta.category,
@@ -212,6 +382,32 @@ function relayoutNode(
     questionCount: Number(node.data?.questionCount || 0),
     stepId: String(node.data?.stepId || node.id || buildNodeId(meta.kind))
   }
+
+  if (isMacro) {
+    data.nodeKind = 'macroNode'
+    data.snippet = {
+      baseId: macroSnippetBaseId,
+      version: macroSnippetVersion,
+      hash: macroSnippetHash || undefined
+    }
+    data.binding = {
+      groupBindingMode: macroGroupBindingMode,
+      groupId: macroGroupBindingMode === 'fixed' ? macroGroupId : undefined,
+      autoNextMode: macroAutoNextMode,
+      autoNext: macroAutoNextMode === 'override' ? macroAutoNext : undefined
+    }
+    data.expandedStepCount = normalizeMacroExpandedStepCount(node.data?.expandedStepCount)
+    data.autoNext = macroAutoNextMode === 'override' ? macroAutoNext : ''
+    data.autoNextLabel = macroAutoNextMode === 'override'
+      ? resolveAutoNextLabel(macroAutoNext)
+      : '继承片段'
+  } else {
+    data.nodeKind = undefined
+    data.snippet = undefined
+    data.binding = undefined
+    data.expandedStepCount = undefined
+  }
+
   return {
     ...node,
     kind: data.stepKind,
@@ -349,6 +545,7 @@ function createStencilNode(
   }
 ): FlowVisualNode<EditableFlowNodePayload> {
   const meta = readMeta(kind)
+  const isMacro = isMacroNodeStep(meta.kind)
   const autoNext = typeof overrides?.autoNext === 'string'
     ? String(overrides.autoNext || '').trim()
     : meta.defaultAutoNext
@@ -361,7 +558,21 @@ function createStencilNode(
     category: meta.category,
     categoryLabel: meta.categoryLabel,
     groupId: String(overrides?.groupId || ''),
-    questionCount: 0
+    questionCount: 0,
+    nodeKind: isMacro ? 'macroNode' : undefined,
+    snippet: isMacro
+      ? {
+        baseId: '',
+        version: 1
+      }
+      : undefined,
+    binding: isMacro
+      ? {
+        groupBindingMode: 'inherit',
+        autoNextMode: 'inherit'
+      }
+      : undefined,
+    expandedStepCount: isMacro ? 1 : undefined
   }
   return relayoutNode({
     id: buildNodeId(meta.kind),
@@ -405,9 +616,11 @@ function validateStencilInsertion(
   }
 
   if (nextKind === 'answerChoice') {
-    const hasPlayAudioBefore = currentKinds.slice(0, safeInsertIndex).some((item) => item === 'playAudio')
+    const hasPlayAudioBefore = currentKinds
+      .slice(0, safeInsertIndex)
+      .some((item) => item === 'playAudio' || item === 'macroNode')
     if (!hasPlayAudioBefore) {
-      return { ok: false, code: 'answer_requires_play_audio', message: '答题步骤前至少需要 1 个播放音频步骤。' }
+      return { ok: false, code: 'answer_requires_play_audio', message: '答题步骤前至少需要 1 个播放音频步骤（或宏节点）。' }
     }
   }
 
@@ -433,6 +646,21 @@ function normalizeSnippetTemplateSteps(steps: FlowSnippetTemplateStep[]): FlowSn
   return result
 }
 
+function normalizeMacroSnippetRef(input: FlowMacroSnippetRefInput | null | undefined): FlowMacroSnippetRefInput | null {
+  if (!input || typeof input !== 'object') return null
+  const baseId = String(input.baseId || '').trim()
+  const version = Math.floor(Number(input.version || 0))
+  if (!baseId || version <= 0) return null
+  const hash = String(input.hash || '').trim()
+  const stepCount = Math.max(1, Math.floor(Number(input.stepCount || 1)))
+  return {
+    baseId,
+    version,
+    hash: hash || undefined,
+    stepCount
+  }
+}
+
 function readAllowedFieldKeySetByStepKind(stepKind: string): Set<FlowPropertyFieldKey> {
   const fields = buildPropertyFieldsByStepKind(stepKind)
   return new Set(fields.map((item) => item.key))
@@ -440,6 +668,104 @@ function readAllowedFieldKeySetByStepKind(stepKind: string): Set<FlowPropertyFie
 
 function readPatchValue(raw: string | undefined): string {
   return String(raw || '').trim()
+}
+
+function applyNodePatchPayload(
+  payload: EditableFlowNodePayload,
+  patch: FlowVisualNodePatch,
+  allowedKeys?: Set<FlowPropertyFieldKey>
+): EditableFlowNodePayload {
+  const canWrite = (key: FlowPropertyFieldKey): boolean => !allowedKeys || allowedKeys.has(key)
+
+  let nextStepKind = payload.stepKind
+  if (patch.stepKind !== undefined && canWrite('stepKind')) {
+    const value = readPatchValue(patch.stepKind)
+    if (value) nextStepKind = value
+  }
+
+  let nextAutoNext = payload.autoNext
+  if (patch.autoNext !== undefined && canWrite('autoNext')) {
+    nextAutoNext = readPatchValue(patch.autoNext)
+  }
+
+  let nextGroupId = payload.groupId
+  if (patch.groupId !== undefined && canWrite('groupId')) {
+    nextGroupId = readPatchValue(patch.groupId)
+  }
+
+  let macroSnippetBaseId = String(payload.snippet?.baseId || '').trim()
+  if (patch.macroSnippetBaseId !== undefined && canWrite('macroSnippetBaseId')) {
+    macroSnippetBaseId = readPatchValue(patch.macroSnippetBaseId)
+  }
+
+  let macroSnippetHash = String(payload.snippet?.hash || '').trim()
+  if (patch.macroSnippetHash !== undefined && canWrite('macroSnippetHash')) {
+    macroSnippetHash = readPatchValue(patch.macroSnippetHash)
+  }
+
+  let macroSnippetVersion = normalizeMacroSnippetVersion(payload.snippet?.version)
+  if (macroSnippetVersion <= 0) macroSnippetVersion = 1
+  if (patch.macroSnippetVersion !== undefined && canWrite('macroSnippetVersion')) {
+    const raw = readPatchValue(patch.macroSnippetVersion)
+    macroSnippetVersion = raw ? normalizeMacroSnippetVersion(raw) : 0
+  }
+
+  let macroGroupBindingMode = normalizeMacroGroupBindingMode(payload.binding?.groupBindingMode)
+  if (patch.macroGroupBindingMode !== undefined && canWrite('macroGroupBindingMode')) {
+    macroGroupBindingMode = normalizeMacroGroupBindingMode(patch.macroGroupBindingMode)
+  }
+
+  let macroGroupId = String(payload.binding?.groupId || '').trim()
+  if (patch.macroGroupId !== undefined && canWrite('macroGroupId')) {
+    macroGroupId = readPatchValue(patch.macroGroupId)
+  }
+
+  let macroAutoNextMode = normalizeMacroAutoNextMode(payload.binding?.autoNextMode)
+  if (patch.macroAutoNextMode !== undefined && canWrite('macroAutoNextMode')) {
+    macroAutoNextMode = normalizeMacroAutoNextMode(patch.macroAutoNextMode)
+  }
+
+  let macroAutoNext = String(payload.binding?.autoNext || '').trim()
+  if (patch.macroAutoNext !== undefined && canWrite('macroAutoNext')) {
+    macroAutoNext = readPatchValue(patch.macroAutoNext)
+  }
+
+  const nextPayload: EditableFlowNodePayload = {
+    ...payload,
+    stepKind: nextStepKind,
+    autoNext: nextAutoNext,
+    groupId: nextGroupId
+  }
+
+  if (isMacroNodeStep(nextStepKind)) {
+    nextPayload.nodeKind = 'macroNode'
+    nextPayload.snippet = {
+      baseId: macroSnippetBaseId,
+      version: macroSnippetVersion,
+      hash: macroSnippetHash || undefined
+    }
+    nextPayload.binding = {
+      groupBindingMode: macroGroupBindingMode,
+      groupId: macroGroupBindingMode === 'fixed' ? macroGroupId : undefined,
+      autoNextMode: macroAutoNextMode,
+      autoNext: macroAutoNextMode === 'override' ? macroAutoNext : undefined
+    }
+    nextPayload.expandedStepCount = normalizeMacroExpandedStepCount(payload.expandedStepCount)
+  } else {
+    nextPayload.nodeKind = undefined
+    nextPayload.snippet = undefined
+    nextPayload.binding = undefined
+    nextPayload.expandedStepCount = undefined
+  }
+
+  return nextPayload
+}
+
+function isSameEditableNodePayload(
+  a: EditableFlowNodePayload,
+  b: EditableFlowNodePayload
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 function createEditableNodeFromReadonly(
@@ -482,7 +808,14 @@ function buildStepSignature(question: ListeningChoiceQuestion | null | undefined
   return lines.join('>')
 }
 
-export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | null | undefined>) {
+type UseEditableFlowGraphOptions = {
+  resolveMacroSnippet?: ResolveFlowMacroSnippet
+}
+
+export function useEditableFlowGraph(
+  questionRef: Ref<ListeningChoiceQuestion | null | undefined>,
+  options: UseEditableFlowGraphOptions = {}
+) {
   const nodes = ref<FlowVisualNode<EditableFlowNodePayload>[]>([])
   const selectedNodeId = ref('')
   const snippetSelectionAnchorId = ref('')
@@ -732,32 +1065,79 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     return insertSnippetSteps(steps, nodes.value.length)
   }
 
+  function buildMacroNodeFromSnippetRef(input: FlowMacroSnippetRefInput, insertIndex: number): FlowVisualNode<EditableFlowNodePayload> {
+    const normalized = normalizeMacroSnippetRef(input)
+    const node = createStencilNode('macroNode', insertIndex, {
+      groupId: resolveContextGroupIdByInsertIndex(insertIndex)
+    })
+    if (!normalized) return node
+    return relayoutNode({
+      ...node,
+      data: {
+        ...node.data,
+        snippet: {
+          baseId: normalized.baseId,
+          version: normalized.version,
+          hash: normalized.hash
+        },
+        binding: {
+          groupBindingMode: 'inherit',
+          autoNextMode: 'inherit'
+        },
+        expandedStepCount: normalized.stepCount
+      }
+    }, insertIndex)
+  }
+
+  function insertMacroSnippetNode(refInput: FlowMacroSnippetRefInput, insertIndex: number): FlowVisualInsertResult {
+    const normalized = normalizeMacroSnippetRef(refInput)
+    if (!normalized) {
+      return { ok: false, code: 'macro_snippet_ref_invalid', message: '片段引用无效，无法作为宏节点插入。' }
+    }
+
+    const safeIndex = Math.max(0, Math.min(insertIndex, nodes.value.length))
+    const check = validateStencilInsertion(nodes.value, 'macroNode', safeIndex)
+    if (!check.ok) return check
+
+    pushHistorySnapshot()
+    const next = [...nodes.value]
+    const node = buildMacroNodeFromSnippetRef(normalized, safeIndex)
+    next.splice(safeIndex, 0, node)
+    nodes.value = relayoutNodes(next)
+    selectedNodeId.value = node.id
+    markRecentlyMoved(node.id)
+    markDirty('insert_macro_snippet')
+    return { ok: true }
+  }
+
+  function insertMacroSnippetNearTarget(
+    refInput: FlowMacroSnippetRefInput,
+    targetNodeId: string,
+    position: FlowNodeDropPosition = 'after'
+  ): FlowVisualInsertResult {
+    const targetId = String(targetNodeId || '')
+    const targetIndex = nodes.value.findIndex((item) => item.id === targetId)
+    if (targetIndex < 0) return insertMacroSnippetAtTail(refInput)
+    const insertIndex = position === 'after' ? targetIndex + 1 : targetIndex
+    return insertMacroSnippetNode(refInput, insertIndex)
+  }
+
+  function insertMacroSnippetAtTail(refInput: FlowMacroSnippetRefInput): FlowVisualInsertResult {
+    return insertMacroSnippetNode(refInput, nodes.value.length)
+  }
+
   function patchSelectedNode(patch: FlowVisualNodePatch) {
     const nodeId = selectedNodeId.value
     if (!nodeId) return
     let changed = false
     const nextNodes = nodes.value.map((item) => {
       if (item.id !== nodeId) return item
-      const stepKind = patch.stepKind !== undefined ? String(patch.stepKind || '').trim() : item.data.stepKind
-      const autoNext = patch.autoNext !== undefined ? String(patch.autoNext || '').trim() : item.data.autoNext
-      const groupId = patch.groupId !== undefined ? String(patch.groupId || '').trim() : item.data.groupId
-      const nextStepKind = stepKind || item.data.stepKind
-      if (
-        nextStepKind === item.data.stepKind
-        && autoNext === item.data.autoNext
-        && groupId === item.data.groupId
-      ) {
-        return item
-      }
+      const nextData = applyNodePatchPayload(item.data, patch)
+      if (isSameEditableNodePayload(nextData, item.data)) return item
       changed = true
       return {
         ...item,
-        data: {
-          ...item.data,
-          stepKind: nextStepKind,
-          autoNext,
-          groupId
-        }
+        data: nextData
       }
     })
     if (!changed) return
@@ -797,10 +1177,8 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
       return { ok: false, code: 'bulk_patch_empty_selection', message: '请先选中需要批量修改的节点。' }
     }
     const idSet = new Set(ids)
-    const hasStepKind = patch.stepKind !== undefined
-    const hasAutoNext = patch.autoNext !== undefined
-    const hasGroupId = patch.groupId !== undefined
-    if (!hasStepKind && !hasAutoNext && !hasGroupId) {
+    const hasAnyPatch = Object.values(patch).some((value) => value !== undefined)
+    if (!hasAnyPatch) {
       return { ok: false, code: 'bulk_patch_empty_patch', message: '未检测到可应用的批量字段。' }
     }
 
@@ -809,41 +1187,14 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     const nextNodes = nodes.value.map((item) => {
       if (!idSet.has(item.id)) return item
       const allowedKeys = readAllowedFieldKeySetByStepKind(item.data.stepKind)
-      let nextStepKind = item.data.stepKind
-      let nextAutoNext = item.data.autoNext
-      let nextGroupId = item.data.groupId
-
-      if (hasStepKind && allowedKeys.has('stepKind')) {
-        const value = readPatchValue(patch.stepKind)
-        if (value) nextStepKind = value
-      }
-
-      if (hasAutoNext && allowedKeys.has('autoNext')) {
-        nextAutoNext = readPatchValue(patch.autoNext)
-      }
-
-      if (hasGroupId && allowedKeys.has('groupId')) {
-        nextGroupId = readPatchValue(patch.groupId)
-      }
-
-      if (
-        nextStepKind === item.data.stepKind
-        && nextAutoNext === item.data.autoNext
-        && nextGroupId === item.data.groupId
-      ) {
-        return item
-      }
+      const nextData = applyNodePatchPayload(item.data, patch, allowedKeys)
+      if (isSameEditableNodePayload(nextData, item.data)) return item
 
       changed = true
       updatedNodeCount += 1
       return {
         ...item,
-        data: {
-          ...item.data,
-          stepKind: nextStepKind,
-          autoNext: nextAutoNext,
-          groupId: nextGroupId
-        }
+        data: nextData
       }
     })
 
@@ -894,8 +1245,8 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
       ...duplicate,
       data: {
         ...duplicate.data,
-        autoNext: current.data.autoNext,
-        groupId: current.data.groupId
+        ...current.data,
+        stepId: buildNodeId(current.data.stepKind || duplicate.data.stepKind)
       }
     })
     nodes.value = relayoutNodes(next)
@@ -1059,7 +1410,9 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     return hit || list[0]
   })
 
-  const compileResult = computed(() => compileFlowVisualGraphToLinearSteps(graph.value))
+  const compileResult = computed(() => compileFlowVisualGraphToLinearSteps(graph.value, {
+    resolveMacroSnippet: options.resolveMacroSnippet
+  }))
   const compiledStepPreview = computed(() => compileResult.value.steps.slice(0, 6))
   const quickFixSuggestions = computed<FlowLinearFixSuggestion[]>(() => {
     return buildLinearFlowFixSuggestions({
@@ -1201,6 +1554,8 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     insertNodeNearTarget,
     insertSnippetNearTarget,
     insertSnippetAtTail,
+    insertMacroSnippetNearTarget,
+    insertMacroSnippetAtTail,
     saveSnippetFromSelectionRange,
     patchSelectionRange,
     patchSelectedNode,

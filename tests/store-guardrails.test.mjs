@@ -40,10 +40,12 @@ test('flow module store should keep status transitions behind status API', async
   assert.ok(src.includes('setListeningChoiceStatus(ref: FlowModuleRef | null | undefined, nextStatus: FlowModuleStatus)'))
 })
 
-test('flow profile store compatibility APIs should route through diagnostics-safe methods', async () => {
+test('flow profile store should only expose diagnostics-safe edit APIs', async () => {
   const src = await readFile('stores/flowProfiles.ts')
-  assert.ok(src.includes('return this.upsertWithDiagnostics(profileInput)'))
-  assert.ok(src.includes('return this.removeWithDiagnostics(id).ok'))
+  assert.ok(src.includes('upsertWithDiagnostics(profileInput: unknown)'))
+  assert.ok(src.includes('removeWithDiagnostics(id: string)'))
+  assert.ok(!src.includes('upsert(profileInput: unknown)'))
+  assert.ok(!src.includes('remove(id: string)'))
 })
 
 test('flow-related stores should use scheduler persistence instead of deep watch auto-save', async () => {
@@ -51,8 +53,6 @@ test('flow-related stores should use scheduler persistence instead of deep watch
     'stores/flowModules.ts',
     'stores/flowProfiles.ts',
     'stores/contentTemplates.ts',
-    'stores/flowLibrary.ts',
-    'stores/standardFlows.ts',
     'stores/settings.ts',
     'stores/tag.ts'
   ]
@@ -61,6 +61,32 @@ test('flow-related stores should use scheduler persistence instead of deep watch
     const src = await readFile(file)
     assert.ok(src.includes('createPersistenceScheduler'), `${file} should use createPersistenceScheduler`)
     assert.ok(!src.includes('{ deep: true }'), `${file} should not use deep watch auto-save`)
+  }
+})
+
+test('flow-related stores should validate storage payload schema before normalization', async () => {
+  const fileAssertions = [
+    {
+      file: 'stores/flowModules.ts',
+      include: 'parseFlowModulesStoragePayloadStrict',
+      guard: 'flowModules storage schema invalid'
+    },
+    {
+      file: 'stores/flowProfiles.ts',
+      include: 'parseFlowProfilesStoragePayloadStrict',
+      guard: 'flowProfiles storage schema invalid'
+    },
+    {
+      file: 'stores/contentTemplates.ts',
+      include: 'parseContentTemplatesStoragePayloadStrict',
+      guard: 'contentTemplates storage schema invalid'
+    }
+  ]
+
+  for (const item of fileAssertions) {
+    const src = await readFile(item.file)
+    assert.ok(src.includes(item.include), `${item.file} should use runtime schema parser`)
+    assert.ok(src.includes(item.guard), `${item.file} should guard invalid storage payload`)
   }
 })
 

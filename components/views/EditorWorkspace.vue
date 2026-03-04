@@ -552,15 +552,19 @@ function normalizeRouteText(v: unknown): string | undefined {
   return s || undefined
 }
 
+function readFlowContextRegion(question: Question | null): string | undefined {
+  const metadata = readQuestionMetadata(question)
+  const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
+  return normalizeRouteText(flowContext.region)
+}
+
 const flowRouteRegionLabel = computed(() => {
-  const metadata = readQuestionMetadata(questionData.value)
-  const region = normalizeRouteText(metadata.region)
+  const region = readFlowContextRegion(questionData.value)
   return region || '未打地区标签'
 })
 
 const flowRouteResolutionHint = computed(() => {
-  const metadata = readQuestionMetadata(questionData.value)
-  const region = normalizeRouteText(metadata.region)
+  const region = readFlowContextRegion(questionData.value)
   return region ? '按地区标签匹配；未命中走通用（默认/标准）流程' : '未打地区标签，走通用（默认/标准）流程'
 })
 

@@ -563,7 +563,7 @@ function coerceAudioFile(v: any): AudioFile | undefined {
 }
 
 function getSubContentAudio(sq: SpeakingSubQuestion): AudioFile | undefined {
-  return coerceAudioFile(sq.contentAudio) || coerceAudioFile(sq.audio) || coerceAudioFile((sq as any).descriptionAudio)
+  return coerceAudioFile(sq.contentAudio)
 }
 
 function updateSubContentAudioField(field: 'url' | 'name' | 'duration', value: string | number | undefined) {

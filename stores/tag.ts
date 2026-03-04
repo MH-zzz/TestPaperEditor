@@ -249,17 +249,6 @@ class TagStore {
     return this.state.index.rootById[id] || ''
   }
 
-  // Legacy compatibility (TagSelector will be replaced)
-  getByCategory(_category: string) {
-    return []
-  }
-
-  addTag(_name: string, _category: string) {
-    uni.showToast({ title: '标签系统已升级', icon: 'none' })
-  }
-
-  removeTag(_id: string) {}
-
   addChild(parentId: string | null, title: string) {
     const node: TagNode = { id: '', title: title.trim() }
     const parentPath = parentId ? (this.state.index.pathById[parentId] || '') : ''

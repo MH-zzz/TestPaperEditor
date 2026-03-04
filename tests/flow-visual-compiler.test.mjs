@@ -197,3 +197,119 @@ test('flow visual compiler should block intro placement issues with stable error
   assert.ok(result.errors.some((item) => item.code === 'intro_not_first'))
   assert.ok(result.errors.some((item) => item.code === 'intro_duplicate'))
 })
+
+test('flow visual compiler should expand macro node with snippet resolver', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'macroNode', {
+        nodeKind: 'macroNode',
+        groupId: 'group_2',
+        snippet: {
+          baseId: 'snippet_hear_answer_loop',
+          version: 2,
+          hash: 'hash_v2'
+        },
+        binding: {
+          groupBindingMode: 'inherit',
+          autoNextMode: 'override',
+          autoNext: 'audioEnded'
+        }
+      }),
+      createNode('n3', 'answerChoice', { stepKind: 'answerChoice', groupId: 'group_2', autoNext: 'timeEnded' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2'),
+      createEdge('e2', 'n2', 'n3')
+    ],
+    canvas: { width: 440, height: 320 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph, {
+    resolveMacroSnippet: () => ({
+      baseId: 'snippet_hear_answer_loop',
+      version: 2,
+      hash: 'hash_v2',
+      steps: [
+        { kind: 'playAudio', autoNext: 'tapNext', groupBinding: 'inherit' },
+        { kind: 'countdown', autoNext: 'countdownEnded', groupBinding: 'empty' }
+      ]
+    })
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.errors.length, 0)
+  assert.deepEqual(result.steps.map((item) => item.id), ['n1', 'n2::macro::1', 'n2::macro::2', 'n3'])
+  assert.deepEqual(result.steps.map((item) => item.kind), ['intro', 'playAudio', 'countdown', 'answerChoice'])
+  assert.equal(result.steps[1].autoNext, 'audioEnded')
+  assert.equal(result.steps[1].groupId, 'group_2')
+  assert.equal(result.steps[2].autoNext, 'audioEnded')
+  assert.equal(result.steps[2].groupId, undefined)
+})
+
+test('flow visual compiler should fail macro expansion when snippet resolver is missing', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'macroNode', {
+        nodeKind: 'macroNode',
+        snippet: {
+          baseId: 'snippet_hear_answer_loop',
+          version: 2
+        },
+        binding: {
+          groupBindingMode: 'inherit',
+          autoNextMode: 'inherit'
+        }
+      }),
+      createNode('n3', 'answerChoice', { stepKind: 'answerChoice' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2'),
+      createEdge('e2', 'n2', 'n3')
+    ],
+    canvas: { width: 420, height: 280 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph)
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'macro_snippet_resolver_missing'))
+})
+
+test('flow visual compiler should keep lint behavior on expanded macro steps', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'macroNode', {
+        nodeKind: 'macroNode',
+        snippet: {
+          baseId: 'snippet_play_only',
+          version: 1
+        },
+        binding: {
+          groupBindingMode: 'inherit',
+          autoNextMode: 'inherit'
+        }
+      })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2')
+    ],
+    canvas: { width: 320, height: 200 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph, {
+    resolveMacroSnippet: () => ({
+      baseId: 'snippet_play_only',
+      version: 1,
+      steps: [
+        { kind: 'playAudio', autoNext: 'audioEnded', groupBinding: 'inherit' }
+      ]
+    })
+  })
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'missing_answer_choice'))
+})

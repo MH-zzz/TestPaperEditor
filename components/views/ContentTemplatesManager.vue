@@ -114,9 +114,14 @@ import type { ListeningChoiceQuestion, SubQuestion } from '/types'
 import ListeningChoiceEditor from '/components/editor/ListeningChoiceEditor.vue'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
 import { contentTemplates } from '/stores/contentTemplates'
-import { standardFlows } from '/stores/standardFlows'
+import { flowModules } from '/stores/flowModules'
 import { generateId } from '/templates'
-import { LISTENING_CHOICE_STANDARD_FLOW_ID, materializeListeningChoiceStandardSteps } from '../../flows/listeningChoiceFlowModules'
+import {
+  DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+  LISTENING_CHOICE_STANDARD_FLOW_ID,
+  materializeListeningChoiceStandardSteps,
+  normalizeListeningChoiceStandardModule
+} from '../../flows/listeningChoiceFlowModules'
 
 type Page = 'home' | 'listening_choice'
 
@@ -143,6 +148,9 @@ watch(previewTotalSteps, (n) => {
 })
 
 function buildListeningChoiceDraft(): ListeningChoiceQuestion {
+  const module = normalizeListeningChoiceStandardModule(
+    flowModules.getListeningChoiceDefault(LISTENING_CHOICE_STANDARD_FLOW_ID) || DEFAULT_LISTENING_CHOICE_STANDARD_MODULE
+  )
   const tpl = clone(contentTemplates.state.listeningChoice)
   const q: ListeningChoiceQuestion = {
     id: 'template:listening_choice',
@@ -160,7 +168,7 @@ function buildListeningChoiceDraft(): ListeningChoiceQuestion {
   q.flow.steps = materializeListeningChoiceStandardSteps(q, {
     generateId,
     overrides: {},
-    module: standardFlows.state.listeningChoice
+    module
   }) as any
 
   return q

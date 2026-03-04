@@ -87,9 +87,10 @@ test('flow center should remove onboarding guide and route presets from flow pag
   assert.ok(!src.includes('地区+场景示例'))
 })
 
-test('flow profile store should support removing profile rules safely', async () => {
+test('flow profile store should support removing profile rules via diagnostics-safe API', async () => {
   const src = await readFile('stores/flowProfiles.ts')
-  assert.ok(src.includes('remove(id: string)'))
+  assert.ok(src.includes('removeWithDiagnostics(id: string)'))
+  assert.ok(!src.includes('remove(id: string)'))
   assert.ok(src.includes('this.state.profiles = next'))
 })
 
@@ -164,7 +165,8 @@ test('side navigation should derive question region metadata from selected 地�
   assert.ok(src.includes('questionDraft.updateMetadata({'))
   assert.ok(src.includes('region'))
   assert.ok(draftSrc.includes('updateMetadata(patch: { tags?: string[]; source?: string; region?: string })'))
-  assert.ok(draftSrc.includes('current.metadata.region'))
+  assert.ok(draftSrc.includes('current.metadata.flowContext'))
+  assert.ok(!draftSrc.includes('current.metadata.region'))
 })
 
 test('editor workspace should map 听说-听后选择 to listening_choice template', async () => {
@@ -200,11 +202,12 @@ test('speaking hear-answer default content should use single-group + double-grou
   assert.ok(src.includes("order: 5"))
 })
 
-test('content template store should migrate legacy hear-answer defaults on load', async () => {
+test('content template store should keep hear-answer baseline without legacy migration helpers', async () => {
   const src = await readFile('stores/contentTemplates.ts')
-  assert.ok(src.includes('isLegacySpeakingHearAnswerDefaultTemplate'))
-  assert.ok(src.includes('isLegacySpeakingHearAnswerExpandedDefaultTemplate'))
-  assert.ok(src.includes('this.save()'))
+  assert.ok(src.includes('DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE'))
+  assert.ok(src.includes('normalizeSpeakingHearAnswerContentTemplate'))
+  assert.ok(!src.includes('isLegacySpeakingHearAnswerDefaultTemplate'))
+  assert.ok(!src.includes('isLegacySpeakingHearAnswerExpandedDefaultTemplate'))
 })
 
 test('listening-choice binding should use dedicated standard flow for hear-answer variant', async () => {
@@ -213,16 +216,16 @@ test('listening-choice binding should use dedicated standard flow for hear-answe
   assert.ok(src.includes('function isHearAnswerVariant('))
   assert.ok(src.includes('if (isHearAnswerVariant(question)) {'))
   assert.ok(src.includes("flowModules.getListeningChoiceLatestPublished(LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)"))
-  assert.ok(src.includes('return { module: buildModuleFromLegacyStandard(defaultModuleId), profileId: profileId || matchedProfile?.id }'))
+  assert.ok(src.includes('return { module: buildDefaultStandardModule(defaultModuleId), profileId: profileId || matchedProfile?.id }'))
+  assert.ok(!src.includes('const migratedId ='))
 })
 
-test('flow center should auto-normalize legacy routing rules into region-only mode', async () => {
+test('flow center should keep region-routing mode handling without legacy auto-migration', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes('isLegacyRegionRoutingModel'))
   assert.ok(src.includes('ensureRegionRoutingMode'))
-  assert.ok(src.includes('replaceRegionRoutingBindings'))
-  assert.ok(src.includes('if (isGeneralRegion(region)) return true'))
-  assert.ok(src.includes('已切换为地区匹配模式'))
+  assert.ok(src.includes('if (!isRegionRoutingEnabled.value) return true'))
+  assert.ok(!src.includes('isLegacyRegionRoutingModel'))
+  assert.ok(!src.includes('已切换为地区匹配模式'))
 })
 
 test('flow center should show region binding target summary per chip', async () => {
@@ -451,24 +454,26 @@ test('listening-choice binding should skip archived module refs and fallback', a
   assert.ok(src.includes('if (isActiveModule(hit)) return { module: hit, profileId: profileId || undefined }'))
 })
 
-test('flow center should support bulk migrating profile rules to current module version', async () => {
+test('flow center should remove bulk profile-version migration compatibility actions', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(!src.includes('迁移到当前版本'))
-  assert.ok(lifecycleSrc.includes("title: '批量迁移路由版本'"))
-  assert.ok(lifecycleSrc.includes('migrateFlowProfilesToCurrentVersion'))
-  assert.ok(lifecycleSrc.includes('formatFlowProfileVersionSummary'))
+  assert.ok(!src.includes('migrateFlowProfilesToCurrentVersion'))
+  assert.ok(!lifecycleSrc.includes("title: '批量迁移路由版本'"))
+  assert.ok(!lifecycleSrc.includes('migrateFlowProfilesToCurrentVersion'))
+  assert.ok(!lifecycleSrc.includes('formatFlowProfileVersionSummary'))
 })
 
-test('flow center should support batch archiving old module versions with impact preview', async () => {
+test('flow center should remove batch old-version archive compatibility actions', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   assert.ok(!src.includes('批量归档旧版本'))
-  assert.ok(lifecycleSrc.includes('flowModulesArchivableToCurrentVersion'))
-  assert.ok(lifecycleSrc.includes('archiveHistoricalStandards'))
-  assert.ok(lifecycleSrc.includes("title: '批量归档旧版本'"))
-  assert.ok(lifecycleSrc.includes('影响面预览'))
-  assert.ok(lifecycleSrc.includes("title: '仍有启用路由引用旧版本'"))
+  assert.ok(!src.includes('archiveHistoricalStandards'))
+  assert.ok(!lifecycleSrc.includes('flowModulesArchivableToCurrentVersion'))
+  assert.ok(!lifecycleSrc.includes('archiveHistoricalStandards'))
+  assert.ok(!lifecycleSrc.includes("title: '批量归档旧版本'"))
+  assert.ok(!lifecycleSrc.includes('影响面预览'))
+  assert.ok(!lifecycleSrc.includes("title: '仍有启用路由引用旧版本'"))
 })
 
 test('flow center should run template/module/profile cross-checks before module commit', async () => {

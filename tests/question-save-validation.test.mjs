@@ -108,6 +108,31 @@ test('saveQuestionDraft should validate, enrich metadata, and persist both draft
   assert.ok(typeof result.question.metadata.updatedAt === 'string' && result.question.metadata.updatedAt.length > 0)
 })
 
+test('saveQuestionDraft should reject malformed question schema input', async () => {
+  const { saveQuestionDraft } = await import('../domain/question/usecases/saveQuestionDraft.ts')
+
+  const result = saveQuestionDraft({
+    id: 'q_schema_bad',
+    type: 'unknown_type'
+  })
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'question_schema_invalid'))
+})
+
+test('saveQuestionDraft should reject malformed normalized question schema output', async () => {
+  const { saveQuestionDraft } = await import('../domain/question/usecases/saveQuestionDraft.ts')
+
+  const valid = createValidListeningChoiceQuestion()
+  const result = saveQuestionDraft(valid, {
+    normalizeQuestion: () => ({
+      id: 'q_after_normalize_bad',
+      type: 'unknown_type'
+    })
+  })
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'normalized_question_schema_invalid'))
+})
+
 test('questionDraft store should distinguish updateDraft and saveToRecent semantics', async () => {
   const fs = await import('node:fs/promises')
   const src = await fs.readFile(new URL('../stores/questionDraft.ts', import.meta.url), 'utf8')

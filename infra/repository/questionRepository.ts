@@ -1,4 +1,5 @@
 import type { Question } from '/types'
+import { parseQuestionSnapshot, parseQuestionSnapshotList } from '../../domain/schemas/runtimeBoundarySchemas.ts'
 
 const CURRENT_QUESTION_KEY = 'currentQuestion'
 const RECENT_QUESTIONS_KEY = 'recentQuestions'
@@ -16,8 +17,7 @@ export function loadCurrentQuestionSnapshot<TQuestion extends Question = Questio
     const stored = uni.getStorageSync(CURRENT_QUESTION_KEY)
     if (!stored) return null
     const parsed = safeJsonParse(stored)
-    if (!parsed || typeof parsed !== 'object') return null
-    return parsed as TQuestion
+    return parseQuestionSnapshot(parsed) as TQuestion | null
   } catch {
     return null
   }
@@ -34,7 +34,7 @@ export function loadRecentQuestions<TQuestion extends Question = Question>(): TQ
     const stored = uni.getStorageSync(RECENT_QUESTIONS_KEY)
     if (!stored) return []
     const parsed = safeJsonParse(stored)
-    return Array.isArray(parsed) ? (parsed as TQuestion[]) : []
+    return parseQuestionSnapshotList(parsed) as TQuestion[]
   } catch {
     return []
   }

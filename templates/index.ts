@@ -4,7 +4,6 @@ import type {
   ListeningFillQuestion,
   ListeningMatchQuestion,
   ListeningOrderQuestion,
-  SpeakingQuestion,
   SpeakingStepsQuestion,
   SpeakingPartType,
   SpeakingStepsStep,
@@ -162,73 +161,6 @@ export function createListeningHearAnswerTemplate(
   return resolveListeningChoiceQuestion(question, { generateId }) as SpeakingHearAnswerQuestion
 }
 
-// ==================== Migrations / Normalizers ====================
-
-// Split legacy listening_choice intro (audio + countdown inside one step) into:
-// - intro (audio)
-// - countdown (intro countdown)
-//
-// This keeps runtime behavior the same while making the flow clearer in preview/editor.
-export function migrateListeningChoiceFlowSplitIntro(question: ListeningChoiceQuestion): ListeningChoiceQuestion {
-  try {
-    const steps = question.flow?.steps || []
-    if (!Array.isArray(steps) || steps.length === 0) return question
-
-    const introIdx = steps.findIndex(s => s?.kind === 'intro')
-    if (introIdx < 0) return question
-
-    const introStep: any = steps[introIdx]
-    const next: any = steps[introIdx + 1]
-    let contentIntro = question.content?.intro || ({} as any)
-    let changed = false
-
-    // Move legacy editable intro step title into content (authoring area).
-    if (!contentIntro.title && introStep?.title) {
-      contentIntro = { ...contentIntro, title: String(introStep.title) }
-      changed = true
-    }
-
-    // Already split.
-    // Also normalize showTitle defaults and strip step titles (titles live in editor content).
-    const withShowTitle = steps.map((s: any) => {
-      if (!s || typeof s !== 'object') return s
-      const normalized: any = { ...s }
-      if (typeof normalized.showTitle !== 'boolean') normalized.showTitle = true
-      if (typeof normalized.title === 'string') delete normalized.title
-      return normalized
-    })
-    if (withShowTitle.some((s, i) => s !== steps[i])) changed = true
-
-    if (next?.kind === 'countdown') {
-      if (!changed) return question
-      return { ...question, content: { ...question.content, intro: contentIntro }, flow: { ...question.flow, steps: withShowTitle as any } }
-    }
-
-    const cfg: any = contentIntro?.countdown
-    const seconds = Number(cfg?.seconds || 0)
-    if (!seconds || seconds <= 0) return question
-
-    // Only migrate the legacy "countdownEnded" intro semantics.
-    if (introStep?.autoNext !== 'countdownEnded') return question
-
-    const migratedSteps = [...withShowTitle]
-    migratedSteps[introIdx] = { ...migratedSteps[introIdx], autoNext: 'audioEnded', showTitle: true }
-    migratedSteps.splice(introIdx + 1, 0, {
-      id: generateId(),
-      kind: 'countdown',
-      showTitle: true,
-      seconds,
-      label: cfg?.label || '准备',
-      endBeepUrl: cfg?.endBeepUrl || '/static/beep.mp3',
-      autoNext: 'countdownEnded'
-    } as any)
-
-    return { ...question, content: { ...question.content, intro: contentIntro }, flow: { ...question.flow, steps: migratedSteps } }
-  } catch {
-    return question
-  }
-}
-
 // 听力填空题模板
 export function createListeningFillTemplate(): ListeningFillQuestion {
   return {
@@ -324,49 +256,7 @@ export function createListeningOrderTemplate(): ListeningOrderQuestion {
   }
 }
 
-// 口语题模板（旧版）
-export function createSpeakingTemplate(): SpeakingQuestion {
-  return {
-    id: generateId(),
-    type: 'speaking',
-    stem: createRichText('请根据提示完成以下口语任务'),
-    steps: [
-      {
-        id: generateId(),
-        title: '听题',
-        behavior: 'auto_play',
-        audioUrl: 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3',
-        instruction: createRichText('请仔细听题目要求。')
-      },
-      {
-        id: generateId(),
-        title: '浏览',
-        behavior: 'countdown',
-        duration: 30,
-        instruction: createRichText('请浏览以下材料，准备作答。'),
-        passage: createRichText('This is a sample passage for the speaking test. You should read it carefully and prepare to answer the questions.')
-      },
-      {
-        id: generateId(),
-        title: '准备',
-        behavior: 'countdown',
-        duration: 10,
-        instruction: createRichText('准备时间，请组织你的答案。'),
-        beepOnStart: true
-      },
-      {
-        id: generateId(),
-        title: '作答',
-        behavior: 'record',
-        duration: 60,
-        instruction: createRichText('请开始录音作答。'),
-        beepOnStart: true
-      }
-    ]
-  }
-}
-
-// ==================== 口语题模板（新版 - 步骤化） ====================
+// ==================== 口语题模板（步骤化） ====================
 
 // 题型名称映射
 export const speakingPartTypeNames: Record<SpeakingPartType, string> = {

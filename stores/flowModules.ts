@@ -7,6 +7,7 @@ import {
   LISTENING_CHOICE_STANDARD_FLOW_ID,
   normalizeListeningChoiceStandardModule
 } from '../flows/listeningChoiceFlowModules'
+import { parseFlowModulesStoragePayloadStrict } from '../domain/schemas/runtimeBoundarySchemas.ts'
 import { createPersistenceScheduler } from './persistence'
 
 const STORAGE_KEY = 'editor_flow_modules_v2'
@@ -31,10 +32,10 @@ function normalizeListeningChoiceModuleName(src: Record<string, unknown>): strin
   const id = normalizeText(src?.id) || LISTENING_CHOICE_STANDARD_FLOW_ID
   const raw = normalizeText(src?.name)
   if (id === LISTENING_CHOICE_STANDARD_FLOW_ID) {
-    if (!raw || raw === '听后选择题型流程') return DEFAULT_LISTENING_CHOICE_MODULE_NAME
+    if (!raw) return DEFAULT_LISTENING_CHOICE_MODULE_NAME
   }
   if (id === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) {
-    if (!raw || raw === '听后回答题型流程') return DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME
+    if (!raw) return DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME
   }
   return raw || id
 }
@@ -74,143 +75,6 @@ function normalizeListeningChoiceModule(input: unknown): ListeningChoiceFlowModu
     createdAt: typeof src.createdAt === 'string' && src.createdAt ? src.createdAt : now,
     updatedAt: typeof src.updatedAt === 'string' && src.updatedAt ? src.updatedAt : now
   }
-}
-
-function isHearAnswerModuleId(moduleId: unknown): boolean {
-  const id = normalizeText(moduleId) || ''
-  if (!id) return false
-  return id === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID || id.startsWith('listening_hear_answer.line.')
-}
-
-type PerGroupStepDef = ListeningChoiceFlowModuleV1['perGroupSteps'][number]
-
-function createHearAnswerRecordGuideStep(): PerGroupStepDef {
-  return {
-    kind: 'recordGuide',
-    showTitle: false,
-    showQuestionTitle: true,
-    showQuestionTitleDescription: true,
-    showGroupPrompt: false,
-    textSource: 'question',
-    audioSource: 'question',
-    screenStrategy: 'replaceBody'
-  }
-}
-
-function ensureHearAnswerRecordGuideStep(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
-  if (!isHearAnswerModuleId(module.id)) return module
-  const steps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
-  const hasAnswerChoice = steps.some((step) => step.kind === 'answerChoice')
-  const hasRecordGuide = steps.some((step) => step.kind === 'recordGuide')
-  if (!hasAnswerChoice || hasRecordGuide) return module
-
-  const nextSteps: PerGroupStepDef[] = []
-  for (const step of steps) {
-    if (step.kind === 'answerChoice') {
-      let inserted = false
-      let insertIndex = -1
-      for (let i = nextSteps.length - 1; i >= 0; i -= 1) {
-        const current = nextSteps[i]
-        if (current.kind === 'answerChoice') break
-        if (current.kind === 'promptTone') {
-          insertIndex = i
-          break
-        }
-      }
-
-      if (insertIndex >= 0) {
-        const prev = nextSteps[insertIndex - 1]
-        if (!prev || prev.kind !== 'recordGuide') {
-          nextSteps.splice(insertIndex, 0, createHearAnswerRecordGuideStep())
-        }
-        inserted = true
-      }
-
-      if (!inserted) {
-        const prev = nextSteps[nextSteps.length - 1]
-        if (!prev || prev.kind !== 'recordGuide') {
-          nextSteps.push(createHearAnswerRecordGuideStep())
-        }
-      }
-    }
-    nextSteps.push(step)
-  }
-
-  if (nextSteps.length === steps.length) return module
-  return {
-    ...module,
-    perGroupSteps: nextSteps,
-    updatedAt: nowIso()
-  }
-}
-
-function isLegacyHearAnswerStandardTitleConfig(module: ListeningChoiceFlowModuleV1): boolean {
-  if (String(module?.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return false
-  const steps = Array.isArray(module?.perGroupSteps) ? module.perGroupSteps : []
-  if (steps.length !== 5) return false
-  const kinds = steps.map((step) => String((step as { kind?: unknown })?.kind || ''))
-  if (kinds.join(',') !== 'playAudio,countdown,playAudio,promptTone,answerChoice') return false
-
-  const allShowTitleTrue = steps.every((step) => (step as { showTitle?: unknown })?.showTitle === true)
-  if (!allShowTitleTrue) return false
-
-  const first = steps[0] as { audioSource?: unknown; showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
-  const second = steps[1] as { seconds?: unknown; label?: unknown }
-  const third = steps[2] as { audioSource?: unknown; showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
-  const fourth = steps[3] as { url?: unknown }
-  const fifth = steps[4] as { showQuestionTitle?: unknown; showQuestionTitleDescription?: unknown; showGroupPrompt?: unknown }
-
-  return first.audioSource === 'description'
-    && first.showQuestionTitle === true
-    && first.showQuestionTitleDescription === true
-    && first.showGroupPrompt === true
-    && Number(second.seconds || 0) === 5
-    && String(second.label || '') === '答题准备'
-    && third.audioSource === 'content'
-    && third.showQuestionTitle === true
-    && third.showQuestionTitleDescription === true
-    && third.showGroupPrompt === true
-    && String(fourth.url || '') === '/static/audio/small_time.mp3'
-    && fifth.showQuestionTitle === true
-    && fifth.showQuestionTitleDescription === true
-    && fifth.showGroupPrompt === true
-}
-
-function isLegacyHearAnswerPromptToneConfig(module: ListeningChoiceFlowModuleV1): boolean {
-  if (String(module?.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return false
-  const steps = Array.isArray(module?.perGroupSteps) ? module.perGroupSteps : []
-  if (steps.length !== 5) return false
-  const kinds = steps.map((step) => String((step as { kind?: unknown })?.kind || ''))
-  if (kinds.join(',') !== 'playAudio,countdown,playAudio,promptTone,answerChoice') return false
-
-  const first = steps[0] as { audioSource?: unknown }
-  const second = steps[1] as { seconds?: unknown; label?: unknown }
-  const third = steps[2] as { audioSource?: unknown }
-  const fourth = steps[3] as { url?: unknown }
-
-  return first.audioSource === 'description'
-    && Number(second.seconds || 0) === 5
-    && String(second.label || '') === '答题准备'
-    && third.audioSource === 'content'
-    && String(fourth.url || '') === '/static/audio/small_time.mp3'
-}
-
-function applyHearAnswerDefaultTitleConfig(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
-  const perGroupSteps = (module.perGroupSteps || []).map((step) => ({ ...step, showTitle: false }))
-  return normalizeListeningChoiceModule({
-    ...module,
-    perGroupSteps,
-    updatedAt: nowIso()
-  })
-}
-
-function applyHearAnswerDefaultPromptToneConfig(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
-  const perGroupSteps = (DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps || []).map((step) => ({ ...step }))
-  return normalizeListeningChoiceModule({
-    ...module,
-    perGroupSteps,
-    updatedAt: nowIso()
-  })
 }
 
 const DEFAULT_LISTENING_CHOICE_FLOW_MODULE = normalizeListeningChoiceModule({
@@ -299,34 +163,15 @@ class FlowModulesStore {
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (!stored) return
       const parsed = JSON.parse(stored)
-      const list = Array.isArray(parsed?.listeningChoice) ? parsed.listeningChoice : []
-      const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
-      let migrated = false
-      const migratedList = normalized.map((module) => {
-        let next = module
-        if (isLegacyHearAnswerStandardTitleConfig(next)) {
-          migrated = true
-          next = applyHearAnswerDefaultTitleConfig(next)
-        }
-        if (isLegacyHearAnswerPromptToneConfig(next)) {
-          migrated = true
-          next = applyHearAnswerDefaultPromptToneConfig(next)
-        }
-        const beforeHasRecordGuide = (next.perGroupSteps || []).some((step) => step.kind === 'recordGuide')
-        const ensured = ensureHearAnswerRecordGuideStep(next)
-        const afterHasRecordGuide = (ensured.perGroupSteps || []).some((step) => step.kind === 'recordGuide')
-        if (!beforeHasRecordGuide && afterHasRecordGuide) {
-          migrated = true
-        }
-        next = ensured
-        return next
-      })
-      this.state.listeningChoice = migratedList.length
-        ? ensurePublishedStandardBaseline(migratedList)
-        : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
-      if (migrated) {
-        this.save()
+      const schemaParsed = parseFlowModulesStoragePayloadStrict(parsed)
+      if (!schemaParsed.ok) {
+        throw new Error(`flowModules storage schema invalid: ${schemaParsed.error}`)
       }
+      const list = schemaParsed.payload.listeningChoice
+      const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
+      this.state.listeningChoice = normalized.length
+        ? ensurePublishedStandardBaseline(normalized)
+        : [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
     } catch (e) {
       console.error('Failed to load flow modules', e)
       this.state.listeningChoice = [DEFAULT_LISTENING_CHOICE_FLOW_MODULE, DEFAULT_LISTENING_HEAR_ANSWER_FLOW_MODULE]
@@ -399,8 +244,7 @@ class FlowModulesStore {
           ...src,
           status: defaultStatus
         }
-    const normalizedModule = normalizeListeningChoiceModule({ ...normalizedInput, updatedAt: nowIso() })
-    const module = ensureHearAnswerRecordGuideStep(normalizedModule)
+    const module = normalizeListeningChoiceModule({ ...normalizedInput, updatedAt: nowIso() })
     const nextIdx = this.state.listeningChoice.findIndex(m => m.id === module.id && m.version === module.version)
     if (nextIdx >= 0) {
       const createdAt = this.state.listeningChoice[nextIdx].createdAt || module.createdAt

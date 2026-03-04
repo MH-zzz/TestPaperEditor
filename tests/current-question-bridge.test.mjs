@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-test('readQuestionFlowContext should prefer metadata.flowContext then fallback fields', async () => {
+test('readQuestionFlowContext should read metadata.flowContext only', async () => {
   const mod = await import('../components/views/flow-modules/currentQuestionBridge.ts')
 
   const q1 = {
@@ -23,9 +23,9 @@ test('readQuestionFlowContext should prefer metadata.flowContext then fallback f
     }
   }
   const c2 = mod.readQuestionFlowContext(q2)
-  assert.equal(c2.region, 'fallback-region')
-  assert.equal(c2.scene, 'fallback-scene')
-  assert.equal(c2.grade, 'fallback-grade')
+  assert.equal(c2.region, '')
+  assert.equal(c2.scene, '')
+  assert.equal(c2.grade, '')
 })
 
 test('patchQuestionFlowContext should write and clear metadata.flowContext deterministically', async () => {
@@ -59,7 +59,7 @@ test('patchQuestionFlowContext should write and clear metadata.flowContext deter
   assert.equal('flowContext' in cleared.metadata, false)
 })
 
-test('patchListeningChoiceQuestionFlow should apply standard/library source and steps', async () => {
+test('patchListeningChoiceQuestionFlow should apply standard source and steps', async () => {
   const mod = await import('../components/views/flow-modules/currentQuestionBridge.ts')
   const question = {
     id: 'q1',
@@ -74,12 +74,12 @@ test('patchListeningChoiceQuestionFlow should apply standard/library source and 
 
   const next = mod.patchListeningChoiceQuestionFlow(
     question,
-    { kind: 'library', id: 'new_lib' },
+    { kind: 'standard', id: 'new_std', version: 2 },
     [{ id: 's1', kind: 'playAudio' }]
   )
 
   assert.equal(next.flow.version, 1)
   assert.equal(next.flow.mode, 'semi-auto')
-  assert.deepEqual(next.flow.source, { kind: 'library', id: 'new_lib' })
+  assert.deepEqual(next.flow.source, { kind: 'standard', id: 'new_std', version: 2 })
   assert.deepEqual(next.flow.steps, [{ id: 's1', kind: 'playAudio' }])
 })

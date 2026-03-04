@@ -18,7 +18,7 @@
 import { ref, onMounted } from 'vue'
 import type { ListeningChoiceQuestion, MatchMode, Question, SpeakingHearAnswerQuestion } from '/types'
 import QuestionRenderer from '/components/renderer/QuestionRenderer.vue'
-import { questionTemplates, migrateListeningChoiceFlowSplitIntro, generateId } from '/templates'
+import { questionTemplates, generateId } from '/templates'
 import { resolveListeningChoiceQuestion } from '../../engine/flow/listening-choice/binding.ts'
 import { loadCurrentQuestionSnapshot, saveCurrentQuestionSnapshot } from '/infra/repository/questionRepository'
 
@@ -126,13 +126,6 @@ onMounted(() => {
         ? questionTemplates.speaking_hear_answer.create()
         : questionTemplates.listening_choice.create()
       saveCurrentQuestionSnapshot(data)
-    }
-    if (data?.type === 'listening_choice' && data.content && data.flow) {
-      const migrated = migrateListeningChoiceFlowSplitIntro(data as ListeningChoiceQuestion)
-      if (migrated !== data) {
-        data = migrated as Question
-        saveCurrentQuestionSnapshot(data)
-      }
     }
     if ((data?.type === 'listening_choice' || data?.type === 'speaking_hear_answer') && data.content && data.flow) {
       const resolved = resolveListeningChoiceFlowSource(data)

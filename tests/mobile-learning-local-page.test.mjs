@@ -70,22 +70,25 @@ test('mobile learning page should format object-style load errors for readable m
   assert.ok(src.includes('localLearningState.loadError = resolveLoadErrorMessage(err)'))
 })
 
-test('local learning should normalize hear-answer modules to V2 recordGuide flow', async () => {
+test('local learning should normalize imported flow modules with current schema', async () => {
   const src = await readFile('stores/localLearning.ts')
   assert.ok(src.includes('normalizeListeningChoiceStandardModule'))
-  assert.ok(src.includes('LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID'))
-  assert.ok(src.includes("String((step as { kind?: unknown })?.kind || '') === 'recordGuide'"))
-  assert.ok(src.includes('DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps'))
+  assert.ok(src.includes('function toListeningChoiceModules(raw: unknown): ListeningChoiceFlowModuleV1[] {'))
+  assert.ok(src.includes("kind: 'listening_choice'"))
+  assert.ok(src.includes('flowModules.state.listeningChoice = modules'))
+  assert.ok(!src.includes('DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps'))
 })
 
-test('local learning should migrate legacy flow export payload to schema v2 before applying', async () => {
+test('local learning should read schema-v2 flow export payload directly', async () => {
   const src = await readFile('stores/localLearning.ts')
-  assert.ok(src.includes("import { migrateFlowExportPayloadToV2 } from '/infra/repository/flowExportPackage'"))
-  assert.ok(src.includes('const migratedPack = migrateFlowExportPayloadToV2(payload)'))
-  assert.ok(src.includes('localLearningState.flowImportSchemaVersion'))
-  assert.ok(src.includes('localLearningState.flowImportMigrated'))
-  assert.ok(src.includes('localLearningState.flowImportChangeCount'))
+  assert.ok(src.includes("import { readFlowExportPackageV2 } from '/infra/repository/flowExportPackage'"))
+  assert.ok(src.includes('const pack = readFlowExportPackageV2(payload)'))
+  assert.ok(src.includes('if (!pack) {'))
+  assert.ok(src.includes('本地流程包格式不合法'))
   assert.ok(src.includes('localLearningState.flowImportCapabilities'))
+  assert.ok(!src.includes('flowImportSchemaVersion'))
+  assert.ok(!src.includes('flowImportMigrated'))
+  assert.ok(!src.includes('flowImportChangeCount'))
 })
 
 test('App launch should redirect to mobile local learning page on APP-PLUS', async () => {

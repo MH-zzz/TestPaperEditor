@@ -748,6 +748,7 @@
                   <view class="flow-visual-snippet__ops">
                     <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualSnippet(item.id, 'after')">插入到当前后</button>
                     <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualSnippet(item.id, 'end')">追加到末尾</button>
+                    <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualSnippetAsMacro(item.id, 'after')">作为宏插入</button>
                   </view>
                 </view>
               </view>
@@ -779,9 +780,20 @@
               <text class="flow-visual-detail__line">节点：{{ readonlyFlowVisualActiveNode.label }}</text>
               <text class="flow-visual-detail__line">kind：{{ readonlyFlowVisualActiveNode.data.stepKind || '-' }}</text>
               <text class="flow-visual-detail__line">stepId：{{ readonlyFlowVisualActiveNode.data.stepId || '-' }}</text>
-              <text class="flow-visual-detail__line">autoNext：{{ readonlyFlowVisualActiveNode.data.autoNext || '-' }}</text>
-              <text class="flow-visual-detail__line">题组：{{ readonlyFlowVisualActiveNode.data.groupId || '-' }}</text>
-              <text class="flow-visual-detail__line">小题数：{{ readonlyFlowVisualActiveNode.data.questionCount }}</text>
+              <template v-if="readonlyFlowVisualActiveNode.data.stepKind === 'macroNode'">
+                <text class="flow-visual-detail__line">片段：{{ readonlyFlowVisualActiveNode.data.snippet?.baseId || '-' }}@v{{ readonlyFlowVisualActiveNode.data.snippet?.version || '-' }}</text>
+                <text class="flow-visual-detail__line">Hash：{{ readonlyFlowVisualActiveNode.data.snippet?.hash || '-' }}</text>
+                <text class="flow-visual-detail__line">组绑定：{{ readonlyFlowVisualActiveNode.data.binding?.groupBindingMode || '-' }}</text>
+                <text class="flow-visual-detail__line">固定题组：{{ readonlyFlowVisualActiveNode.data.binding?.groupId || '-' }}</text>
+                <text class="flow-visual-detail__line">上下文题组：{{ readonlyFlowVisualActiveNode.data.groupId || '-' }}</text>
+                <text class="flow-visual-detail__line">推进策略：{{ readonlyFlowVisualActiveNode.data.binding?.autoNextMode || '-' }}</text>
+                <text class="flow-visual-detail__line">推进覆盖：{{ readonlyFlowVisualActiveNode.data.binding?.autoNext || '-' }}</text>
+              </template>
+              <template v-else>
+                <text class="flow-visual-detail__line">autoNext：{{ readonlyFlowVisualActiveNode.data.autoNext || '-' }}</text>
+                <text class="flow-visual-detail__line">题组：{{ readonlyFlowVisualActiveNode.data.groupId || '-' }}</text>
+                <text class="flow-visual-detail__line">小题数：{{ readonlyFlowVisualActiveNode.data.questionCount }}</text>
+              </template>
             </template>
             <text v-else class="flow-visual-detail__line">暂无节点</text>
 
@@ -864,11 +876,19 @@
               <template v-if="readonlyFlowCompileResult.ok">
                 <text class="flow-visual-compile__status is-ok">状态：可编译（{{ readonlyFlowCompileResult.steps.length }} steps）</text>
                 <view class="flow-visual-compile__list">
-                  <text
+                  <view
                     v-for="(item, index) in readonlyFlowCompiledStepPreview"
                     :key="item.id"
-                    class="flow-visual-detail__line"
-                  >步骤 {{ index + 1 }} · {{ item.kind }} · {{ item.autoNext || 'manual' }}</text>
+                    class="flow-visual-compile__issue"
+                    :class="{ 'is-locatable': readFlowVisualCompiledStepNodeId(item.id) }"
+                    @click="locateReadonlyFlowVisualCompiledStep(item.id)"
+                  >
+                    <text class="flow-visual-detail__line">{{ formatReadonlyFlowCompiledStepLine(item, index) }}</text>
+                    <text
+                      v-if="readFlowVisualCompiledStepNodeId(item.id)"
+                      class="flow-visual-compile__issue-action"
+                    >点击定位</text>
+                  </view>
                 </view>
                 <template v-if="readonlyFlowCompileResult.warnings.length > 0">
                   <text class="flow-visual-compile__status is-warning">编译提醒（{{ readonlyFlowCompileResult.warnings.length }}）</text>
@@ -1322,7 +1342,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function toLegacyStandardModule(moduleInput: unknown): ListeningChoiceStandardFlowModuleV1 {
+function toDraftStandardModule(moduleInput: unknown): ListeningChoiceStandardFlowModuleV1 {
   const m = isObjectRecord(moduleInput) ? moduleInput : {}
   return {
     version: 1,
@@ -1552,7 +1572,7 @@ const flowLineWizardBaseline = ref<FlowLineWizardBaseline>('current')
 const flowLineWizardName = ref('')
 const flowLineWizardNote = ref('')
 const flowLineWizardRegions = ref<string[]>([])
-const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toLegacyStandardModule(defaultModule)))
+const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toDraftStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
   const fallbackStandardId = getStandardModuleIdByPageType(activeFlowPageType.value)
   const id = String(draftModuleId.value || fallbackStandardId)
@@ -1784,28 +1804,6 @@ function buildRegionOnlyProfiles(
   return [defaultProfile, ...regionProfiles]
 }
 
-function isLegacyRegionRoutingModel(profiles: FlowProfileV1[]): boolean {
-  const list = profiles || []
-  const seenRegions = new Set<string>()
-  let hasDefault = false
-  for (const profile of list) {
-    if (profile?.enabled === false) return true
-    const region = normalizeNullableText(profile?.region)
-    const scene = normalizeNullableText(profile?.scene)
-    const grade = normalizeNullableText(profile?.grade)
-    if (!region) {
-      hasDefault = true
-      if (scene || grade) return true
-      continue
-    }
-    if (isGeneralRegion(region)) return true
-    if (scene || grade) return true
-    if (seenRegions.has(region)) return true
-    seenRegions.add(region)
-  }
-  return !hasDefault
-}
-
 function replaceRegionRoutingBindings(
   bindings: RegionRoutingBinding[],
   options: {
@@ -1824,15 +1822,9 @@ function replaceRegionRoutingBindings(
   return true
 }
 
-function ensureRegionRoutingMode(silent = true) {
+function ensureRegionRoutingMode(_silent = true) {
   if (!isRegionRoutingEnabled.value) return true
-  const profiles = flowProfileRules.value || []
-  if (!isLegacyRegionRoutingModel(profiles)) return true
-  const ok = replaceRegionRoutingBindings(collectRegionRoutingBindings(profiles))
-  if (ok && !silent) {
-    uni.showToast({ title: '已切换为地区匹配模式', icon: 'none' })
-  }
-  return ok
+  return true
 }
 
 const regionRoutingBindings = computed<RegionRoutingBinding[]>(() => {
@@ -2008,9 +2000,9 @@ function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
 
 function buildWizardBaselineDraft(): ListeningChoiceStandardFlowModuleV1 {
   if (flowLineWizardBaseline.value === 'standard') {
-    return clone(toLegacyStandardModule(getStandardBaselineModule()))
+    return clone(toDraftStandardModule(getStandardBaselineModule()))
   }
-  return clone(toLegacyStandardModule({
+  return clone(toDraftStandardModule({
     ...listeningChoiceDraft.value,
     id: draftModuleId.value,
     version: draftModuleVersion.value
@@ -2031,7 +2023,7 @@ function confirmCreateFlowLineFromWizard() {
   draftModuleVersion.value = 1
   draftModuleName.value = name
   draftModuleNote.value = note
-  listeningChoiceDraft.value = clone(toLegacyStandardModule({
+  listeningChoiceDraft.value = clone(toDraftStandardModule({
     ...baselineDraft,
     id: nextId,
     version: 1
@@ -2524,7 +2516,6 @@ const moduleLifecycle = useModuleLifecycle({
   draftModuleDisplayRef,
   listeningChoiceDraft,
   flowProfileRules,
-  patchFlowProfile,
   validateBeforeCommit: validateModuleCommitBeforeSavePublish,
   onCommitValidationFailed: handleModuleCommitValidationFailed
 })
@@ -2658,7 +2649,7 @@ const readonlyFlowPartialPreviewHint = computed(() => {
 
 const demoQuestion = computed<ListeningChoiceQuestion>(() => {
   const base = demoBase.value
-  const module = toLegacyStandardModule({
+  const module = toDraftStandardModule({
     ...listeningChoiceDraft.value,
     id: draftModuleId.value,
     version: draftModuleVersion.value
@@ -2685,7 +2676,23 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
   }
 })
 
-const flowVisualEditor = useEditableFlowGraph(demoQuestion)
+function resolveReadonlyFlowMacroSnippet(ref: { baseId: string; version: number }) {
+  const baseId = String(ref.baseId || '').trim()
+  const version = Math.floor(Number(ref.version || 0))
+  if (!baseId || version <= 0) return null
+  const snippet = flowSnippets.getById(`${baseId}@v${version}`)
+  if (!snippet) return null
+  return {
+    baseId: snippet.baseId,
+    version: snippet.version,
+    hash: snippet.hash,
+    steps: snippet.steps
+  }
+}
+
+const flowVisualEditor = useEditableFlowGraph(demoQuestion, {
+  resolveMacroSnippet: resolveReadonlyFlowMacroSnippet
+})
 const flowVisualStencilItems = flowVisualEditor.stencilItems
 const readonlyFlowSnippetSelectionAnchorId = flowVisualEditor.snippetSelectionAnchorId
 const readonlyFlowSnippetSelectionNodeIds = flowVisualEditor.snippetSelectionNodeIds
@@ -2716,7 +2723,7 @@ const readonlyFlowVisualBulkPanelVisible = computed(() => {
   return readonlyFlowVisualBulkSelectionCount.value > 1 && readonlyFlowVisualBulkFields.value.length > 0
 })
 const readonlyFlowVisualBulkPatchDraft = ref<Partial<Record<FlowPropertyFieldKey, string>>>({})
-const readonlyFlowVisualBulkPatchTouched = ref<Record<FlowPropertyFieldKey, boolean>>({
+const readonlyFlowVisualBulkPatchTouched = ref<Partial<Record<FlowPropertyFieldKey, boolean>>>({
   stepKind: false,
   autoNext: false,
   groupId: false
@@ -2805,7 +2812,7 @@ function applyReadonlyFlowVisualBulkPatch() {
   const visibleKeySet = new Set(readonlyFlowVisualBulkFields.value.map((item) => item.key))
   const patch: FlowVisualNodePatch = {}
   let patchKeyCount = 0
-  for (const key of ['stepKind', 'autoNext', 'groupId'] as FlowPropertyFieldKey[]) {
+  for (const key of readonlyFlowVisualBulkFields.value.map((item) => item.key)) {
     if (!visibleKeySet.has(key)) continue
     if (!isReadonlyFlowVisualBulkFieldTouched(key)) continue
     patch[key] = String(readonlyFlowVisualBulkPatchDraft.value[key] || '')
@@ -2875,7 +2882,10 @@ function previewReadonlyFlowVisualFromNode(nodeId: string) {
   }
 
   const compiledSteps = readonlyFlowCompileResult.value.steps || []
-  const logicalStepIndex = compiledSteps.findIndex((item) => String(item?.id || '') === targetNodeId)
+  let logicalStepIndex = compiledSteps.findIndex((item) => String(item?.id || '') === targetNodeId)
+  if (logicalStepIndex < 0) {
+    logicalStepIndex = compiledSteps.findIndex((item) => String(item?.id || '').startsWith(`${targetNodeId}::macro::`))
+  }
   if (logicalStepIndex < 0) {
     uni.showToast({ title: '目标节点未命中编译步骤', icon: 'none' })
     return
@@ -2890,11 +2900,12 @@ function previewReadonlyFlowVisualFromNode(nodeId: string) {
   flowVisualEditor.selectNode(targetNodeId)
 
   const node = (readonlyFlowGraph.value.nodes || []).find((item) => item.id === targetNodeId)
+  const compiledTargetStep = compiledSteps[logicalStepIndex]
   readonlyFlowPartialPreviewState.value = {
     nodeId: targetNodeId,
-    stepKind: String(node?.data?.stepKind || node?.kind || ''),
+    stepKind: String(compiledTargetStep?.kind || node?.data?.stepKind || node?.kind || ''),
     logicalStepIndex,
-    groupId: String(node?.data?.groupId || ''),
+    groupId: String(compiledTargetStep?.groupId || node?.data?.groupId || ''),
     questionCount: Math.max(0, toInt(node?.data?.questionCount || 0)),
     timerState: 'reset'
   }
@@ -2961,6 +2972,38 @@ function applyReadonlyFlowVisualSnippet(
     return
   }
   uni.showToast({ title: '片段已插入', icon: 'none' })
+}
+
+function applyReadonlyFlowVisualSnippetAsMacro(
+  snippetId: string,
+  mode: 'after' | 'end' = 'after'
+) {
+  const snippet = flowSnippets.getById(snippetId)
+  if (!snippet) {
+    uni.showToast({ title: '片段不存在或已删除', icon: 'none' })
+    return
+  }
+
+  const macroRef = {
+    baseId: snippet.baseId,
+    version: snippet.version,
+    hash: snippet.hash,
+    stepCount: snippet.steps.length
+  }
+
+  const result = mode === 'end'
+    ? flowVisualEditor.insertMacroSnippetAtTail(macroRef)
+    : flowVisualEditor.insertMacroSnippetNearTarget(
+      macroRef,
+      readonlyFlowVisualActiveNodeId.value || '',
+      'after'
+    )
+
+  if (!result.ok) {
+    uni.showToast({ title: result.message, icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '已按宏节点插入片段', icon: 'none' })
 }
 
 function onReadonlyFlowVisualDragStart(kind: string) {
@@ -3075,7 +3118,35 @@ function readFlowVisualIssueNodeId(issuePath: string): string {
   const text = String(issuePath || '')
   const match = text.match(/graph\.nodes\(([^)]+)\)/)
   if (!match) return ''
-  return String(match[1] || '')
+  const raw = String(match[1] || '')
+  const macroPrefix = raw.split('::macro::')[0]
+  return macroPrefix || raw
+}
+
+function readFlowVisualCompiledStepNodeId(stepId: string): string {
+  const raw = String(stepId || '').trim()
+  if (!raw) return ''
+  const macroPrefix = raw.split('::macro::')[0]
+  const nodes = readonlyFlowGraph.value.nodes || []
+  if (nodes.some((node) => node.id === macroPrefix)) return macroPrefix
+  if (nodes.some((node) => node.id === raw)) return raw
+  return macroPrefix || raw
+}
+
+function locateReadonlyFlowVisualCompiledStep(stepId: string) {
+  const nodeId = readFlowVisualCompiledStepNodeId(stepId)
+  if (!nodeId) return
+  flowVisualEditor.selectNode(nodeId)
+}
+
+function formatReadonlyFlowCompiledStepLine(item: VisualLinearStep, index: number): string {
+  const stepId = String(item?.id || '')
+  const sourceNodeId = readFlowVisualCompiledStepNodeId(stepId)
+  const isMacroExpanded = stepId.includes('::macro::')
+  const sourceText = sourceNodeId
+    ? (isMacroExpanded ? `来源宏节点 ${sourceNodeId}` : `来源节点 ${sourceNodeId}`)
+    : '来源未知'
+  return `步骤 ${index + 1} · ${item.kind} · ${item.autoNext || 'manual'} · ${sourceText}`
 }
 
 function locateReadonlyFlowVisualIssue(issuePath: string) {
@@ -3219,7 +3290,7 @@ function applyReadonlyFlowVisualToDraft() {
     return
   }
 
-  const nextDraft = clone(toLegacyStandardModule({
+  const nextDraft = clone(toDraftStandardModule({
     ...mapperResult.module,
     id: draftModuleId.value,
     version: draftModuleVersion.value
@@ -3731,7 +3802,7 @@ function switchDraftToModuleRef(ref: FlowModuleRef) {
   draftModuleId.value = targetRef.id
   draftModuleVersion.value = targetRef.version
   syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
   readonlyFlowPartialPreviewRestoreOverride.value = undefined
   readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
@@ -3772,7 +3843,7 @@ function openListeningChoice() {
   draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   draftModuleVersion.value = Number(module.version || 1)
   syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
   readonlyFlowPartialPreviewRestoreOverride.value = undefined
   readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
@@ -3791,7 +3862,7 @@ function openSpeakingHearAnswer() {
   draftModuleId.value = String(module.id || LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)
   draftModuleVersion.value = Number(module.version || 1)
   syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toLegacyStandardModule(module))
+  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
   readonlyFlowPartialPreviewRestoreOverride.value = undefined
   readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
@@ -3846,14 +3917,6 @@ function archiveCurrentStandard() {
   moduleLifecycle.archiveCurrentStandard()
 }
 
-function migrateFlowProfilesToCurrentVersion() {
-  moduleLifecycle.migrateFlowProfilesToCurrentVersion()
-}
-
-function archiveHistoricalStandards() {
-  moduleLifecycle.archiveHistoricalStandards()
-}
-
 function resetStandard() {
   moduleLifecycle.resetStandard()
 }
@@ -3874,7 +3937,7 @@ function applyStandardToCurrentQuestion() {
       return
     }
 
-    const module = toLegacyStandardModule({
+    const module = toDraftStandardModule({
       ...listeningChoiceDraft.value,
       id: draftModuleId.value,
       version: draftModuleVersion.value

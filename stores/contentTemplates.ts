@@ -12,6 +12,7 @@ import type {
   SpeakingHearAnswerSubQuestion,
   SubQuestion
 } from '/types'
+import { parseContentTemplatesStoragePayloadStrict } from '../domain/schemas/runtimeBoundarySchemas.ts'
 import { createPersistenceScheduler } from './persistence'
 
 const STORAGE_KEY = 'editor_content_templates_v1'
@@ -400,55 +401,6 @@ export function normalizeSpeakingHearAnswerContentTemplate(input: unknown): Spea
   }
 }
 
-function extractRichTextPlainText(content: unknown): string {
-  if (!isObjectRecord(content) || content.type !== 'richtext' || !Array.isArray(content.content)) return ''
-  return content.content
-    .map((node) => {
-      if (!isObjectRecord(node)) return ''
-      if (node.type !== 'text') return ''
-      return typeof node.text === 'string' ? node.text : ''
-    })
-    .join('')
-    .trim()
-}
-
-function normalizeStemForMatch(text: string): string {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function isLegacySpeakingHearAnswerDefaultTemplate(template: SpeakingHearAnswerContentTemplateV1): boolean {
-  const groups = Array.isArray(template?.content?.groups) ? template.content.groups : []
-  if (groups.length !== 1) return false
-  const group = groups[0]
-  const subQuestions = Array.isArray(group?.subQuestions) ? group.subQuestions : []
-  if (subQuestions.length !== 1) return false
-  const groupTitle = String(group?.title || '').trim()
-  const stemText = extractRichTextPlainText(subQuestions[0]?.stem)
-  return groupTitle === '第一题组对话' && stemText.includes('Who is the boy talking to on the phone?')
-}
-
-function isLegacySpeakingHearAnswerExpandedDefaultTemplate(template: SpeakingHearAnswerContentTemplateV1): boolean {
-  const groups = Array.isArray(template?.content?.groups) ? template.content.groups : []
-  if (groups.length !== 4) return false
-  const groupSizes = groups.map((group) => (Array.isArray(group?.subQuestions) ? group.subQuestions.length : 0))
-  if (groupSizes.join(',') !== '1,1,1,2') return false
-
-  const subQuestions = groups.flatMap((group) => (Array.isArray(group?.subQuestions) ? group.subQuestions : []))
-  if (subQuestions.length !== 5) return false
-  const orders = subQuestions.map((sq) => Math.floor(Number(sq?.order || 0)))
-  if (orders.join(',') !== '1,2,3,4,5') return false
-
-  const stems = subQuestions.map((sq) => normalizeStemForMatch(extractRichTextPlainText(sq?.stem)))
-  return stems[0].includes('who is the boy talking to on the phone')
-    && stems[1].includes('how will the speakers go the concert')
-    && stems[2].includes('why did the boy miss school for a few days')
-    && stems[3].includes('how often should the girl water')
-    && stems[4].includes('what will the speakers do next')
-}
-
 class ContentTemplatesStore {
   state = reactive({
     listeningChoice: DEFAULT_LISTENING_CHOICE_CONTENT_TEMPLATE as ListeningChoiceContentTemplateV1,
@@ -465,21 +417,15 @@ class ContentTemplatesStore {
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (!stored) return
       const parsed = JSON.parse(stored)
-      let migrated = false
-      if (parsed?.listeningChoice) {
-        this.state.listeningChoice = normalizeListeningChoiceContentTemplate(parsed.listeningChoice)
+      const schemaParsed = parseContentTemplatesStoragePayloadStrict(parsed)
+      if (!schemaParsed.ok) {
+        throw new Error(`contentTemplates storage schema invalid: ${schemaParsed.error}`)
       }
-      if (parsed?.speakingHearAnswer) {
-        const normalized = normalizeSpeakingHearAnswerContentTemplate(parsed.speakingHearAnswer)
-        if (isLegacySpeakingHearAnswerDefaultTemplate(normalized) || isLegacySpeakingHearAnswerExpandedDefaultTemplate(normalized)) {
-          this.state.speakingHearAnswer = DEFAULT_SPEAKING_HEAR_ANSWER_CONTENT_TEMPLATE
-          migrated = true
-        } else {
-          this.state.speakingHearAnswer = normalized
-        }
+      if (schemaParsed.payload.listeningChoice) {
+        this.state.listeningChoice = normalizeListeningChoiceContentTemplate(schemaParsed.payload.listeningChoice)
       }
-      if (migrated) {
-        this.save()
+      if (schemaParsed.payload.speakingHearAnswer) {
+        this.state.speakingHearAnswer = normalizeSpeakingHearAnswerContentTemplate(schemaParsed.payload.speakingHearAnswer)
       }
     } catch (e) {
       console.error('Failed to load content templates', e)

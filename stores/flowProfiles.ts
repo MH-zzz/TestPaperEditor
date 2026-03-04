@@ -10,6 +10,7 @@ import {
   type FlowProfileSubmitValidation,
   type FlowProfileScoreResult
 } from '/domain/flow-profile/usecases/scoreProfiles'
+import { parseFlowProfilesStoragePayloadStrict } from '../domain/schemas/runtimeBoundarySchemas.ts'
 import { createPersistenceScheduler } from './persistence'
 
 const STORAGE_KEY = 'editor_flow_profiles_v1'
@@ -28,7 +29,6 @@ function normalizeQuestionType(v: unknown): QuestionType {
   if (s === 'listening_fill') return 'listening_fill'
   if (s === 'listening_match') return 'listening_match'
   if (s === 'listening_order') return 'listening_order'
-  if (s === 'speaking') return 'speaking'
   if (s === 'speaking_steps') return 'speaking_steps'
   if (s === 'speaking_hear_answer') return 'speaking_hear_answer'
   return 'listening_choice'
@@ -80,7 +80,11 @@ class FlowProfilesStore {
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (!stored) return
       const parsed = JSON.parse(stored)
-      const list = Array.isArray(parsed?.profiles) ? parsed.profiles : []
+      const schemaParsed = parseFlowProfilesStoragePayloadStrict(parsed)
+      if (!schemaParsed.ok) {
+        throw new Error(`flowProfiles storage schema invalid: ${schemaParsed.error}`)
+      }
+      const list = schemaParsed.payload.profiles
       const normalized = list.map((p) => normalizeProfile(p))
       this.state.profiles = normalized.length ? normalized : [DEFAULT_LISTENING_CHOICE_PROFILE]
     } catch (e) {
@@ -186,10 +190,6 @@ class FlowProfilesStore {
     }
   }
 
-  upsert(profileInput: unknown) {
-    return this.upsertWithDiagnostics(profileInput)
-  }
-
   removeWithDiagnostics(id: string) {
     const removed = this.buildNextProfilesAfterRemove(id)
     if (!removed.ok) {
@@ -217,10 +217,6 @@ class FlowProfilesStore {
       reason: '',
       validation
     }
-  }
-
-  remove(id: string) {
-    return this.removeWithDiagnostics(id).ok
   }
 
   replaceQuestionTypeProfiles(questionType: QuestionType, profileInputs: unknown[]) {

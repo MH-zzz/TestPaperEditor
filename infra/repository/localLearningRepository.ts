@@ -1,4 +1,8 @@
 import type { Question } from '/types'
+import {
+  parseFlowExportPackageV2Strict,
+  parseQuestionSnapshotListStrict
+} from '../../domain/schemas/runtimeBoundarySchemas.ts'
 
 const LOCAL_LEARNING_QUESTIONS_PATHS = [
   '/static/local-learning/questions.json',
@@ -154,16 +158,21 @@ export async function loadLocalLearningQuestions<TQuestion extends Question = Qu
     LOCAL_LEARNING_QUESTIONS_PATHS,
     APP_PLUS_LOCAL_LEARNING_QUESTIONS_PATH
   )
-  if (Array.isArray(payload)) return payload as TQuestion[]
-  if (isObjectRecord(payload) && Array.isArray(payload.questions)) return payload.questions as TQuestion[]
-  return []
+  const parsed = parseQuestionSnapshotListStrict(payload)
+  if (!parsed.ok) {
+    throw new Error(`本地学习题目数据不合法：${parsed.error}`)
+  }
+  return parsed.questions as TQuestion[]
 }
 
-export async function loadLocalLearningFlows<TFlowPack extends Record<string, unknown> = Record<string, unknown>>(): Promise<TFlowPack | null> {
+export async function loadLocalLearningFlows<TFlowPack extends Record<string, unknown> = Record<string, unknown>>(): Promise<TFlowPack> {
   const payload = await requestJsonWithFallback(
     LOCAL_LEARNING_FLOWS_PATHS,
     APP_PLUS_LOCAL_LEARNING_FLOWS_PATH
   )
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
-  return payload as TFlowPack
+  const parsed = parseFlowExportPackageV2Strict(payload)
+  if (!parsed.ok) {
+    throw new Error(`本地学习流程包数据不合法：${parsed.error}`)
+  }
+  return parsed.pack as unknown as TFlowPack
 }

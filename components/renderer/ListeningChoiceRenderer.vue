@@ -455,22 +455,6 @@ function hasSeparateIntroCountdownStep(index: number) {
   return resolveListeningChoiceStepRenderView(cur) === 'intro' && resolveListeningChoiceStepRenderView(next) === 'countdown'
 }
 
-function shouldSkipHearAnswerLegacyPostContentCountdown(index: number): boolean {
-  if (!isHearAnswerVariant.value) return false
-  const step = steps.value[index]
-  if (!isStepKind(step, 'countdown')) return false
-
-  const prev = steps.value[index - 1]
-  if (!isStepKind(prev, 'playAudio')) return false
-  if (prev.audioSource !== 'content') return false
-
-  const next = steps.value[index + 1]
-  const nextIsContentAudio = isStepKind(next, 'playAudio') && next.audioSource === 'content'
-  if (nextIsContentAudio) return false
-
-  return true
-}
-
 function resolveIntroStepForCountdown(index: number): RendererStepOfKind<'intro'> | null {
   const prev = steps.value[index - 1]
   if (isStepKind(prev, 'intro')) return prev
@@ -1119,13 +1103,6 @@ function enterActiveStep() {
   const step = activeStep.value
   if (!step) return
   const renderView = activeStepRenderView.value
-
-  // Runtime guard: hear-answer should not keep a standalone countdown right after
-  // the final content playback. Legacy data may still contain this stale step.
-  if (!isPreview.value && shouldSkipHearAnswerLegacyPostContentCountdown(currentStepIndex.value)) {
-    dispatchRuntime({ type: 'countdownEnded' })
-    return
-  }
 
   if (isPreview.value) {
     // Preview mode should never auto-play audio, start timers, or auto-advance steps.

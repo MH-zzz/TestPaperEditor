@@ -61,3 +61,27 @@ export interface FlowVisualCompileResult<TStep = Record<string, unknown>> {
   errors: FlowVisualCompileIssue[]
   warnings: FlowVisualCompileIssue[]
 }
+
+export type FlowMacroGroupBindingMode = 'inherit' | 'fixed' | 'empty'
+export type FlowMacroAutoNextMode = 'inherit' | 'override'
+
+export interface FlowMacroSnippetRef {
+  baseId: string
+  version: number
+  name?: string
+  hash?: string
+}
+
+export interface FlowMacroNodeBinding {
+  groupBindingMode: FlowMacroGroupBindingMode
+  groupId?: string
+  autoNextMode: FlowMacroAutoNextMode
+  autoNext?: string
+}
+
+export interface FlowMacroNodePayload {
+  nodeKind: 'macroNode'
+  snippet: FlowMacroSnippetRef
+  binding: FlowMacroNodeBinding
+  expandedStepCount: number
+}

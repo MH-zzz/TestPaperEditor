@@ -81,7 +81,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function toLegacyStandardModule(moduleInput: unknown): ListeningChoiceStandardFlowModuleV1 {
+function toDraftStandardModule(moduleInput: unknown): ListeningChoiceStandardFlowModuleV1 {
   const m = isObjectRecord(moduleInput) ? moduleInput : {}
   return {
     version: 1,
@@ -130,33 +130,6 @@ function formatFlowProfileImpactLines(rules: FlowProfileV1[], max = 6) {
   return lines.join('\n')
 }
 
-function formatFlowProfileVersionSummary(rules: FlowProfileV1[]) {
-  const map: Record<string, number> = {}
-  ;(rules || []).forEach((p) => {
-    const v = `v${Math.max(1, toInt(p?.module?.version || 1))}`
-    map[v] = (map[v] || 0) + 1
-  })
-  return Object.entries(map)
-    .sort((a, b) => Number(b[0].slice(1)) - Number(a[0].slice(1)))
-    .map(([v, count]) => `${v} x ${count}`)
-    .join('，')
-}
-
-function formatModuleVersionSummary(
-  modules: Array<Partial<FlowModuleRef & { status?: FlowModuleStatus }>>,
-  max = 8
-) {
-  if (!Array.isArray(modules) || modules.length === 0) return '无'
-  const lines = modules.slice(0, max).map((item) => {
-    const version = Math.max(1, toInt(item?.version || 1))
-    const status = normalizeModuleStatus(item?.status)
-    const statusLabel = status === 'draft' ? '草稿' : status === 'published' ? '已发布' : '已归档'
-    return `- v${version} [${statusLabel}]`
-  })
-  if (modules.length > max) lines.push(`- ... 另有 ${modules.length - max} 个版本`)
-  return lines.join('\n')
-}
-
 function formatModuleDisplayRef(refLike: Partial<FlowModuleRef & { name?: string | null }> | null | undefined): string {
   const id = String(refLike?.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
   const version = Math.max(1, toInt(refLike?.version || 1))
@@ -180,7 +153,6 @@ export function useModuleLifecycle(options: {
   draftModuleDisplayRef: ComputedRef<string>
   listeningChoiceDraft: Ref<ListeningChoiceStandardFlowModuleV1>
   flowProfileRules: ComputedRef<FlowProfileV1[]>
-  patchFlowProfile: (id: string, patch: Record<string, unknown>) => boolean
   validateBeforeCommit?: (payload: ModuleCommitValidationPayload) => ModuleCommitValidationResult
   onCommitValidationFailed?: (result: ModuleCommitValidationResult) => boolean
 }) {
@@ -192,7 +164,6 @@ export function useModuleLifecycle(options: {
     draftModuleDisplayRef,
     listeningChoiceDraft,
     flowProfileRules,
-    patchFlowProfile,
     validateBeforeCommit,
     onCommitValidationFailed
   } = options
@@ -218,29 +189,6 @@ export function useModuleLifecycle(options: {
   const canPublishCurrentStandard = computed(() => false)
   const canArchiveCurrentStandard = computed(() => false)
 
-  const flowProfilesMigratableToCurrentVersion = computed<FlowProfileV1[]>(() => {
-    const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-    const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-    return (flowProfileRules.value || []).filter((profile) => {
-      const moduleId = String(profile?.module?.id || '')
-      const moduleVersion = Number(profile?.module?.version || 0)
-      return moduleId === targetId && moduleVersion > 0 && moduleVersion !== targetVersion
-    })
-  })
-
-  const flowModulesArchivableToCurrentVersion = computed<ListeningChoiceFlowModuleV1[]>(() => {
-    const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-    const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-    return (flowModules.listListeningChoice() || [])
-      .filter((module) => {
-        const moduleId = String(module?.id || '')
-        const moduleVersion = Math.max(1, toInt(module?.version || 1))
-        const moduleStatus = normalizeModuleStatus(module?.status)
-        return moduleId === targetId && moduleVersion < targetVersion && moduleStatus !== 'archived'
-      })
-      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))
-  })
-
   const flowModulePublishLogs = ref<FlowModulePublishLog[]>([])
   loadFlowModulePublishLogs()
 
@@ -256,7 +204,7 @@ export function useModuleLifecycle(options: {
     draftModuleId.value = String(mod.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
     draftModuleVersion.value = Number(mod.version || 1)
     syncDraftModuleMeta(mod)
-    listeningChoiceDraft.value = clone(toLegacyStandardModule(mod))
+    listeningChoiceDraft.value = clone(toDraftStandardModule(mod))
   }
 
   function loadFlowModulePublishLogs() {
@@ -442,7 +390,7 @@ export function useModuleLifecycle(options: {
     })
     draftModuleVersion.value = effectiveVersion
     syncDraftModuleMeta(module || draftPayload)
-    listeningChoiceDraft.value = clone(toLegacyStandardModule(module || getDefaultModule()))
+    listeningChoiceDraft.value = clone(toDraftStandardModule(module || getDefaultModule()))
     uni.showToast({ title: `已更新流程线 v${effectiveVersion}`, icon: 'success' })
     return true
   }
@@ -502,130 +450,6 @@ export function useModuleLifecycle(options: {
     })
   }
 
-  function migrateFlowProfilesToCurrentVersion() {
-    const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-    const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-    const candidates = flowProfilesMigratableToCurrentVersion.value || []
-
-    if (candidates.length <= 0) {
-      uni.showToast({ title: '没有可迁移路由', icon: 'none' })
-      return
-    }
-
-    const content = [
-      `将把以下路由迁移到：${draftModuleDisplayRef.value}（${targetId}）`,
-      `待迁移规则：${candidates.length} 条`,
-      `当前版本分布：${formatFlowProfileVersionSummary(candidates)}`,
-      `规则列表：\n${formatFlowProfileImpactLines(candidates, 10)}`,
-      '是否继续？'
-    ].join('\n')
-
-    uni.showModal({
-      title: '批量迁移路由版本',
-      content,
-      confirmText: '批量迁移',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        candidates.forEach((profile) => {
-          patchFlowProfile(profile.id, {
-            module: {
-              id: targetId,
-              version: targetVersion
-            }
-          })
-        })
-        uni.showToast({ title: `已迁移 ${candidates.length} 条路由`, icon: 'success' })
-      }
-    })
-  }
-
-  function archiveHistoricalStandards() {
-    const targetId = String(draftModuleId.value || LISTENING_CHOICE_STANDARD_FLOW_ID)
-    const targetVersion = Math.max(1, toInt(draftModuleVersion.value || 1))
-    const candidates = flowModulesArchivableToCurrentVersion.value || []
-
-    if (candidates.length <= 0) {
-      uni.showToast({ title: '没有可归档旧版本', icon: 'none' })
-      return
-    }
-
-    const candidateRefs = candidates.map((module) => ({
-      id: String(module?.id || targetId),
-      version: Math.max(1, toInt(module?.version || 1)),
-      status: normalizeModuleStatus(module?.status)
-    }))
-    const impactedRules = (flowProfileRules.value || []).filter((profile) => {
-      const profileModuleId = String(profile?.module?.id || '')
-      const profileModuleVersion = Math.max(1, toInt(profile?.module?.version || 1))
-      return candidateRefs.some((module) => module.id === profileModuleId && module.version === profileModuleVersion)
-    })
-    const impactRuleMap = new Map<string, FlowProfileV1>()
-    impactedRules.forEach((item) => {
-      const key = String(item?.id || '')
-      if (key) impactRuleMap.set(key, item)
-    })
-    const impactSummary = {
-      matchedRules: Array.from(impactRuleMap.values()),
-      enabledRules: Array.from(impactRuleMap.values()).filter((item) => item?.enabled !== false)
-    }
-
-    const content = [
-      `当前版本：${draftModuleDisplayRef.value}（${targetId}）`,
-      `将批量归档旧版本：${candidates.length} 个（当前 v${targetVersion} 不受影响）`,
-      `待归档版本：\n${formatModuleVersionSummary(candidateRefs)}`,
-      `影响路由规则：${impactSummary.matchedRules.length} 条（启用 ${impactSummary.enabledRules.length} 条）`,
-      `影响面预览：\n${formatFlowProfileImpactLines(impactSummary.matchedRules, 10)}`,
-      impactSummary.enabledRules.length > 0
-        ? '注意：存在启用路由仍引用旧版本，建议先执行“迁移到当前版本”。'
-        : '未发现启用路由引用旧版本。'
-    ].join('\n')
-
-    const doArchive = () => {
-      let archivedCount = 0
-      candidates.forEach((module) => {
-        const ok = flowModules.archiveListeningChoice({
-          id: String(module?.id || targetId),
-          version: Math.max(1, toInt(module?.version || 1))
-        })
-        if (ok) archivedCount += 1
-      })
-      if (archivedCount <= 0) {
-        uni.showToast({ title: '批量归档失败', icon: 'none' })
-        return
-      }
-      uni.showToast({ title: `已归档 ${archivedCount} 个旧版本`, icon: 'success' })
-    }
-
-    uni.showModal({
-      title: '批量归档旧版本',
-      content,
-      confirmText: '批量归档',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return
-        if (impactSummary.enabledRules.length > 0) {
-          uni.showModal({
-            title: '仍有启用路由引用旧版本',
-            content: [
-              `启用规则：${impactSummary.enabledRules.length} 条`,
-              `建议：先执行“迁移到当前版本”，再归档旧版本，避免路由回退到默认流程。`,
-              `是否仍然继续批量归档？`
-            ].join('\n'),
-            confirmText: '仍然归档',
-            cancelText: '取消',
-            success: (second) => {
-              if (!second.confirm) return
-              doArchive()
-            }
-          })
-          return
-        }
-        doArchive()
-      }
-    })
-  }
-
   function resetStandard() {
     uni.showModal({
       title: '恢复默认题型流程',
@@ -652,16 +476,12 @@ export function useModuleLifecycle(options: {
     canSaveCurrentStandard,
     canPublishCurrentStandard,
     canArchiveCurrentStandard,
-    flowProfilesMigratableToCurrentVersion,
-    flowModulesArchivableToCurrentVersion,
     flowModulePublishLogs,
     showPublishLogs,
     saveStandard,
     saveStandardAsNextVersion,
     publishCurrentStandard,
     archiveCurrentStandard,
-    migrateFlowProfilesToCurrentVersion,
-    archiveHistoricalStandards,
     resetStandard
   }
 }

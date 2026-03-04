@@ -42,9 +42,9 @@ export function readQuestionFlowContext(question: unknown): FlowContextSnapshot 
   const metadata = readQuestionMetadata(question)
   const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
   return {
-    region: normalizeNullableText(flowContext.region) || normalizeNullableText(metadata.region) || '',
-    scene: normalizeNullableText(flowContext.scene) || normalizeNullableText(metadata.scene) || '',
-    grade: normalizeNullableText(flowContext.grade) || normalizeNullableText(metadata.grade) || ''
+    region: normalizeNullableText(flowContext.region) || '',
+    scene: normalizeNullableText(flowContext.scene) || '',
+    grade: normalizeNullableText(flowContext.grade) || ''
   }
 }
 

@@ -223,11 +223,10 @@ test('ListeningChoiceRenderer should keep hear-answer end prompt tone aligned wi
   assert.ok(src.includes('for (let i = index - 3; i >= 0; i -= 1)'))
 })
 
-test('ListeningChoiceRenderer should auto-skip legacy hear-answer post-content countdown in exam mode', async () => {
+test('ListeningChoiceRenderer should remove legacy hear-answer post-content countdown guard', async () => {
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
-  assert.ok(src.includes('function shouldSkipHearAnswerLegacyPostContentCountdown(index: number): boolean'))
-  assert.ok(src.includes('if (!isPreview.value && shouldSkipHearAnswerLegacyPostContentCountdown(currentStepIndex.value))'))
-  assert.ok(src.includes("dispatchRuntime({ type: 'countdownEnded' })"))
+  assert.ok(!src.includes('function shouldSkipHearAnswerLegacyPostContentCountdown(index: number): boolean'))
+  assert.ok(!src.includes('if (!isPreview.value && shouldSkipHearAnswerLegacyPostContentCountdown(currentStepIndex.value))'))
 })
 
 test('ListeningChoiceRenderer hear-answer answer stage should prefer record-guide prompt text', async () => {

@@ -299,9 +299,9 @@ function extractFlowContext(question: LocalQuestion | null): FlowContextSnapshot
   const metadata = isObjectRecord(question?.metadata) ? question.metadata : {}
   const flowContext = isObjectRecord(metadata.flowContext) ? metadata.flowContext : {}
   return {
-    region: String(flowContext.region || metadata.region || ''),
-    scene: String(flowContext.scene || metadata.scene || ''),
-    grade: String(flowContext.grade || metadata.grade || '')
+    region: String(flowContext.region || ''),
+    scene: String(flowContext.scene || ''),
+    grade: String(flowContext.grade || '')
   }
 }
 

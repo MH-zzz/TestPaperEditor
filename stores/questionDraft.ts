@@ -8,7 +8,6 @@ import type {
 import {
   createListeningHearAnswerTemplate,
   questionTemplates,
-  migrateListeningChoiceFlowSplitIntro,
   createListeningChoiceTemplate,
   type TemplateKey,
   generateId
@@ -55,8 +54,7 @@ function normalizeListeningChoiceQuestion(question: DraftQuestion): DraftQuestio
   }
 
   if (question.type === 'listening_choice') {
-    const migrated = migrateListeningChoiceFlowSplitIntro(question as ListeningChoiceQuestion)
-    return resolveListeningChoiceQuestion(migrated as ListeningChoiceQuestion, { generateId }) as DraftQuestion
+    return resolveListeningChoiceQuestion(question as ListeningChoiceQuestion, { generateId }) as DraftQuestion
   }
   return resolveListeningChoiceQuestion(question as SpeakingHearAnswerQuestion, { generateId }) as DraftQuestion
 }
@@ -213,8 +211,6 @@ class QuestionDraftStore {
     if (patch.source !== undefined) current.metadata.source = patch.source
     if (patch.region !== undefined) {
       const region = String(patch.region || '').trim()
-      if (region) current.metadata.region = region
-      else delete current.metadata.region
 
       const flowContext = isObjectRecord(current.metadata.flowContext)
         ? { ...current.metadata.flowContext }

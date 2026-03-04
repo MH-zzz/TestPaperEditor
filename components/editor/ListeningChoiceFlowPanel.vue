@@ -222,8 +222,13 @@ import type {
 } from '/types'
 import { generateId } from '/templates'
 import FlowStepQuickAdd from './FlowStepQuickAdd.vue'
-import { LISTENING_CHOICE_STANDARD_FLOW_ID, materializeListeningChoiceStandardSteps } from '../../flows/listeningChoiceFlowModules'
-import { standardFlows } from '/stores/standardFlows'
+import { flowModules } from '/stores/flowModules'
+import {
+  DEFAULT_LISTENING_CHOICE_STANDARD_MODULE,
+  LISTENING_CHOICE_STANDARD_FLOW_ID,
+  materializeListeningChoiceStandardSteps,
+  normalizeListeningChoiceStandardModule
+} from '../../flows/listeningChoiceFlowModules'
 
 const props = defineProps<{
   modelValue: ListeningChoiceQuestion
@@ -534,10 +539,13 @@ function useDefaultFlow() {
     cancelText: '取消',
     success: (res) => {
       if (!res.confirm) return
+      const module = normalizeListeningChoiceStandardModule(
+        flowModules.getListeningChoiceDefault(LISTENING_CHOICE_STANDARD_FLOW_ID) || DEFAULT_LISTENING_CHOICE_STANDARD_MODULE
+      )
       const nextSteps = materializeListeningChoiceStandardSteps(props.modelValue, {
         generateId,
         overrides: {},
-        module: standardFlows.state.listeningChoice
+        module
       }) as ListeningChoiceFlowStep[]
       update({
         ...props.modelValue,

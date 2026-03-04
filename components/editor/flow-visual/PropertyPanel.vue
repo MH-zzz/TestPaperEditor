@@ -89,10 +89,25 @@ function readFieldValue(key: FlowPropertyFieldKey): string {
   if (!node) return ''
   if (key === 'stepKind') return String(node.data.stepKind || '')
   if (key === 'autoNext') return String(node.data.autoNext || '')
-  return String(node.data.groupId || '')
+  if (key === 'groupId') return String(node.data.groupId || '')
+  if (key === 'macroSnippetBaseId') return String(node.data.snippet?.baseId || '')
+  if (key === 'macroSnippetVersion') {
+    const version = Number(node.data.snippet?.version || 0)
+    return Number.isFinite(version) ? String(Math.floor(version)) : ''
+  }
+  if (key === 'macroSnippetHash') return String(node.data.snippet?.hash || '')
+  if (key === 'macroGroupBindingMode') return String(node.data.binding?.groupBindingMode || 'inherit')
+  if (key === 'macroGroupId') return String(node.data.binding?.groupId || '')
+  if (key === 'macroAutoNextMode') return String(node.data.binding?.autoNextMode || 'inherit')
+  if (key === 'macroAutoNext') return String(node.data.binding?.autoNext || '')
+  return ''
 }
 
 function patchField(key: FlowPropertyFieldKey, value: string) {
+  if (key === 'groupId') {
+    emit('patch', { groupId: value })
+    return
+  }
   if (key === 'stepKind') {
     emit('patch', { stepKind: value })
     return
@@ -101,7 +116,31 @@ function patchField(key: FlowPropertyFieldKey, value: string) {
     emit('patch', { autoNext: value })
     return
   }
-  emit('patch', { groupId: value })
+  if (key === 'macroSnippetBaseId') {
+    emit('patch', { macroSnippetBaseId: value })
+    return
+  }
+  if (key === 'macroSnippetVersion') {
+    emit('patch', { macroSnippetVersion: value })
+    return
+  }
+  if (key === 'macroSnippetHash') {
+    emit('patch', { macroSnippetHash: value })
+    return
+  }
+  if (key === 'macroGroupBindingMode') {
+    emit('patch', { macroGroupBindingMode: value })
+    return
+  }
+  if (key === 'macroGroupId') {
+    emit('patch', { macroGroupId: value })
+    return
+  }
+  if (key === 'macroAutoNextMode') {
+    emit('patch', { macroAutoNextMode: value })
+    return
+  }
+  emit('patch', { macroAutoNext: value })
 }
 </script>
 

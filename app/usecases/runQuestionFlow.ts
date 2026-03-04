@@ -18,7 +18,6 @@ import type {
   Question,
   QuestionMetadata,
   SpeakingHearAnswerQuestion,
-  SpeakingQuestion,
   SpeakingStepsQuestion
 } from '/types'
 
@@ -127,9 +126,9 @@ function getQuestionRoutingContext(question: Question): FlowRoutingContext {
   const meta = readQuestionMetadata(question)
   const flowCtx = isObjectRecord(meta.flowContext) ? meta.flowContext : {}
   return {
-    region: normalizeText(flowCtx.region) || normalizeText(meta.region),
-    scene: normalizeText(flowCtx.scene) || normalizeText(meta.scene),
-    grade: normalizeText(flowCtx.grade) || normalizeText(meta.grade)
+    region: normalizeText(flowCtx.region),
+    scene: normalizeText(flowCtx.scene),
+    grade: normalizeText(flowCtx.grade)
   }
 }
 
@@ -141,13 +140,6 @@ function mergeRoutingContext(question: Question, inputCtx?: FlowRoutingContext):
     scene: ctx.scene || fallback.scene,
     grade: ctx.grade || fallback.grade
   }
-}
-
-function toSpeakingRuntimeSteps(question: SpeakingQuestion): RuntimeStepProtocol[] {
-  return (question.steps || []).map((step, index) => ({
-    id: String(step?.id || `speaking_${index + 1}`),
-    kind: String(step?.behavior || 'manual')
-  }))
 }
 
 function readSpeakingStepsAutoNext(step: unknown): string | undefined {
@@ -173,10 +165,6 @@ export function getQuestionFlowSteps(question: Question): RuntimeStepProtocol[] 
       kind: String(step?.type || 'unknown'),
       autoNext: readSpeakingStepsAutoNext(step)
     }))
-  }
-
-  if (question.type === 'speaking') {
-    return toSpeakingRuntimeSteps(question as SpeakingQuestion)
   }
 
   return []
@@ -274,14 +262,12 @@ function resolveRuntimeMeta(
   }
 
   const source = (question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).flow?.source
-  const sourceKind = source?.kind === 'library' ? 'library' : 'standard'
+  const sourceKind = 'standard'
   const profileId = sourceKind === 'standard' && question.type === 'listening_choice' ? String(source?.profileId || '') : ''
   const defaultStandardId = question.type === 'speaking_hear_answer'
     ? LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID
     : LISTENING_CHOICE_STANDARD_FLOW_ID
-  const moduleId = sourceKind === 'library'
-    ? String(source?.id || '')
-    : String(source?.id || defaultStandardId)
+  const moduleId = String(source?.id || defaultStandardId)
   const moduleVersion = sourceKind === 'standard'
     ? Math.max(1, toInt(source?.version, 1))
     : 0
@@ -291,7 +277,7 @@ function resolveRuntimeMeta(
     : null
 
   const moduleDisplayRef = display?.displayRef
-    || (sourceKind === 'library' ? (moduleId ? `流程库:${moduleId}` : '流程库') : `${moduleId} @ v${moduleVersion}`)
+    || `${moduleId} @ v${moduleVersion}`
 
   return {
     sourceKind,
@@ -300,7 +286,7 @@ function resolveRuntimeMeta(
     moduleVersion,
     moduleDisplayRef,
     moduleNote: String(display?.note || ''),
-    moduleVersionText: sourceKind === 'standard' ? `v${moduleVersion}` : '-',
+    moduleVersionText: `v${moduleVersion}`,
     entryMode,
     entryStepIndex,
     entryGroupId,

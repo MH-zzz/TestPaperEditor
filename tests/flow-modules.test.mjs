@@ -209,7 +209,8 @@ test('flow module store should expose max-version and archive helpers', async ()
   assert.ok(content.includes('setListeningChoiceStatus(ref: FlowModuleRef | null | undefined, nextStatus: FlowModuleStatus)'))
   assert.ok(content.includes('canListeningChoiceStatusTransition'))
   assert.ok(content.includes('function ensurePublishedStandardBaseline(modules: ListeningChoiceFlowModuleV1[])'))
-  assert.ok(content.includes('ensurePublishedStandardBaseline(migratedList)'))
+  assert.ok(content.includes('const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))'))
+  assert.ok(content.includes('ensurePublishedStandardBaseline(normalized)'))
 })
 
 test('flow module store should support business display name + optional note fields', async () => {
@@ -226,16 +227,16 @@ test('flow module store should support business display name + optional note fie
   assert.ok(content.includes('note: src.note == null ? existing.note : src.note'))
 })
 
-test('flow module store should migrate legacy hear-answer title defaults', async () => {
+test('flow module store should no longer keep legacy hear-answer migration helpers', async () => {
   const src = await import('node:fs/promises')
   const path = await import('node:path')
   const file = path.resolve(process.cwd(), 'stores/flowModules.ts')
   const content = await src.readFile(file, 'utf8')
-  assert.ok(content.includes('isLegacyHearAnswerStandardTitleConfig'))
-  assert.ok(content.includes('applyHearAnswerDefaultTitleConfig'))
-  assert.ok(content.includes('isLegacyHearAnswerPromptToneConfig'))
-  assert.ok(content.includes('applyHearAnswerDefaultPromptToneConfig'))
-  assert.ok(content.includes('this.save()'))
+  assert.ok(!content.includes('isLegacyHearAnswerStandardTitleConfig'))
+  assert.ok(!content.includes('applyHearAnswerDefaultTitleConfig'))
+  assert.ok(!content.includes('isLegacyHearAnswerPromptToneConfig'))
+  assert.ok(!content.includes('applyHearAnswerDefaultPromptToneConfig'))
+  assert.ok(!content.includes('ensureHearAnswerRecordGuideStep'))
 })
 
 test('standard flow module validator should enforce core loop steps', async () => {

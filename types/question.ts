@@ -216,15 +216,7 @@ export interface ListeningChoiceStandardFlowSource {
   // (e.g. "g0.countdown", "g1.answerChoice").
   overrides?: Record<string, Record<string, any>>
 }
-
-export interface ListeningChoiceLibraryFlowSource {
-  kind: 'library'
-  id: string
-}
-
-export type ListeningChoiceFlowSource =
-  | ListeningChoiceStandardFlowSource
-  | ListeningChoiceLibraryFlowSource
+export type ListeningChoiceFlowSource = ListeningChoiceStandardFlowSource
 
 export interface ListeningChoiceFlow {
   version: 1
@@ -342,49 +334,7 @@ export interface ListeningOrderQuestion {
   answer: string[]  // 正确顺序的 id 数组
 }
 
-// ==================== 口语题（旧版，保留兼容） ====================
-
-// 步骤行为类型
-export type SpeakingStepBehavior =
-  | 'manual'           // 用户点击下一步
-  | 'auto_play'        // 播放音频，播完自动下一步
-  | 'countdown'        // 倒计时，结束自动下一步
-  | 'record'           // 录音，用户点击停止
-  | 'input'            // 文字输入，用户点击提交
-
-// 口语题步骤配置（旧版）
-export interface SpeakingStep {
-  id: string
-  title: string                      // 步骤名称："听题"、"准备"、"作答"
-
-  // ===== 内容区域显示（可组合）=====
-  instruction?: RichTextContent      // 说明文字
-  passage?: RichTextContent          // 文章/段落（大段文字）
-  imageUrl?: string                  // 图片
-
-  // ===== 行为配置 =====
-  behavior: SpeakingStepBehavior
-  audioUrl?: string                  // auto_play 行为的音频 URL
-  duration?: number                  // countdown/record 的时长（秒）
-
-  // ===== 提示音 =====
-  beepOnStart?: boolean              // 开始时播放提示音
-
-  // ===== 按钮配置（可选）=====
-  buttonText?: string                // 自定义按钮文字，默认自动推断
-  hideButton?: boolean               // 隐藏按钮（用于自动推进的步骤）
-}
-
-// 口语题（旧版）
-export interface SpeakingQuestion {
-  id: string
-  type: 'speaking'
-  stem: RichTextContent              // 整体题目说明
-  steps: SpeakingStep[]              // 步骤列表
-  beepAudioUrl?: string              // 自定义提示音 URL（默认用系统音）
-}
-
-// ==================== 口语题（新版 - 步骤化编辑器） ====================
+// ==================== 口语题（步骤化编辑器） ====================
 
 // 口语题型枚举 (对应移动端 partType)
 export type SpeakingPartType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 12
@@ -399,19 +349,7 @@ export interface AudioFile {
   name?: string                      // 文件名
 }
 
-// ========== 步骤元素类型 ==========
-
-export type StepElementType = 'instruction' | 'audio' | 'image' | 'passage' | 'video'
-
-// 步骤元素（用于旧版编辑器）
-export type StepElement =
-  | { type: 'instruction'; content: RichTextContent }
-  | { type: 'audio'; url: string; autoPlay?: boolean }
-  | { type: 'image'; url: string; alt?: string }
-  | { type: 'passage'; content: RichTextContent }
-  | { type: 'video'; url: string }
-
-// ========== 新版步骤类型 ==========
+// ========== 步骤类型 ==========
 
 // 1. 题型介绍步骤
 export interface IntroductionStep {
@@ -505,14 +443,7 @@ export interface SpeakingSubQuestion {
   options?: QuestionOption[]         // 选项（口头选择题）
   referenceAnswer?: string           // 参考答案
   keywords?: string[]                // 关键词（情景问答）
-  // Preferred: audio attached to the sub-question's content.
-  // Used when a play-audio step has audio=null inside loop-sub-questions.
   contentAudio?: AudioFile
-
-  // Legacy / compatibility aliases:
-  // Some older docs or stored data may use these fields.
-  descriptionAudio?: AudioFile
-  audio?: AudioFile                  // 小题音频（旧字段）
 }
 
 // 评测配置
@@ -545,7 +476,6 @@ export type Question =
   | ListeningFillQuestion
   | ListeningMatchQuestion
   | ListeningOrderQuestion
-  | SpeakingQuestion
   | SpeakingStepsQuestion
 
 export type QuestionType = Question['type']
