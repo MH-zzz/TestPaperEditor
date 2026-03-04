@@ -711,6 +711,44 @@
               @drag-start="onReadonlyFlowVisualDragStart"
               @drag-end="onReadonlyFlowVisualDragEnd"
             />
+
+            <view class="flow-visual-snippet">
+              <view class="flow-visual-snippet__head">
+                <text class="flow-visual-snippet__title">流程片段</text>
+                <view class="flow-visual-snippet__actions">
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :disabled="!readonlyFlowVisualActiveNodeId"
+                    @click="setReadonlyFlowVisualSnippetAnchor"
+                  >设起点</button>
+                  <button class="btn btn-outline btn-xs" @click="saveReadonlyFlowVisualSnippet">保存片段</button>
+                </view>
+              </view>
+              <text class="flow-visual-snippet__desc">先设置起点，再选中终点节点；保存时会截取“起点到当前”的连续步骤。</text>
+              <text class="flow-visual-snippet__meta">当前范围：{{ readonlyFlowSnippetSelectionLabel }}</text>
+              <text
+                v-if="readonlyFlowSnippetSelectionAnchorId"
+                class="flow-visual-snippet__meta"
+              >起点节点：{{ readonlyFlowSnippetSelectionAnchorId }}</text>
+
+              <view v-if="readonlyFlowVisualSnippets.length > 0" class="flow-visual-snippet__list">
+                <view
+                  v-for="item in readonlyFlowVisualSnippets"
+                  :key="item.id"
+                  class="flow-visual-snippet__item"
+                >
+                  <view class="flow-visual-snippet__main">
+                    <text class="flow-visual-snippet__name">{{ item.name }} · v{{ item.version }}</text>
+                    <text class="flow-visual-snippet__steps">{{ formatFlowSnippetStepsText(item.steps) }}</text>
+                  </view>
+                  <view class="flow-visual-snippet__ops">
+                    <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualSnippet(item.id, 'after')">插入到当前后</button>
+                    <button class="btn btn-outline btn-xs" @click="applyReadonlyFlowVisualSnippet(item.id, 'end')">追加到末尾</button>
+                  </view>
+                </view>
+              </view>
+              <text v-else class="flow-visual-snippet__empty">暂无片段，点击“保存片段”创建第一条。</text>
+            </view>
           </view>
 
           <view
@@ -976,6 +1014,7 @@ import PropertyPanel from '/components/editor/flow-visual/PropertyPanel.vue'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
 import { contentTemplates } from '/stores/contentTemplates'
 import { flowModules } from '/stores/flowModules'
+import { flowSnippets } from '/stores/flowSnippets'
 import { flowProfiles } from '/stores/flowProfiles'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'
@@ -1015,6 +1054,7 @@ import {
 } from './flow-modules/useEditableFlowGraph'
 import type { VisualLinearStep } from '/domain/flow-visual/usecases/compileGraphToSteps'
 import { buildListeningChoiceModuleFromLinearSteps } from '/domain/flow-visual/usecases/buildListeningChoiceModuleFromLinearSteps'
+import type { FlowSnippetTemplateStep } from '/domain/flow-visual/usecases/buildFlowSnippetTemplate'
 import {
   useModuleLifecycle,
   type ModuleCommitValidationPayload,
@@ -2569,6 +2609,8 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
 
 const flowVisualEditor = useEditableFlowGraph(demoQuestion)
 const flowVisualStencilItems = flowVisualEditor.stencilItems
+const readonlyFlowSnippetSelectionAnchorId = flowVisualEditor.snippetSelectionAnchorId
+const readonlyFlowSnippetSelectionNodeIds = flowVisualEditor.snippetSelectionNodeIds
 const readonlyFlowVisualPropertyFields = flowVisualEditor.propertyFieldsForSelectedNode
 const flowVisualDebugInfo = flowVisualEditor.debugInfo
 const flowVisualDraggingKind = ref('')
@@ -2583,6 +2625,13 @@ const canReadonlyFlowVisualRedo = flowVisualEditor.canRedo
 const readonlyFlowRecentlyMovedNodeId = flowVisualEditor.recentlyMovedNodeId
 const readonlyFlowVisualActiveNodeId = flowVisualEditor.selectedNodeId
 const readonlyFlowVisualActiveNode = flowVisualEditor.selectedNode
+const readonlyFlowVisualSnippets = computed(() => flowSnippets.listLatest(16))
+const readonlyFlowSnippetSelectionLabel = computed(() => {
+  const count = readonlyFlowSnippetSelectionNodeIds.value.length
+  if (count <= 0) return '未选中步骤'
+  if (count === 1) return '当前仅选中 1 步（可保存单步片段）'
+  return `已框选 ${count} 步（起点 → 当前）`
+})
 let flowVisualBodyOverflow = ''
 
 function formatFlowVisualDebugTime(value: unknown) {
@@ -2610,10 +2659,12 @@ function setFlowVisualBodyScrollLocked(locked: boolean) {
 function openReadonlyFlowVisual() {
   readonlyFlowVisualVisible.value = true
   flowVisualEditor.reloadFromQuestion()
+  flowVisualEditor.clearSnippetSelectionAnchor()
 }
 
 function closeReadonlyFlowVisual() {
   readonlyFlowVisualVisible.value = false
+  flowVisualEditor.clearSnippetSelectionAnchor()
 }
 
 function selectReadonlyFlowVisualNode(id: string) {
@@ -2653,6 +2704,64 @@ function applyReadonlyFlowVisualQuickFix(key: string) {
     return
   }
   uni.showToast({ title: '已应用修复建议', icon: 'none' })
+}
+
+function formatFlowSnippetStepsText(steps: FlowSnippetTemplateStep[]): string {
+  const list = Array.isArray(steps) ? steps : []
+  if (list.length <= 0) return '-'
+  return list
+    .map((item) => String(item.kind || '').trim())
+    .filter(Boolean)
+    .join(' -> ')
+}
+
+function setReadonlyFlowVisualSnippetAnchor() {
+  if (!readonlyFlowVisualActiveNodeId.value) {
+    uni.showToast({ title: '请先选中一个节点作为起点', icon: 'none' })
+    return
+  }
+  flowVisualEditor.setSnippetSelectionAnchor(readonlyFlowVisualActiveNodeId.value)
+  uni.showToast({ title: '已设置片段起点', icon: 'none' })
+}
+
+function saveReadonlyFlowVisualSnippet() {
+  const capture = flowVisualEditor.saveSnippetFromSelectionRange()
+  if (!capture.ok) {
+    uni.showToast({ title: capture.message, icon: 'none' })
+    return
+  }
+  const saved = flowSnippets.saveSnippet({
+    name: capture.suggestedName,
+    steps: capture.steps
+  })
+  if (!saved) {
+    uni.showToast({ title: '片段保存失败', icon: 'none' })
+    return
+  }
+  uni.showToast({ title: `已保存片段 v${saved.version}`, icon: 'none' })
+}
+
+function applyReadonlyFlowVisualSnippet(
+  snippetId: string,
+  mode: 'after' | 'end' = 'after'
+) {
+  const snippet = flowSnippets.getById(snippetId)
+  if (!snippet) {
+    uni.showToast({ title: '片段不存在或已删除', icon: 'none' })
+    return
+  }
+  const result = mode === 'end'
+    ? flowVisualEditor.insertSnippetAtTail(snippet.steps)
+    : flowVisualEditor.insertSnippetNearTarget(
+      snippet.steps,
+      readonlyFlowVisualActiveNodeId.value || '',
+      'after'
+    )
+  if (!result.ok) {
+    uni.showToast({ title: result.message, icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '片段已插入', icon: 'none' })
 }
 
 function onReadonlyFlowVisualDragStart(kind: string) {
@@ -4962,6 +5071,84 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   padding: 12px;
   background: rgba(248, 250, 252, 0.86);
   overflow: auto;
+}
+
+.flow-visual-snippet {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-snippet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flow-visual-snippet__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.84);
+}
+
+.flow-visual-snippet__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-visual-snippet__desc,
+.flow-visual-snippet__meta,
+.flow-visual-snippet__empty {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.58);
+  line-height: 1.4;
+}
+
+.flow-visual-snippet__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-snippet__item {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-visual-snippet__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-visual-snippet__name {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.flow-visual-snippet__steps {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.6);
+  word-break: break-all;
+}
+
+.flow-visual-snippet__ops {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .flow-visual-canvas-dropzone {

@@ -19,10 +19,12 @@
 4. Week 2 / Task 4（第一版）：在线性编译阶段加入步骤语义 lint（核心步骤缺失、关键顺序异常、上下文异常/组绑定提醒），并在可视流程面板实时展示 warnings；新增插入前预检查与即时 toast 拦截。
 5. Week 2 / Task 5（第一版）：新增“一键修复建议”领域 usecase 与画布应用入口，针对核心缺失/顺序异常（缺播放、缺答题、缺倒计时、答题先于播放、介绍页位置/重复）提供可执行修复按钮。
 6. Week 2 / Task 6（第一版）：提交门禁改为区分 `save/publish` 模式；发布前新增可视流程 warning 门禁，且可视流程 compile error 在提交前统一阻断，形成“编辑期 lint + 发布门禁”同源校验链路。
+7. Week 3 / Task 7（第一版）：新增流程片段能力（连续选区保存、片段版本化、片段回插），并接入可视流程侧栏；插入时自动尝试继承上下文题组绑定，且保留原有 lint/门禁链路。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
-2. `npm run test`：180/180 全通过。
+2. `node --test tests/flow-visual-snippets.test.mjs tests/flow-visual-history.test.mjs`：通过。
+3. `npm run test`：183/183 全通过。
 
 ---
 

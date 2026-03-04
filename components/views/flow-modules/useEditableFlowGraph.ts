@@ -5,6 +5,7 @@ import {
   buildLinearFlowFixSuggestions,
   type FlowLinearFixSuggestion
 } from '/domain/flow-visual/usecases/buildLinearFlowFixSuggestions'
+import type { FlowSnippetTemplateStep } from '/domain/flow-visual/usecases/buildFlowSnippetTemplate'
 import {
   buildListeningChoiceReadonlyFlowGraph,
   type ReadonlyFlowNodePayload,
@@ -68,6 +69,19 @@ export type FlowLinearConstraintCheck = {
 export type FlowVisualInsertResult =
   | { ok: true }
   | { ok: false; code: string; message: string }
+
+export type FlowSnippetCaptureResult =
+  | {
+    ok: true
+    suggestedName: string
+    steps: FlowSnippetTemplateStep[]
+    selectedNodeIds: string[]
+  }
+  | {
+    ok: false
+    code: string
+    message: string
+  }
 
 const STENCIL_ITEMS: FlowStencilItem[] = [
   { kind: 'intro', label: '介绍页', color: '#2563eb', category: 'control', categoryLabel: '控制', description: '展示题型介绍与说明', defaultAutoNext: 'tapNext' },
@@ -315,17 +329,27 @@ function buildGraphConstraintStats(graph: FlowVisualGraph): GraphConstraintStats
   }
 }
 
-function createStencilNode(kind: string, index: number): FlowVisualNode<EditableFlowNodePayload> {
+function createStencilNode(
+  kind: string,
+  index: number,
+  overrides?: {
+    autoNext?: string
+    groupId?: string
+  }
+): FlowVisualNode<EditableFlowNodePayload> {
   const meta = readMeta(kind)
+  const autoNext = typeof overrides?.autoNext === 'string'
+    ? String(overrides.autoNext || '').trim()
+    : meta.defaultAutoNext
   const payload: EditableFlowNodePayload = {
     index,
     stepId: buildNodeId(meta.kind),
     stepKind: meta.kind,
-    autoNext: meta.defaultAutoNext,
-    autoNextLabel: resolveAutoNextLabel(meta.defaultAutoNext),
+    autoNext,
+    autoNextLabel: resolveAutoNextLabel(autoNext),
     category: meta.category,
     categoryLabel: meta.categoryLabel,
-    groupId: '',
+    groupId: String(overrides?.groupId || ''),
     questionCount: 0
   }
   return relayoutNode({
@@ -383,6 +407,21 @@ function validateStencilInsertion(
   return { ok: true }
 }
 
+function normalizeSnippetTemplateSteps(steps: FlowSnippetTemplateStep[]): FlowSnippetTemplateStep[] {
+  const source = Array.isArray(steps) ? steps : []
+  const result: FlowSnippetTemplateStep[] = []
+  for (const item of source) {
+    const kind = String(item?.kind || '').trim()
+    if (!kind) continue
+    result.push({
+      kind,
+      autoNext: String(item?.autoNext || '').trim(),
+      groupBinding: item?.groupBinding === 'inherit' ? 'inherit' : 'empty'
+    })
+  }
+  return result
+}
+
 function createEditableNodeFromReadonly(
   node: FlowVisualNode<ReadonlyFlowNodePayload>,
   index: number
@@ -426,6 +465,7 @@ function buildStepSignature(question: ListeningChoiceQuestion | null | undefined
 export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | null | undefined>) {
   const nodes = ref<FlowVisualNode<EditableFlowNodePayload>[]>([])
   const selectedNodeId = ref('')
+  const snippetSelectionAnchorId = ref('')
   const recentlyMovedNodeId = ref('')
   const dirty = ref(false)
   const lastDirtyAction = ref('')
@@ -465,10 +505,13 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     const list = nodes.value || []
     if (list.length <= 0) {
       selectedNodeId.value = ''
+      snippetSelectionAnchorId.value = ''
       return
     }
     const hit = list.some((item) => item.id === selectedNodeId.value)
     if (!hit) selectedNodeId.value = list[0].id
+    const anchorHit = list.some((item) => item.id === snippetSelectionAnchorId.value)
+    if (!anchorHit) snippetSelectionAnchorId.value = ''
   }
 
   function cloneNodes(source: FlowVisualNode<EditableFlowNodePayload>[]): FlowVisualNode<EditableFlowNodePayload>[] {
@@ -515,6 +558,21 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
   function selectNode(nodeId: string) {
     selectedNodeId.value = String(nodeId || '')
     ensureSelectedNode()
+  }
+
+  function setSnippetSelectionAnchor(nodeId?: string) {
+    const list = nodes.value || []
+    if (list.length <= 0) {
+      snippetSelectionAnchorId.value = ''
+      return
+    }
+    const target = String(nodeId || selectedNodeId.value || list[0]?.id || '')
+    const hit = list.some((item) => item.id === target)
+    snippetSelectionAnchorId.value = hit ? target : list[0].id
+  }
+
+  function clearSnippetSelectionAnchor() {
+    snippetSelectionAnchorId.value = ''
   }
 
   function appendNode(kind: string): FlowVisualInsertResult {
@@ -579,6 +637,79 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     markRecentlyMoved(moved.id)
     markDirty('apply_quick_fix_move')
     return true
+  }
+
+  function resolveContextGroupIdByInsertIndex(insertIndex: number): string {
+    const safeIndex = Math.max(0, Math.min(insertIndex, nodes.value.length))
+    const previous = nodes.value[safeIndex - 1]
+    const next = nodes.value[safeIndex]
+    const prevGroupId = String(previous?.data?.groupId || '').trim()
+    if (prevGroupId) return prevGroupId
+    const nextGroupId = String(next?.data?.groupId || '').trim()
+    if (nextGroupId) return nextGroupId
+    for (const item of nodes.value) {
+      const groupId = String(item?.data?.groupId || '').trim()
+      if (groupId) return groupId
+    }
+    return ''
+  }
+
+  function insertSnippetSteps(steps: FlowSnippetTemplateStep[], insertIndex: number): FlowVisualInsertResult {
+    const normalizedSteps = normalizeSnippetTemplateSteps(steps)
+    if (normalizedSteps.length <= 0) {
+      return { ok: false, code: 'snippet_empty', message: '片段为空，无法插入。' }
+    }
+    const safeIndex = Math.max(0, Math.min(insertIndex, nodes.value.length))
+    const contextGroupId = resolveContextGroupIdByInsertIndex(safeIndex)
+    const workingNodes = [...nodes.value]
+    const insertedIds: string[] = []
+    let cursor = safeIndex
+
+    for (let i = 0; i < normalizedSteps.length; i += 1) {
+      const step = normalizedSteps[i]
+      const check = validateStencilInsertion(workingNodes, step.kind, cursor)
+      if (!check.ok) {
+        return {
+          ok: false,
+          code: check.code,
+          message: `片段第 ${i + 1} 步插入失败：${check.message}`
+        }
+      }
+      const groupId = step.groupBinding === 'inherit' ? contextGroupId : ''
+      const node = createStencilNode(step.kind, cursor, {
+        autoNext: step.autoNext,
+        groupId
+      })
+      workingNodes.splice(cursor, 0, node)
+      insertedIds.push(node.id)
+      cursor += 1
+    }
+
+    pushHistorySnapshot()
+    nodes.value = relayoutNodes(workingNodes)
+    const lastInsertedId = insertedIds[insertedIds.length - 1]
+    if (lastInsertedId) {
+      selectedNodeId.value = lastInsertedId
+      markRecentlyMoved(lastInsertedId)
+    }
+    markDirty('insert_snippet_steps')
+    return { ok: true }
+  }
+
+  function insertSnippetNearTarget(
+    steps: FlowSnippetTemplateStep[],
+    targetNodeId: string,
+    position: FlowNodeDropPosition = 'after'
+  ): FlowVisualInsertResult {
+    const targetId = String(targetNodeId || '')
+    const targetIndex = nodes.value.findIndex((item) => item.id === targetId)
+    if (targetIndex < 0) return insertSnippetAtTail(steps)
+    const insertIndex = position === 'after' ? targetIndex + 1 : targetIndex
+    return insertSnippetSteps(steps, insertIndex)
+  }
+
+  function insertSnippetAtTail(steps: FlowSnippetTemplateStep[]): FlowVisualInsertResult {
+    return insertSnippetSteps(steps, nodes.value.length)
   }
 
   function patchSelectedNode(patch: FlowVisualNodePatch) {
@@ -725,6 +856,61 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     markDirty('redo')
   }
 
+  const snippetSelectionNodeIds = computed<string[]>(() => {
+    const list = nodes.value || []
+    if (list.length <= 0) return []
+    const selectedId = String(selectedNodeId.value || list[0]?.id || '')
+    if (!selectedId) return []
+    const selectedIndex = list.findIndex((item) => item.id === selectedId)
+    if (selectedIndex < 0) return []
+
+    const anchorId = String(snippetSelectionAnchorId.value || '').trim()
+    if (!anchorId) return [selectedId]
+    const anchorIndex = list.findIndex((item) => item.id === anchorId)
+    if (anchorIndex < 0) return [selectedId]
+
+    const start = Math.min(anchorIndex, selectedIndex)
+    const end = Math.max(anchorIndex, selectedIndex)
+    return list.slice(start, end + 1).map((item) => item.id)
+  })
+
+  function buildSuggestedSnippetName(steps: FlowSnippetTemplateStep[]): string {
+    if (steps.length <= 0) return '流程片段'
+    const labels = steps.slice(0, 3).map((step) => readMeta(step.kind).label)
+    const suffix = steps.length > 3 ? ` +${steps.length - 3}` : ''
+    return `${labels.join(' · ')}${suffix}`
+  }
+
+  function saveSnippetFromSelectionRange(): FlowSnippetCaptureResult {
+    const selectedIds = snippetSelectionNodeIds.value
+    if (selectedIds.length <= 0) {
+      return { ok: false, code: 'snippet_selection_empty', message: '请先选中至少 1 个步骤。' }
+    }
+    const idSet = new Set(selectedIds)
+    const selectedNodes = nodes.value.filter((item) => idSet.has(item.id))
+    if (selectedNodes.length <= 0) {
+      return { ok: false, code: 'snippet_selection_missing', message: '当前选区不存在可保存节点。' }
+    }
+    const steps: FlowSnippetTemplateStep[] = selectedNodes.map((node) => {
+      return {
+        kind: String(node.data?.stepKind || node.kind || '').trim(),
+        autoNext: String(node.data?.autoNext || '').trim(),
+        groupBinding: String(node.data?.groupId || '').trim() ? 'inherit' : 'empty'
+      }
+    }).filter((item) => !!item.kind)
+
+    if (steps.length <= 0) {
+      return { ok: false, code: 'snippet_steps_empty', message: '选区中没有可保存的步骤。' }
+    }
+
+    return {
+      ok: true,
+      suggestedName: buildSuggestedSnippetName(steps),
+      steps,
+      selectedNodeIds: selectedIds
+    }
+  }
+
   const graph = computed<FlowVisualGraph<EditableFlowNodePayload>>(() => {
     const arranged = relayoutNodes(nodes.value)
     return {
@@ -865,6 +1051,8 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     stencilItems: STENCIL_ITEMS,
     graph,
     selectedNodeId,
+    snippetSelectionAnchorId,
+    snippetSelectionNodeIds,
     selectedNode,
     compileResult,
     compiledStepPreview,
@@ -877,8 +1065,13 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     dirty,
     debugInfo,
     selectNode,
+    setSnippetSelectionAnchor,
+    clearSnippetSelectionAnchor,
     appendNode,
     insertNodeNearTarget,
+    insertSnippetNearTarget,
+    insertSnippetAtTail,
+    saveSnippetFromSelectionRange,
     patchSelectedNode,
     removeSelectedNode,
     duplicateSelectedNode,
