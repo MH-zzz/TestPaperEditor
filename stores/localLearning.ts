@@ -12,6 +12,7 @@ import {
   loadLocalLearningFlows,
   loadLocalLearningQuestions
 } from '/infra/repository/localLearningRepository'
+import { migrateFlowExportPayloadToV2 } from '/infra/repository/flowExportPackage'
 
 export type LearningPartSummary = {
   name: string
@@ -32,10 +33,15 @@ export type LearningUnit = {
 }
 
 type FlowExportPayload = {
+  schemaVersion?: unknown
+  exportCapabilities?: unknown
   listeningChoiceModules?: unknown
   flowProfiles?: unknown
+  publishLogs?: unknown
+  migrationReport?: unknown
   modules?: unknown
   profiles?: unknown
+  logs?: unknown
 }
 
 type LocalLearningState = {
@@ -48,6 +54,10 @@ type LocalLearningState = {
   currentQuestionStepIndex: number
   answers: Record<string, string | string[]>
   runtimeQuestion: Question | null
+  flowImportSchemaVersion: number
+  flowImportMigrated: boolean
+  flowImportChangeCount: number
+  flowImportCapabilities: string[]
 }
 
 const PART_ORDER = ['听后选择', '听后回答', '听后转述', '短文朗读']
@@ -61,7 +71,11 @@ export const localLearningState = reactive<LocalLearningState>({
   currentQuestionIndex: 0,
   currentQuestionStepIndex: 0,
   answers: {},
-  runtimeQuestion: null
+  runtimeQuestion: null,
+  flowImportSchemaVersion: 0,
+  flowImportMigrated: false,
+  flowImportChangeCount: 0,
+  flowImportCapabilities: []
 })
 
 let loadPromise: Promise<void> | null = null
@@ -262,21 +276,33 @@ function toFlowProfiles(raw: unknown): FlowProfileV1[] {
     .map((item) => ({ ...item } as FlowProfileV1))
 }
 
+function resolveEnabledCapabilities(raw: unknown): string[] {
+  if (!isObjectRecord(raw)) return []
+  const out: string[] = []
+  const entries = Object.entries(raw)
+  for (const [key, value] of entries) {
+    if (value === true) out.push(String(key))
+  }
+  return out.sort((a, b) => a.localeCompare(b))
+}
+
 function applyFlowPayload(payload: FlowExportPayload | null) {
   if (!payload || !isObjectRecord(payload)) return
 
-  const rawModules = payload.listeningChoiceModules != null
-    ? payload.listeningChoiceModules
-    : payload.modules
-  const modules = toListeningChoiceModules(rawModules)
+  const migratedPack = migrateFlowExportPayloadToV2(payload)
+  localLearningState.flowImportSchemaVersion = Number(migratedPack.migrationReport.fromVersion || 0)
+  localLearningState.flowImportMigrated = !!migratedPack.migrationReport.migrated
+  localLearningState.flowImportChangeCount = Array.isArray(migratedPack.migrationReport.entries)
+    ? migratedPack.migrationReport.entries.length
+    : 0
+  localLearningState.flowImportCapabilities = resolveEnabledCapabilities(migratedPack.exportCapabilities)
+
+  const modules = toListeningChoiceModules(migratedPack.listeningChoiceModules)
   if (modules.length > 0) {
     flowModules.state.listeningChoice = modules
   }
 
-  const rawProfiles = payload.flowProfiles != null
-    ? payload.flowProfiles
-    : payload.profiles
-  const profiles = toFlowProfiles(rawProfiles)
+  const profiles = toFlowProfiles(migratedPack.flowProfiles)
   if (profiles.length > 0) {
     flowProfiles.state.profiles = profiles
   }

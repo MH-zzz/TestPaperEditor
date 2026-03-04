@@ -318,10 +318,13 @@ test('question library should export flow data from current flow stores instead 
   assert.ok(src.includes("import { flowModules } from '/stores/flowModules'"))
   assert.ok(src.includes("import { flowProfiles } from '/stores/flowProfiles'"))
   assert.ok(src.includes("import { loadFlowModulePublishLogs } from '/infra/repository/flowModuleRepository'"))
+  assert.ok(src.includes("import { buildFlowExportPackageV2 } from '/infra/repository/flowExportPackage'"))
   assert.ok(src.includes('function buildFlowExportPayload() {'))
+  assert.ok(src.includes('return buildFlowExportPackageV2({'))
   assert.ok(src.includes('listeningChoiceModules: flowModules.listListeningChoice()'))
   assert.ok(src.includes('flowProfiles: [...flowProfiles.state.profiles]'))
   assert.ok(src.includes('publishLogs: loadFlowModulePublishLogs()'))
+  assert.ok(!src.includes('schemaVersion: 1'))
   assert.ok(!src.includes("uni.getStorageSync('editor_flow_library_v1')"))
 })
 

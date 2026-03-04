@@ -1,6 +1,18 @@
 {
   "exportedAt": "2026-03-03T08:25:59.779Z",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "exportCapabilities": {
+    "branchNodeMvp": true,
+    "loopNodeMvp": true,
+    "migrationReport": true
+  },
+  "migrationReport": {
+    "fromVersion": 2,
+    "toVersion": 2,
+    "migrated": false,
+    "migratedAt": "2026-03-03T08:25:59.779Z",
+    "entries": []
+  },
   "listeningChoiceModules": [
     {
       "kind": "listening_choice",

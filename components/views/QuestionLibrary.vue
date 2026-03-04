@@ -94,6 +94,7 @@ import { deleteRecentQuestion } from '/infra/repository/questionRepository'
 import { flowModules } from '/stores/flowModules'
 import { flowProfiles } from '/stores/flowProfiles'
 import { loadFlowModulePublishLogs } from '/infra/repository/flowModuleRepository'
+import { buildFlowExportPackageV2 } from '/infra/repository/flowExportPackage'
 
 const emit = defineEmits<{
   (e: 'open-editor'): void
@@ -196,13 +197,11 @@ function exportQuestions() {
 }
 
 function buildFlowExportPayload() {
-  return {
-    exportedAt: new Date().toISOString(),
-    schemaVersion: 1,
+  return buildFlowExportPackageV2({
     listeningChoiceModules: flowModules.listListeningChoice(),
     flowProfiles: [...flowProfiles.state.profiles],
     publishLogs: loadFlowModulePublishLogs()
-  }
+  })
 }
 
 function exportFlows() {

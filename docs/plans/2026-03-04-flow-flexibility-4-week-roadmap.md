@@ -24,6 +24,7 @@
 9. Week 3 / Task 9（第一版）：接入批量参数编辑（多选交集属性面板 + 批量 patch API）；批量修改复用同一字段能力约束与编译校验链路，且一次批量应用对应一次撤销历史快照。
 10. Week 4 / Task 10（第一版）：新增 `branchScore` 受控分支 MVP。编译层支持 `compileFlowVisualGraphToBranchMvpSteps`（阈值条件、pass/fail/default 路径、分支合法性校验），运行时新增 `reduceFlowRuntimeStateWithBranch` 按评分上下文执行跳转。
 11. Week 4 / Task 11（第一版）：新增 `loopNode` 受限循环 MVP。编译层支持 `compileFlowVisualGraphToLoopMvpSteps`（`maxIterations` 校验、continue/exit 路径约束），运行时新增 `reduceFlowRuntimeStateWithLoop`（循环计数与上限退出），并扩展步骤能力字段支持 `maxIterations`。
+12. Week 4 / Task 12（第一版）：新增流程导出包 V2 迁移闭环。导出端改为 `schemaVersion: 2 + exportCapabilities + migrationReport`；导入端新增 `migrateFlowExportPayloadToV2`，兼容旧字段（`modules/profiles/logs`）并输出迁移轨迹（字段变更路径 + 原因）。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
@@ -33,7 +34,8 @@
 5. `node --test tests/flow-visual-branch-mvp.test.mjs tests/runtime-branch-mvp.test.mjs`：通过。
 6. `node --test tests/flow-visual-compiler.test.mjs tests/flow-engine.test.mjs tests/runtime-unified-entry.test.mjs`：通过。
 7. `node --test tests/flow-visual-loop-mvp.test.mjs tests/runtime-loop-mvp.test.mjs`：通过。
-8. `npm run test`：197/197 全通过。
+8. `node --test tests/flow-export-migration.test.mjs tests/preview-mode.test.mjs tests/mobile-learning-local-page.test.mjs`：通过。
+9. `npm run test`：201/201 全通过。
 
 ---
 

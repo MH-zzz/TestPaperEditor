@@ -78,6 +78,16 @@ test('local learning should normalize hear-answer modules to V2 recordGuide flow
   assert.ok(src.includes('DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps'))
 })
 
+test('local learning should migrate legacy flow export payload to schema v2 before applying', async () => {
+  const src = await readFile('stores/localLearning.ts')
+  assert.ok(src.includes("import { migrateFlowExportPayloadToV2 } from '/infra/repository/flowExportPackage'"))
+  assert.ok(src.includes('const migratedPack = migrateFlowExportPayloadToV2(payload)'))
+  assert.ok(src.includes('localLearningState.flowImportSchemaVersion'))
+  assert.ok(src.includes('localLearningState.flowImportMigrated'))
+  assert.ok(src.includes('localLearningState.flowImportChangeCount'))
+  assert.ok(src.includes('localLearningState.flowImportCapabilities'))
+})
+
 test('App launch should redirect to mobile local learning page on APP-PLUS', async () => {
   const src = await readFile('App.vue')
   assert.ok(src.includes('// #ifdef APP-PLUS'))
