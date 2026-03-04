@@ -58,7 +58,7 @@
             </view>
           </view>
           <text class="flow-card__title">听后回答</text>
-          <text class="flow-card__desc">介绍页 → 每题组：播放描述音频 → 倒计时 → 播放正文音频 → 提示音 → 录音答题</text>
+          <text class="flow-card__desc">介绍页 → 每题组：播放描述音频 → 倒计时 → 播放正文音频 → 提示音(开始录音) → 录音答题 → 提示音(结束录音)</text>
           <view class="flow-card__meta">
             <text class="meta-item">流程线：{{ speakingHearAnswerFlowLineCount }}</text>
             <text class="meta-dot">·</text>
@@ -370,6 +370,104 @@
                                 :value="String(getPerGroupRaw(selectedConfig.index, 'url') || '/static/audio/small_time.mp3')"
                                 @input="(e) => patchPerGroupStep(selectedConfig.index, { url: e.detail.value })"
                               />
+                            </view>
+                          </template>
+
+                          <template v-if="selectedConfig.kind === 'recordGuide'">
+                            <view class="form-item">
+                              <text class="form-item__label">显示题目标题</text>
+                              <view
+                                class="toggle"
+                                :class="{ active: getPerGroupBool(selectedConfig.index, 'showQuestionTitle', true) }"
+                                @click="togglePerGroupBool(selectedConfig.index, 'showQuestionTitle', true)"
+                              >
+                                {{ getPerGroupBool(selectedConfig.index, 'showQuestionTitle', true) ? '是' : '否' }}
+                              </view>
+                            </view>
+
+                            <view class="form-item">
+                              <text class="form-item__label">显示标题补充</text>
+                              <view
+                                class="toggle"
+                                :class="{ active: getPerGroupBool(selectedConfig.index, 'showQuestionTitleDescription', true) }"
+                                @click="togglePerGroupBool(selectedConfig.index, 'showQuestionTitleDescription', true)"
+                              >
+                                {{ getPerGroupBool(selectedConfig.index, 'showQuestionTitleDescription', true) ? '是' : '否' }}
+                              </view>
+                            </view>
+
+                            <view class="form-item">
+                              <text class="form-item__label">显示题组描述</text>
+                              <view
+                                class="toggle"
+                                :class="{ active: getPerGroupBool(selectedConfig.index, 'showGroupPrompt', false) }"
+                                @click="togglePerGroupBool(selectedConfig.index, 'showGroupPrompt', false)"
+                              >
+                                {{ getPerGroupBool(selectedConfig.index, 'showGroupPrompt', false) ? '是' : '否' }}
+                              </view>
+                            </view>
+
+                            <view class="form-item form-item--full">
+                              <text class="form-item__label">文案来源</text>
+                              <view class="mode-toggle mode-toggle--triple">
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideTextSource(selectedConfig.index) === 'question' }"
+                                  @click="setRecordGuideTextSource(selectedConfig.index, 'question')"
+                                >按小题</view>
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideTextSource(selectedConfig.index) === 'group' }"
+                                  @click="setRecordGuideTextSource(selectedConfig.index, 'group')"
+                                >按题组</view>
+                              </view>
+                            </view>
+
+                            <view class="form-item form-item--full">
+                              <text class="form-item__label">音频来源</text>
+                              <view class="mode-toggle mode-toggle--triple">
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideAudioSource(selectedConfig.index) === 'question' }"
+                                  @click="setRecordGuideAudioSource(selectedConfig.index, 'question')"
+                                >按小题</view>
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideAudioSource(selectedConfig.index) === 'group' }"
+                                  @click="setRecordGuideAudioSource(selectedConfig.index, 'group')"
+                                >按题组</view>
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideAudioSource(selectedConfig.index) === 'fixed' }"
+                                  @click="setRecordGuideAudioSource(selectedConfig.index, 'fixed')"
+                                >固定 URL</view>
+                              </view>
+                            </view>
+
+                            <view v-if="getRecordGuideAudioSource(selectedConfig.index) === 'fixed'" class="form-item form-item--full">
+                              <text class="form-item__label">固定音频 URL</text>
+                              <input
+                                class="text-input"
+                                :value="String(getPerGroupRaw(selectedConfig.index, 'url') || '')"
+                                placeholder="/static/audio/xxx.mp3"
+                                @input="(e) => patchPerGroupStep(selectedConfig.index, { url: e.detail.value })"
+                              />
+                            </view>
+
+                            <view class="form-item form-item--full">
+                              <text class="form-item__label">屏幕策略</text>
+                              <view class="mode-toggle mode-toggle--triple">
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideScreenStrategy(selectedConfig.index) === 'replaceBody' }"
+                                  @click="setRecordGuideScreenStrategy(selectedConfig.index, 'replaceBody')"
+                                >替换主体</view>
+                                <view
+                                  class="mode-btn"
+                                  :class="{ active: getRecordGuideScreenStrategy(selectedConfig.index) === 'reusePrevious' }"
+                                  @click="setRecordGuideScreenStrategy(selectedConfig.index, 'reusePrevious')"
+                                >复用上一屏</view>
+                              </view>
                             </view>
                           </template>
 
@@ -772,6 +870,7 @@ import { runtimeDebug, type RuntimeDebugEvent } from '/stores/runtimeDebug'
 import {
   patchListeningChoiceQuestionFlow
 } from './flow-modules/currentQuestionBridge'
+import { loadRecentQuestions } from '/infra/repository/questionRepository'
 import { generateId } from '/templates'
 import {
   buildFlowProfileFixSuggestions as buildFlowProfileFixSuggestionsUsecase,
@@ -902,6 +1001,21 @@ function buildPreviewFlowStepFromVisual(
       autoNext,
       groupId: groupId || undefined,
       url: '/static/audio/small_time.mp3'
+    }
+  }
+
+  if (kind === 'recordGuide') {
+    return {
+      id,
+      kind: 'recordGuide',
+      autoNext,
+      groupId: groupId || undefined,
+      questionIds: [],
+      showTitle: false,
+      showQuestionTitle: true,
+      showQuestionTitleDescription: true,
+      showGroupPrompt: false,
+      guideAudioUrl: ''
     }
   }
 
@@ -1108,6 +1222,78 @@ function normalizeSpeakingHearAnswerContentFromListening(
       }))
     }))
   }
+}
+
+function isHearAnswerQuestion(question: Question | null | undefined): question is Question {
+  if (!question || typeof question !== 'object') return false
+  if (question.type === 'speaking_hear_answer') return true
+  if (question.type !== 'listening_choice') return false
+  const metadata = isObjectRecord((question as { metadata?: unknown }).metadata)
+    ? (question as { metadata?: Record<string, unknown> }).metadata || {}
+    : {}
+  const variant = typeof metadata.questionVariant === 'string' ? metadata.questionVariant.trim() : ''
+  return variant === 'hear_answer'
+}
+
+function isListeningChoiceQuestion(question: Question | null | undefined): question is Question {
+  if (!question || typeof question !== 'object') return false
+  if (question.type !== 'listening_choice') return false
+  const metadata = isObjectRecord((question as { metadata?: unknown }).metadata)
+    ? (question as { metadata?: Record<string, unknown> }).metadata || {}
+    : {}
+  const variant = typeof metadata.questionVariant === 'string' ? metadata.questionVariant.trim() : ''
+  return variant !== 'hear_answer'
+}
+
+function pickLibraryQuestionForFlowPage(pageType: FlowPageType): Question | null {
+  const current = questionDraft.state.currentQuestion as Question | null
+  if (pageType === 'speaking_hear_answer' && isHearAnswerQuestion(current)) return clone(current)
+  if (pageType === 'listening_choice' && isListeningChoiceQuestion(current)) return clone(current)
+
+  const recent = loadRecentQuestions<Question>()
+  if (!Array.isArray(recent) || recent.length <= 0) return null
+  if (pageType === 'speaking_hear_answer') {
+    const hit = recent.find((item) => isHearAnswerQuestion(item))
+    return hit ? clone(hit) : null
+  }
+  const hit = recent.find((item) => isListeningChoiceQuestion(item))
+  return hit ? clone(hit) : null
+}
+
+function syncTemplateFromLibraryQuestion(pageType: FlowPageType): boolean {
+  const hit = pickLibraryQuestionForFlowPage(pageType)
+  if (!hit) return false
+
+  if (pageType === 'speaking_hear_answer') {
+    if (hit.type === 'speaking_hear_answer') {
+      contentTemplates.setSpeakingHearAnswer({
+        version: 1,
+        content: clone(hit.content as SpeakingHearAnswerContent)
+      })
+      return true
+    }
+    contentTemplates.setSpeakingHearAnswer({
+      version: 1,
+      content: normalizeSpeakingHearAnswerContentFromListening(clone(hit.content as ListeningChoiceContent))
+    })
+    return true
+  }
+
+  if (hit.type === 'listening_choice') {
+    contentTemplates.setListeningChoice({
+      version: 1,
+      optionStyle: String((hit as { optionStyle?: unknown }).optionStyle || 'ABCD') === '1234' ? '1234' : 'ABCD',
+      content: clone(hit.content as ListeningChoiceContent)
+    })
+    return true
+  }
+
+  contentTemplates.setListeningChoice({
+    version: 1,
+    optionStyle: 'ABCD',
+    content: normalizeListeningChoiceContentFromHearAnswer(clone(hit.content as SpeakingHearAnswerContent))
+  })
+  return true
 }
 
 function buildQuestionFromTemplate(pageType: FlowPageType = 'listening_choice'): ListeningChoiceQuestion {
@@ -2653,6 +2839,11 @@ function normalizePreviewReplayGapSeconds(step: ListeningChoiceFlowStep, groupBy
 }
 
 function resolvePreviewAudioPlayCount(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {
+  const explicit = Math.floor(Number((step as any)?.playTimes))
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return Math.max(1, explicit)
+  }
+
   if (step.kind === 'intro') {
     return Math.max(1, toInt(demoQuestion.value.content?.intro?.audio?.playCount || 1))
   }
@@ -2989,9 +3180,42 @@ function onFlowQuickAdd(kind: string) {
     quickAddPerGroupStep('promptTone')
     return
   }
+  if (kind === 'recordGuide') {
+    quickAddPerGroupStep('recordGuide')
+    return
+  }
   if (kind === 'answerChoice') {
     quickAddPerGroupStep('answerChoice')
   }
+}
+
+function getRecordGuideTextSource(index: number): 'question' | 'group' {
+  const raw = String(getPerGroupRaw(index, 'textSource') || '').trim()
+  return raw === 'group' ? 'group' : 'question'
+}
+
+function setRecordGuideTextSource(index: number, value: 'question' | 'group') {
+  patchPerGroupStep(index, { textSource: value })
+}
+
+function getRecordGuideAudioSource(index: number): 'question' | 'group' | 'fixed' {
+  const raw = String(getPerGroupRaw(index, 'audioSource') || '').trim()
+  if (raw === 'group') return 'group'
+  if (raw === 'fixed') return 'fixed'
+  return 'question'
+}
+
+function setRecordGuideAudioSource(index: number, value: 'question' | 'group' | 'fixed') {
+  patchPerGroupStep(index, { audioSource: value })
+}
+
+function getRecordGuideScreenStrategy(index: number): 'replaceBody' | 'reusePrevious' {
+  const raw = String(getPerGroupRaw(index, 'screenStrategy') || '').trim()
+  return raw === 'reusePrevious' ? 'reusePrevious' : 'replaceBody'
+}
+
+function setRecordGuideScreenStrategy(index: number, value: 'replaceBody' | 'reusePrevious') {
+  patchPerGroupStep(index, { screenStrategy: value })
 }
 
 function syncDraftModuleMeta(module: unknown) {
@@ -3065,6 +3289,7 @@ function goHome() {
 function openListeningChoice() {
   ensureRegionRoutingMode(true)
   activeFlowPageType.value = 'listening_choice'
+  syncTemplateFromLibraryQuestion('listening_choice')
   flowLineWizardVisible.value = false
   const module = getDefaultModule('listening_choice')
   draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
@@ -3080,6 +3305,7 @@ function openListeningChoice() {
 
 function openSpeakingHearAnswer() {
   activeFlowPageType.value = 'speaking_hear_answer'
+  syncTemplateFromLibraryQuestion('speaking_hear_answer')
   flowLineWizardVisible.value = false
   const module = getDefaultModule('speaking_hear_answer')
   draftModuleId.value = String(module.id || LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)
@@ -3094,10 +3320,15 @@ function openSpeakingHearAnswer() {
 }
 
 function reloadDemoBaseFromTemplate() {
+  const synced = syncTemplateFromLibraryQuestion(activeFlowPageType.value)
   previewAnswers.value = {}
   currentStepIndex.value = 0
   configStepIndex.value = 0
-  uni.showToast({ title: '已同步最新题型模板', icon: 'none' })
+  if (synced) {
+    uni.showToast({ title: '已同步题库测试题', icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '未找到题库测试题，已使用题型模板', icon: 'none' })
 }
 
 function toastWip(name: string) {
@@ -3806,6 +4037,10 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.mode-toggle--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .mode-btn {

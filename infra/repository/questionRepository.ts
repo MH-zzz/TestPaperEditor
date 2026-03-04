@@ -45,3 +45,11 @@ export function saveRecentQuestions(questions: Question[]): void {
     uni.setStorageSync(RECENT_QUESTIONS_KEY, JSON.stringify(questions || []))
   } catch {}
 }
+
+export function deleteRecentQuestion(id: string): void {
+  try {
+    const list = loadRecentQuestions()
+    const updated = list.filter(q => q.id !== id)
+    saveRecentQuestions(updated)
+  } catch {}
+}

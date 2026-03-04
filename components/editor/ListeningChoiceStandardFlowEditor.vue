@@ -132,6 +132,63 @@
             />
           </view>
 
+          <template v-if="step.kind === 'recordGuide'">
+            <view class="form-item">
+              <text class="form-item__label">显示题目标题</text>
+              <view class="toggle" :class="{ active: getBool(step, 'showQuestionTitle', true) }" @click="toggleStepBoolWithDefault(sIndex, 'showQuestionTitle', true)">
+                {{ getBool(step, 'showQuestionTitle', true) ? '是' : '否' }}
+              </view>
+            </view>
+
+            <view class="form-item">
+              <text class="form-item__label">显示标题补充</text>
+              <view class="toggle" :class="{ active: getBool(step, 'showQuestionTitleDescription', true) }" @click="toggleStepBoolWithDefault(sIndex, 'showQuestionTitleDescription', true)">
+                {{ getBool(step, 'showQuestionTitleDescription', true) ? '是' : '否' }}
+              </view>
+            </view>
+
+            <view class="form-item">
+              <text class="form-item__label">显示题组描述</text>
+              <view class="toggle" :class="{ active: getBool(step, 'showGroupPrompt', false) }" @click="toggleStepBoolWithDefault(sIndex, 'showGroupPrompt', false)">
+                {{ getBool(step, 'showGroupPrompt', false) ? '是' : '否' }}
+              </view>
+            </view>
+
+            <view class="form-item">
+              <text class="form-item__label">文案来源</text>
+              <view class="mode-toggle">
+                <view class="mode-btn" :class="{ active: getRecordGuideTextSource(step) === 'question' }" @click="updateStep(sIndex, { textSource: 'question' })">按小题</view>
+                <view class="mode-btn" :class="{ active: getRecordGuideTextSource(step) === 'group' }" @click="updateStep(sIndex, { textSource: 'group' })">按题组</view>
+              </view>
+            </view>
+
+            <view class="form-item">
+              <text class="form-item__label">音频来源</text>
+              <view class="mode-toggle mode-toggle--triple">
+                <view class="mode-btn" :class="{ active: getRecordGuideAudioSource(step) === 'question' }" @click="updateStep(sIndex, { audioSource: 'question' })">按小题</view>
+                <view class="mode-btn" :class="{ active: getRecordGuideAudioSource(step) === 'group' }" @click="updateStep(sIndex, { audioSource: 'group' })">按题组</view>
+                <view class="mode-btn" :class="{ active: getRecordGuideAudioSource(step) === 'fixed' }" @click="updateStep(sIndex, { audioSource: 'fixed' })">固定 URL</view>
+              </view>
+            </view>
+
+            <view v-if="getRecordGuideAudioSource(step) === 'fixed'" class="form-item">
+              <text class="form-item__label">固定音频 URL</text>
+              <input
+                class="text-input"
+                :value="String(getStepField(step, 'url') || '')"
+                @input="(e) => updateStep(sIndex, { url: e.detail.value })"
+              />
+            </view>
+
+            <view class="form-item">
+              <text class="form-item__label">屏幕策略</text>
+              <view class="mode-toggle">
+                <view class="mode-btn" :class="{ active: getRecordGuideScreenStrategy(step) === 'replaceBody' }" @click="updateStep(sIndex, { screenStrategy: 'replaceBody' })">替换主体</view>
+                <view class="mode-btn" :class="{ active: getRecordGuideScreenStrategy(step) === 'reusePrevious' }" @click="updateStep(sIndex, { screenStrategy: 'reusePrevious' })">复用上一屏</view>
+              </view>
+            </view>
+          </template>
+
           <view v-if="step.kind === 'answerChoice'" class="form-item">
             <view class="grid">
               <view>
@@ -191,6 +248,7 @@ const quickAddItems = [
   { key: 'playAudioContent', label: '正文音频' },
   { key: 'countdown', label: '倒计时' },
   { key: 'promptTone', label: '提示音' },
+  { key: 'recordGuide', label: '录音说明' },
   { key: 'answerChoice', label: '开始答题' }
 ]
 
@@ -203,6 +261,7 @@ function kindLabel(kind: string) {
     playAudio: '播放正文音频',
     countdown: '倒计时',
     promptTone: '提示音',
+    recordGuide: '录音说明',
     answerChoice: '开始答题'
   }
   return map[kind] || kind
@@ -227,6 +286,16 @@ function stepSummary(step: ListeningChoiceStandardPerGroupStepDef): string {
       : '连续重播'
   }
   if (step.kind === 'promptTone') return '提示音'
+  if (step.kind === 'recordGuide') {
+    const textSource = getRecordGuideTextSource(step) === 'group' ? '按题组文案' : '按小题文案'
+    const audioSourceMap: Record<'question' | 'group' | 'fixed', string> = {
+      question: '按小题音频',
+      group: '按题组音频',
+      fixed: '固定音频'
+    }
+    const screenStrategy = getRecordGuideScreenStrategy(step) === 'reusePrevious' ? '复用上一屏' : '替换主体'
+    return `${textSource} · ${audioSourceMap[getRecordGuideAudioSource(step)]} · ${screenStrategy}`
+  }
   if (step.kind === 'answerChoice') return kindLabel('answerChoice')
   return ''
 }
@@ -245,6 +314,23 @@ function promptToneUrl(step: ListeningChoiceStandardPerGroupStepDef): string {
   if (step.kind !== 'promptTone') return '/static/audio/small_time.mp3'
   const next = String(step.url || '').trim()
   return next || '/static/audio/small_time.mp3'
+}
+
+function getRecordGuideTextSource(step: ListeningChoiceStandardPerGroupStepDef): 'question' | 'group' {
+  if (step.kind !== 'recordGuide') return 'question'
+  return step.textSource === 'group' ? 'group' : 'question'
+}
+
+function getRecordGuideAudioSource(step: ListeningChoiceStandardPerGroupStepDef): 'question' | 'group' | 'fixed' {
+  if (step.kind !== 'recordGuide') return 'question'
+  if (step.audioSource === 'group') return 'group'
+  if (step.audioSource === 'fixed') return 'fixed'
+  return 'question'
+}
+
+function getRecordGuideScreenStrategy(step: ListeningChoiceStandardPerGroupStepDef): 'replaceBody' | 'reusePrevious' {
+  if (step.kind !== 'recordGuide') return 'replaceBody'
+  return step.screenStrategy === 'reusePrevious' ? 'reusePrevious' : 'replaceBody'
 }
 
 function toggleExpand(index: number) {
@@ -323,6 +409,19 @@ function createPromptToneStep(): ListeningChoiceStandardPerGroupStepDef {
   return { kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' }
 }
 
+function createRecordGuideStep(): ListeningChoiceStandardPerGroupStepDef {
+  return {
+    kind: 'recordGuide',
+    showTitle: false,
+    showQuestionTitle: true,
+    showQuestionTitleDescription: true,
+    showGroupPrompt: false,
+    textSource: 'question',
+    audioSource: 'question',
+    screenStrategy: 'replaceBody'
+  }
+}
+
 function createAnswerChoiceStep(): ListeningChoiceStandardPerGroupStepDef {
   return { kind: 'answerChoice', showTitle: true, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
 }
@@ -337,6 +436,8 @@ function addStep(kind: string) {
     list.push(createCountdownStep())
   } else if (kind === 'promptTone') {
     list.push(createPromptToneStep())
+  } else if (kind === 'recordGuide') {
+    list.push(createRecordGuideStep())
   } else if (kind === 'answerChoice') {
     list.push(createAnswerChoiceStep())
   }
@@ -487,6 +588,11 @@ function toggleReplayGap(index: number) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.mode-toggle--triple {
+  min-width: 240px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .mode-btn {

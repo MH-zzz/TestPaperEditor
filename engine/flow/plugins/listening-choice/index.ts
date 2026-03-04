@@ -5,6 +5,7 @@ import { listeningChoiceGroupPromptStepPlugin } from './groupPrompt.ts'
 import { listeningChoiceCountdownStepPlugin } from './countdown.ts'
 import { listeningChoicePlayAudioStepPlugin } from './playAudio.ts'
 import { listeningChoicePromptToneStepPlugin } from './promptTone.ts'
+import { listeningChoiceRecordGuideStepPlugin } from './recordGuide.ts'
 import { listeningChoiceAnswerChoiceStepPlugin } from './answerChoice.ts'
 import { listeningChoiceFinishStepPlugin } from './finish.ts'
 
@@ -16,6 +17,7 @@ export const LISTENING_CHOICE_STEP_PLUGINS: FlowStepPlugin[] = [
   listeningChoiceCountdownStepPlugin,
   listeningChoicePlayAudioStepPlugin,
   listeningChoicePromptToneStepPlugin,
+  listeningChoiceRecordGuideStepPlugin,
   listeningChoiceAnswerChoiceStepPlugin,
   listeningChoiceFinishStepPlugin
 ]

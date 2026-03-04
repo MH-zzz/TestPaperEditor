@@ -1,0 +1,191 @@
+{
+  "exportedAt": "2026-03-03T08:25:59.779Z",
+  "schemaVersion": 1,
+  "listeningChoiceModules": [
+    {
+      "kind": "listening_choice",
+      "id": "listening_hear_answer.standard.v1",
+      "version": 1,
+      "name": "听后回答标准",
+      "status": "published",
+      "introShowTitle": true,
+      "introShowTitleDescription": true,
+      "introShowDescription": true,
+      "introCountdownEnabled": false,
+      "introCountdownShowTitle": true,
+      "introCountdownSeconds": 3,
+      "introCountdownLabel": "准备",
+      "perGroupSteps": [
+        {
+          "kind": "playAudio",
+          "showTitle": false,
+          "audioSource": "description",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "countdown",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "seconds": 5,
+          "label": "答题准备"
+        },
+        {
+          "kind": "playAudio",
+          "showTitle": false,
+          "audioSource": "content",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "promptTone",
+          "showTitle": false,
+          "url": "/static/audio/开始录音.mp3"
+        },
+        {
+          "kind": "answerChoice",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "promptTone",
+          "showTitle": false,
+          "url": "/static/audio/停止录音.mp3"
+        }
+      ],
+      "createdAt": "2026-03-02T04:31:47.224Z",
+      "updatedAt": "2026-03-03T08:07:37.343Z"
+    },
+    {
+      "kind": "listening_choice",
+      "id": "listening_choice.standard.v1",
+      "version": 1,
+      "name": "听后选择-标准",
+      "status": "published",
+      "introShowTitle": true,
+      "introShowTitleDescription": true,
+      "introShowDescription": true,
+      "introCountdownEnabled": false,
+      "introCountdownShowTitle": true,
+      "introCountdownSeconds": 3,
+      "introCountdownLabel": "准备",
+      "perGroupSteps": [
+        {
+          "kind": "playAudio",
+          "showTitle": false,
+          "audioSource": "description",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "countdown",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "seconds": 30,
+          "label": "准备"
+        },
+        {
+          "kind": "playAudio",
+          "showTitle": false,
+          "audioSource": "content",
+          "repeatGapSeconds": 3,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "answerChoice",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        }
+      ],
+      "createdAt": "2026-02-26T03:05:37.764Z",
+      "updatedAt": "2026-03-02T08:32:23.679Z"
+    },
+    {
+      "kind": "listening_choice",
+      "id": "listening_choice.line.1772077827774",
+      "version": 1,
+      "name": "听后选择-北京",
+      "status": "published",
+      "introShowTitle": true,
+      "introShowTitleDescription": true,
+      "introShowDescription": true,
+      "introCountdownEnabled": false,
+      "introCountdownShowTitle": true,
+      "introCountdownSeconds": 3,
+      "introCountdownLabel": "准备",
+      "perGroupSteps": [
+        {
+          "kind": "playAudio",
+          "showTitle": true,
+          "audioSource": "description",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "countdown",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "seconds": 30,
+          "label": "准备"
+        },
+        {
+          "kind": "playAudio",
+          "showTitle": true,
+          "audioSource": "content",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "answerChoice",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        }
+      ],
+      "createdAt": "2026-02-26T03:50:27.776Z",
+      "updatedAt": "2026-02-26T03:53:49.886Z"
+    }
+  ],
+  "flowProfiles": [
+    {
+      "id": "profile:listening_choice:default",
+      "questionType": "listening_choice",
+      "module": {
+        "id": "listening_choice.standard.v1",
+        "version": 1
+      },
+      "priority": 0,
+      "enabled": true,
+      "note": "听后选择默认流程",
+      "createdAt": "2026-02-11T09:19:21.346Z",
+      "updatedAt": "2026-02-26T03:53:10.797Z"
+    },
+    {
+      "id": "profile:listening_choice:region:%E5%8C%97%E4%BA%AC",
+      "questionType": "listening_choice",
+      "region": "北京",
+      "module": {
+        "id": "listening_choice.line.1772077827774",
+        "version": 1
+      },
+      "priority": 10,
+      "enabled": true,
+      "note": "北京地区流程",
+      "createdAt": "2026-02-26T03:33:21.818Z",
+      "updatedAt": "2026-02-26T03:53:10.797Z"
+    }
+  ],
+  "publishLogs": []
+}

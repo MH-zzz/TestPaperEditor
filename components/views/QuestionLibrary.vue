@@ -14,27 +14,34 @@
       </view>
     </view>
 
-    <!-- 过滤器 -->
-    <view class="filters">
-      <view class="filter-group">
-        <text class="filter-label">题型:</text>
-        <view class="filter-options">
-          <text 
-            class="filter-opt" 
-            :class="{ active: filterType === 'all' }"
-            @click="filterType = 'all'"
-          >全部</text>
-          <text 
-            class="filter-opt" 
-            :class="{ active: filterType === 'listening_choice' }"
-            @click="filterType = 'listening_choice'"
-          >听力选择</text>
-          <text
-            class="filter-opt"
-            :class="{ active: filterType === 'speaking_hear_answer' }"
-            @click="filterType = 'speaking_hear_answer'"
-          >听后回答</text>
+    <!-- 工具栏 (过滤器 + 导出) -->
+    <view class="toolbar">
+      <view class="filters">
+        <view class="filter-group">
+          <text class="filter-label">题型:</text>
+          <view class="filter-options">
+            <text 
+              class="filter-opt" 
+              :class="{ active: filterType === 'all' }"
+              @click="filterType = 'all'"
+            >全部</text>
+            <text 
+              class="filter-opt" 
+              :class="{ active: filterType === 'listening_choice' }"
+              @click="filterType = 'listening_choice'"
+            >听力选择</text>
+            <text
+              class="filter-opt"
+              :class="{ active: filterType === 'speaking_hear_answer' }"
+              @click="filterType = 'speaking_hear_answer'"
+            >听后回答</text>
+          </view>
         </view>
+      </view>
+      
+      <view class="export-actions">
+        <button class="btn btn-outline btn-sm" @click="exportQuestions">导出题目</button>
+        <button class="btn btn-outline btn-sm" @click="exportFlows">导出流程</button>
       </view>
     </view>
 
@@ -52,7 +59,7 @@
         >
           <view class="card-header">
             <text class="q-type">{{ getTypeName(item) }}</text>
-            <text class="q-date">{{ formatDate(item.metadata?.updatedAt) }}</text>
+            <text class="q-date">{{ formatDate(getMetadata(item)?.updatedAt) }}</text>
           </view>
           
           <view class="card-body">
@@ -61,11 +68,12 @@
           
           <view class="card-footer">
             <view class="q-tags">
-              <text v-for="tagId in (item.metadata?.tags || [])" :key="tagId" class="q-tag">
+              <text v-for="tagId in (getMetadata(item)?.tags || [])" :key="tagId" class="q-tag">
                 {{ getTagName(tagId) }}
               </text>
             </view>
             <view class="card-actions">
+              <button class="btn btn-text btn-sm text-danger" @click.stop="deleteQuestion(item)">删除</button>
               <button class="btn btn-text btn-sm" @click.stop="loadQuestion(item)">编辑</button>
             </view>
           </view>
@@ -82,6 +90,10 @@ import { tagStore } from '/stores/tag'
 import { questionTemplates, type TemplateKey } from '/templates'
 import { questionDraft } from '/stores/questionDraft'
 import { loadRecentQuestions } from '/infra/repository/questionRepository'
+import { deleteRecentQuestion } from '/infra/repository/questionRepository'
+import { flowModules } from '/stores/flowModules'
+import { flowProfiles } from '/stores/flowProfiles'
+import { loadFlowModulePublishLogs } from '/infra/repository/flowModuleRepository'
 
 const emit = defineEmits<{
   (e: 'open-editor'): void
@@ -148,6 +160,10 @@ function getTagName(id: string) {
   return tagStore.getPath(id) || id
 }
 
+function getMetadata(question: any) {
+  return question?.metadata || {}
+}
+
 function formatDate(dateStr?: string) {
   if (!dateStr) return '-'
   return dateStr.split(' ')[0] // 简单处理
@@ -157,6 +173,63 @@ function loadQuestion(question: Question) {
   questionDraft.loadQuestion(question)
   uni.showToast({ title: '已加载到编辑器', icon: 'success' })
   emit('open-editor')
+}
+
+function deleteQuestion(question: Question) {
+  uni.showModal({
+    title: '确认删除',
+    content: '确定要删除这条题目记录吗？删除后将不可恢复。',
+    confirmColor: '#e53e3e',
+    success: (res) => {
+      if (res.confirm) {
+        deleteRecentQuestion(question.id)
+        loadData()
+        uni.showToast({ title: '已删除', icon: 'none' })
+      }
+    }
+  })
+}
+
+function exportQuestions() {
+  const data = loadRecentQuestions<Question>()
+  downloadJson(data, 'questions.json')
+}
+
+function buildFlowExportPayload() {
+  return {
+    exportedAt: new Date().toISOString(),
+    schemaVersion: 1,
+    listeningChoiceModules: flowModules.listListeningChoice(),
+    flowProfiles: [...flowProfiles.state.profiles],
+    publishLogs: loadFlowModulePublishLogs()
+  }
+}
+
+function exportFlows() {
+  const data = buildFlowExportPayload()
+  downloadJson(data, 'flows.json')
+}
+
+function downloadJson(data: any, filename: string) {
+  try {
+    const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    
+    // Web 环境下载
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    uni.showToast({ title: '导出成功', icon: 'success' })
+  } catch (e) {
+    console.error('Export failed', e)
+    uni.showToast({ title: '导出失败，请检查是否在 H5 环境', icon: 'none' })
+  }
 }
 </script>
 
@@ -205,12 +278,24 @@ function loadQuestion(question: Question) {
   font-size: 14px;
 }
 
-.filters {
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background-color: #fff;
   padding: 16px 20px;
   border-radius: 8px;
   margin-bottom: 24px;
   border: 1px solid #edf2f7;
+}
+
+.filters {
+  display: flex;
+}
+
+.export-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .filter-group {
@@ -305,6 +390,7 @@ function loadQuestion(question: Question) {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     overflow: hidden;
   }
 }
@@ -335,5 +421,9 @@ function loadQuestion(question: Question) {
   justify-content: center;
   padding-top: 100px;
   color: #a0aec0;
+}
+
+.text-danger {
+  color: #e53e3e !important;
 }
 </style>

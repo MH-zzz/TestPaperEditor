@@ -13,6 +13,7 @@
 import { computed } from 'vue'
 import type {
   AudioConfig,
+  ListeningAudio,
   ListeningChoiceQuestion,
   RichTextContent,
   SpeakingHearAnswerQuestion
@@ -56,6 +57,32 @@ function normalizeAudio(audio: unknown): AudioConfig | undefined {
   }
 }
 
+function normalizeListeningAudio(audio: unknown): ListeningAudio | undefined {
+  if (!audio || typeof audio !== 'object') return undefined
+  const src = audio as ListeningAudio
+  const url = String(src.url || '').trim()
+  if (!url) return undefined
+  const playCount = Math.floor(Number(src.playCount))
+  return {
+    url,
+    ...(Number.isFinite(playCount) && playCount > 0 ? { playCount } : {}),
+    ...(typeof src.note === 'string' && src.note.trim() ? { note: src.note.trim() } : {})
+  }
+}
+
+function normalizeOptionalRichText(input: unknown): RichTextContent | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  if ((input as RichTextContent).type !== 'richtext') return undefined
+  return input as RichTextContent
+}
+
+function normalizeOptionalSeconds(input: unknown): number | undefined {
+  if (input == null || input === '') return undefined
+  const value = Math.floor(Number(input))
+  if (!Number.isFinite(value)) return undefined
+  return Math.max(0, value)
+}
+
 function toListeningChoiceBridge(question: SpeakingHearAnswerQuestion): ListeningChoiceQuestion {
   return {
     ...(question as unknown as QuestionWithMeta),
@@ -65,11 +92,17 @@ function toListeningChoiceBridge(question: SpeakingHearAnswerQuestion): Listenin
       ...question.content,
       groups: (question.content?.groups || []).map((group) => ({
         ...group,
+        recordGuideText: normalizeOptionalRichText(group.recordGuideText),
+        recordGuideAudio: normalizeListeningAudio(group.recordGuideAudio),
+        answerSeconds: normalizeOptionalSeconds(group.answerSeconds),
         subQuestions: (group.subQuestions || []).map((sq) => ({
           id: String(sq.id || ''),
           order: Number(sq.order || 0),
           stem: normalizeStem(sq.stem),
           audio: normalizeAudio(sq.audio),
+          recordGuideText: normalizeOptionalRichText(sq.recordGuideText),
+          recordGuideAudio: normalizeListeningAudio(sq.recordGuideAudio),
+          answerSeconds: normalizeOptionalSeconds(sq.answerSeconds),
           options: [],
           answerMode: 'single',
           answer: []
@@ -93,11 +126,17 @@ function toSpeakingHearAnswer(question: ListeningChoiceQuestion | SpeakingHearAn
       ...source.content,
       groups: (source.content?.groups || []).map((group) => ({
         ...group,
+        recordGuideText: normalizeOptionalRichText(group.recordGuideText),
+        recordGuideAudio: normalizeListeningAudio(group.recordGuideAudio),
+        answerSeconds: normalizeOptionalSeconds(group.answerSeconds),
         subQuestions: (group.subQuestions || []).map((sq) => ({
           id: String(sq.id || ''),
           order: Number((sq as { order?: number }).order || 0),
           stem: normalizeStem((sq as { stem?: RichTextContent }).stem),
-          audio: normalizeAudio((sq as { audio?: AudioConfig }).audio)
+          audio: normalizeAudio((sq as { audio?: AudioConfig }).audio),
+          recordGuideText: normalizeOptionalRichText((sq as { recordGuideText?: RichTextContent }).recordGuideText),
+          recordGuideAudio: normalizeListeningAudio((sq as { recordGuideAudio?: ListeningAudio }).recordGuideAudio),
+          answerSeconds: normalizeOptionalSeconds((sq as { answerSeconds?: number }).answerSeconds)
         }))
       }))
     }

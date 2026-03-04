@@ -11,6 +11,30 @@
 			"style": {
 				"navigationBarTitleText": "预览题目"
 			}
+		},
+		{
+			"path": "pages/mobile-learning/index",
+			"style": {
+				"navigationBarTitleText": "本地学习"
+			}
+		},
+		{
+			"path": "pages/mobile-learning/unit-list",
+			"style": {
+				"navigationBarTitleText": "本地学习"
+			}
+		},
+		{
+			"path": "pages/mobile-learning/unit-overview",
+			"style": {
+				"navigationBarTitleText": "单元概览"
+			}
+		},
+		{
+			"path": "pages/mobile-learning/practice",
+			"style": {
+				"navigationBarTitleText": "本地学习"
+			}
 		}
 	],
 	"globalStyle": {

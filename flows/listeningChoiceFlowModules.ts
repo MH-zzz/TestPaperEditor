@@ -21,6 +21,17 @@ export type ListeningChoiceStandardPerGroupStepDef =
   | { kind: 'countdown'; showTitle?: boolean; showQuestionTitle?: boolean; seconds?: number; label?: string }
   | { kind: 'promptTone'; showTitle?: boolean; url?: string }
   | {
+      kind: 'recordGuide'
+      showTitle?: boolean
+      showQuestionTitle?: boolean
+      showQuestionTitleDescription?: boolean
+      showGroupPrompt?: boolean
+      textSource?: 'question' | 'group'
+      audioSource?: 'question' | 'group' | 'fixed'
+      url?: string
+      screenStrategy?: 'replaceBody' | 'reusePrevious'
+    }
+  | {
       kind: 'answerChoice'
       showTitle?: boolean
       showQuestionTitle?: boolean
@@ -88,8 +99,10 @@ export const DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE: ListeningChoiceStand
     { kind: 'playAudio', showTitle: false, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
     { kind: 'countdown', showTitle: false, showQuestionTitle: true, seconds: 5, label: '答题准备' },
     { kind: 'playAudio', showTitle: false, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
-    { kind: 'promptTone', showTitle: false, url: '/static/audio/small_time.mp3' },
-    { kind: 'answerChoice', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true }
+    { kind: 'recordGuide', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: false, textSource: 'question', audioSource: 'question', screenStrategy: 'replaceBody' },
+    { kind: 'promptTone', showTitle: false, url: '/static/audio/开始录音.mp3' },
+    { kind: 'answerChoice', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+    { kind: 'promptTone', showTitle: false, url: '/static/audio/停止录音.mp3' }
   ]
 }
 
@@ -136,6 +149,25 @@ function isHearAnswerVariant(question: any): boolean {
   if (!metadata || typeof metadata !== 'object') return false
   const variant = typeof metadata.questionVariant === 'string' ? metadata.questionVariant.trim() : ''
   return variant === 'hear_answer'
+}
+
+function resolveSubQuestionById(group: any, questionId: string | undefined) {
+  if (!group || !questionId) return null
+  const list = Array.isArray(group.subQuestions) ? group.subQuestions : []
+  return list.find((sq: any) => String(sq?.id || '') === String(questionId)) || null
+}
+
+function resolveHearAnswerAnswerSeconds(group: any, questionId?: string): number {
+  const groupSeconds = Math.max(0, toInt(group?.answerSeconds, 0))
+  if (!questionId) return groupSeconds
+  const sq: any = resolveSubQuestionById(group, questionId)
+  if (!sq) return groupSeconds
+  if (sq.answerSeconds == null || sq.answerSeconds === '') return groupSeconds
+  return Math.max(0, toInt(sq.answerSeconds, groupSeconds))
+}
+
+function normalizeScreenStrategy(v: any): 'replaceBody' | 'reusePrevious' {
+  return v === 'reusePrevious' ? 'reusePrevious' : 'replaceBody'
 }
 
 function getGroupIndexById(question: any): Record<string, number> {
@@ -211,6 +243,16 @@ function applyStandardOverride(step: any, override: any | undefined): any {
     return next
   }
 
+  if (kind === 'recordGuide') {
+    if (typeof override.showTitle === 'boolean') next.showTitle = override.showTitle
+    if (typeof override.showQuestionTitle === 'boolean') next.showQuestionTitle = override.showQuestionTitle
+    if (typeof override.showQuestionTitleDescription === 'boolean') next.showQuestionTitleDescription = override.showQuestionTitleDescription
+    if (typeof override.showGroupPrompt === 'boolean') next.showGroupPrompt = override.showGroupPrompt
+    if (typeof override.guideAudioUrl === 'string') next.guideAudioUrl = override.guideAudioUrl
+    if (typeof override.url === 'string') next.guideAudioUrl = override.url
+    return next
+  }
+
   if (kind === 'answerChoice') {
     if (typeof override.showTitle === 'boolean') next.showTitle = override.showTitle
     if (typeof override.showQuestionTitle === 'boolean') next.showQuestionTitle = override.showQuestionTitle
@@ -235,7 +277,7 @@ export function normalizeListeningChoiceStandardModule(input: any): ListeningCho
     const introCountdownLabel = typeof src.introCountdownLabel === 'string' ? src.introCountdownLabel : String(DEFAULT_LISTENING_CHOICE_STANDARD_MODULE.introCountdownLabel || '准备')
 
     const perGroupStepsRaw = Array.isArray(src.perGroupSteps) ? src.perGroupSteps : []
-    const allowed = new Set(['playAudio', 'countdown', 'promptTone', 'answerChoice'])
+    const allowed = new Set(['playAudio', 'countdown', 'promptTone', 'recordGuide', 'answerChoice'])
     const perGroupSteps: ListeningChoiceStandardPerGroupStepDef[] = perGroupStepsRaw
       .filter((s: any) => s && typeof s === 'object' && allowed.has(String(s.kind || '')))
       .map((s: any) => {
@@ -268,6 +310,16 @@ export function normalizeListeningChoiceStandardModule(input: any): ListeningCho
         if (kind === 'promptTone') {
           const url = typeof s.url === 'string' ? s.url : '/static/audio/small_time.mp3'
           return { kind: 'promptTone', showTitle, url }
+        }
+        if (kind === 'recordGuide') {
+          const showQuestionTitle = typeof s.showQuestionTitle === 'boolean' ? s.showQuestionTitle : true
+          const showQuestionTitleDescription = typeof s.showQuestionTitleDescription === 'boolean' ? s.showQuestionTitleDescription : true
+          const showGroupPrompt = typeof s.showGroupPrompt === 'boolean' ? s.showGroupPrompt : false
+          const textSource = s.textSource === 'group' ? 'group' : 'question'
+          const audioSource = s.audioSource === 'group' || s.audioSource === 'fixed' ? s.audioSource : 'question'
+          const url = typeof s.url === 'string' ? s.url : ''
+          const screenStrategy = normalizeScreenStrategy(s.screenStrategy)
+          return { kind: 'recordGuide', showTitle, showQuestionTitle, showQuestionTitleDescription, showGroupPrompt, textSource, audioSource, url, screenStrategy }
         }
         if (kind === 'answerChoice') {
           const showQuestionTitle = typeof s.showQuestionTitle === 'boolean' ? s.showQuestionTitle : true
@@ -319,7 +371,7 @@ export function validateListeningChoiceStandardModule(input: any): ListeningChoi
     )
   }
 
-  const kinds = new Set(['playAudio', 'countdown', 'promptTone', 'answerChoice'])
+  const kinds = new Set(['playAudio', 'countdown', 'promptTone', 'recordGuide', 'answerChoice'])
   rawSteps.forEach((step: any, idx: number) => {
     const kind = String(step?.kind || '')
     if (!kinds.has(kind)) {
@@ -339,6 +391,17 @@ export function validateListeningChoiceStandardModule(input: any): ListeningChoi
           'warning',
           'prompt_tone_missing_url',
           `第 ${idx + 1} 个提示音步骤未填写 URL，将使用默认提示音。`
+        )
+      }
+    }
+    if (kind === 'recordGuide') {
+      const audioSource = step?.audioSource === 'group' || step?.audioSource === 'fixed' ? step.audioSource : 'question'
+      if (audioSource === 'fixed' && !nonEmptyString(step?.url)) {
+        pushValidationIssue(
+          issues,
+          'warning',
+          'record_guide_fixed_audio_missing_url',
+          `第 ${idx + 1} 个录音说明步骤使用固定音频但未填写 URL。`
         )
       }
     }
@@ -425,7 +488,7 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
       ? g.subQuestions.map((sq: any) => String(sq?.id || '')).filter(Boolean)
       : ['']
 
-    const appendPlanByDef = (def: any, questionId?: string) => {
+    const appendPlanByDef = (def: any, questionId?: string, prevDef?: any) => {
         const kind = String(def?.kind || '')
         kindCount[kind] = (kindCount[kind] || 0) + 1
         const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
@@ -436,24 +499,59 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
           const repeatGapSeconds = audioSource === 'content'
             ? normalizeRepeatGapSeconds((def as any)?.repeatGapSeconds)
             : undefined
-          plan.push({
-            key,
-            step: {
-              kind: 'playAudio',
-              showTitle: getBool(def, 'showTitle', true),
-              audioSource,
-              ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
-              showQuestionTitle: getBool(def, 'showQuestionTitle', true),
-              showQuestionTitleDescription: getBool(def, 'showQuestionTitleDescription', true),
-              showGroupPrompt: getBool(def, 'showGroupPrompt', true),
-              groupId,
-              autoNext: 'audioEnded'
-            }
-          })
+          const rawPlayCount = audioSource === 'description'
+            ? toInt((g as any)?.descriptionAudio?.playCount, 1)
+            : toInt((g as any)?.audio?.playCount, 1)
+          const totalPlayTimes = Math.max(1, rawPlayCount)
+          const showTitle = getBool(def, 'showTitle', true)
+          const showQuestionTitle = getBool(def, 'showQuestionTitle', true)
+          const showQuestionTitleDescription = getBool(def, 'showQuestionTitleDescription', true)
+          const showGroupPrompt = getBool(def, 'showGroupPrompt', true)
+
+          for (let playIndex = 0; playIndex < totalPlayTimes; playIndex += 1) {
+            const isLastPlay = playIndex >= totalPlayTimes - 1
+            const playKey = totalPlayTimes > 1 ? `${key}.loop${playIndex + 1}` : key
+            plan.push({
+              key: playKey,
+              step: {
+                kind: 'playAudio',
+                showTitle,
+                audioSource,
+                playTimes: 1,
+                ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
+                showQuestionTitle,
+                showQuestionTitleDescription,
+                showGroupPrompt,
+                groupId,
+                autoNext: 'audioEnded'
+              }
+            })
+
+            if (isLastPlay || audioSource !== 'content') continue
+
+            const fallbackGapSeconds = Math.max(0, toInt((g as any)?.prepareSeconds, 3))
+            const gapSeconds = repeatGapSeconds == null ? fallbackGapSeconds : repeatGapSeconds
+            plan.push({
+              key: `${key}.gap${playIndex + 1}`,
+              step: {
+                kind: 'countdown',
+                showTitle: false,
+                showQuestionTitle,
+                seconds: Math.max(0, gapSeconds),
+                label: '重播间隔',
+                autoNext: 'countdownEnded'
+              }
+            })
+          }
           return
-        }
+      }
 
       if (kind === 'countdown') {
+        const prevKind = String(prevDef?.kind || '')
+        const prevAudioSource = prevKind === 'playAudio' ? normalizeAudioSource(prevDef?.audioSource) : 'content'
+        if (hearAnswerVariant && prevKind === 'playAudio' && prevAudioSource === 'content') {
+          return
+        }
         const seconds = Math.max(0, toInt(g?.prepareSeconds, Math.max(0, toInt(def?.seconds, 3))))
         const label = typeof def?.label === 'string' ? def.label : '准备'
         plan.push({
@@ -479,13 +577,49 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
         return
       }
 
+      if (kind === 'recordGuide') {
+        const sq: any = resolveSubQuestionById(g, questionId)
+        const textSource = def?.textSource === 'group' ? 'group' : 'question'
+        const audioSource = def?.audioSource === 'group' || def?.audioSource === 'fixed'
+          ? def.audioSource
+          : 'question'
+        const guideText = textSource === 'group'
+          ? (g as any)?.recordGuideText || g?.prompt
+          : (sq?.recordGuideText || (g as any)?.recordGuideText || g?.prompt)
+        const guideAudioUrl = audioSource === 'fixed'
+          ? String(def?.url || '')
+          : (audioSource === 'group'
+            ? String(((g as any)?.recordGuideAudio?.url) || '')
+            : String((sq?.recordGuideAudio?.url) || ((g as any)?.recordGuideAudio?.url) || ''))
+        plan.push({
+          key,
+          step: {
+            kind: 'recordGuide',
+            questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
+            showTitle: getBool(def, 'showTitle', false),
+            showQuestionTitle: getBool(def, 'showQuestionTitle', true),
+            showQuestionTitleDescription: getBool(def, 'showQuestionTitleDescription', true),
+            showGroupPrompt: getBool(def, 'showGroupPrompt', false),
+            groupId,
+            guideText,
+            guideAudioUrl,
+            screenStrategy: normalizeScreenStrategy(def?.screenStrategy),
+            autoNext: 'audioEnded'
+          }
+        })
+        return
+      }
+
       if (kind === 'answerChoice') {
-        const answerSeconds = Math.max(0, toInt(g?.answerSeconds, 0))
+        const answerSeconds = hearAnswerVariant
+          ? resolveHearAnswerAnswerSeconds(g, questionId)
+          : Math.max(0, toInt(g?.answerSeconds, 0))
         plan.push({
           key,
           step: {
             kind: 'answerChoice',
             questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
+            answerSeconds,
             showTitle: getBool(def, 'showTitle', true),
             showQuestionTitle: getBool(def, 'showQuestionTitle', true),
             showQuestionTitleDescription: getBool(def, 'showQuestionTitleDescription', true),
@@ -499,16 +633,16 @@ function buildListeningChoiceStandardPlan(question: any, moduleInput: any) {
     }
 
     if (!hearAnswerVariant) {
-      perSteps.forEach((def: any) => appendPlanByDef(def))
+      perSteps.forEach((def: any, defIndex: number) => appendPlanByDef(def, undefined, perSteps[defIndex - 1]))
       return
     }
 
     perQuestionIds.forEach((questionId: string, questionIndex: number) => {
-      perSteps.forEach((def: any) => {
+      perSteps.forEach((def: any, defIndex: number) => {
         const kind = String(def?.kind || '')
-        const isPerQuestionStep = kind === 'promptTone' || kind === 'answerChoice'
+        const isPerQuestionStep = kind === 'promptTone' || kind === 'recordGuide' || kind === 'answerChoice'
         if (!isPerQuestionStep && questionIndex > 0) return
-        appendPlanByDef(def, questionId)
+        appendPlanByDef(def, questionId, perSteps[defIndex - 1])
       })
     })
   })
@@ -571,8 +705,16 @@ export function detectListeningChoiceStandardFlowOverrides(question: any, curren
     }
 
     if (expected.kind === 'answerChoice') {
-      const ids = Array.isArray(actual.questionIds) ? actual.questionIds : []
-      if (ids.length > 0) return { ok: false, overrides: {}, nextQuestion: question }
+      const expectedIds = Array.isArray((expected as { questionIds?: unknown[] }).questionIds)
+        ? (expected as { questionIds?: unknown[] }).questionIds!.map((id) => String(id || ''))
+        : []
+      const actualIds = Array.isArray(actual.questionIds)
+        ? actual.questionIds.map((id: unknown) => String(id || ''))
+        : []
+      if (
+        actualIds.length !== expectedIds.length
+        || actualIds.some((id: string, idx: number) => id !== expectedIds[idx])
+      ) return { ok: false, overrides: {}, nextQuestion: question }
       if (String(actual.groupId || '') !== String(expected.groupId || '')) return { ok: false, overrides: {}, nextQuestion: question }
       if (String(actual.autoNext || '') !== String(expected.autoNext || '')) return { ok: false, overrides: {}, nextQuestion: question }
       continue
@@ -581,6 +723,28 @@ export function detectListeningChoiceStandardFlowOverrides(question: any, curren
     if (expected.kind === 'promptTone') {
       if (String(actual.groupId || '') !== String(expected.groupId || '')) return { ok: false, overrides: {}, nextQuestion: question }
       if (String(actual.autoNext || '') !== String(expected.autoNext || '')) return { ok: false, overrides: {}, nextQuestion: question }
+      continue
+    }
+
+    if (expected.kind === 'recordGuide') {
+      const expectedIds = Array.isArray((expected as { questionIds?: unknown[] }).questionIds)
+        ? (expected as { questionIds?: unknown[] }).questionIds!.map((id) => String(id || ''))
+        : []
+      const actualIds = Array.isArray(actual.questionIds)
+        ? actual.questionIds.map((id: unknown) => String(id || ''))
+        : []
+      if (
+        actualIds.length !== expectedIds.length
+        || actualIds.some((id: string, idx: number) => id !== expectedIds[idx])
+      ) return { ok: false, overrides: {}, nextQuestion: question }
+      if (String(actual.groupId || '') !== String(expected.groupId || '')) return { ok: false, overrides: {}, nextQuestion: question }
+      if (String(actual.autoNext || '') !== String(expected.autoNext || '')) return { ok: false, overrides: {}, nextQuestion: question }
+      const expectedAudio = String((expected as any).guideAudioUrl || '')
+      const actualAudio = String(actual.guideAudioUrl || '')
+      if (actualAudio !== expectedAudio) return { ok: false, overrides: {}, nextQuestion: question }
+      const expectedText = JSON.stringify((expected as any).guideText || null)
+      const actualText = JSON.stringify(actual.guideText || null)
+      if (actualText !== expectedText) return { ok: false, overrides: {}, nextQuestion: question }
       continue
     }
 
@@ -665,6 +829,24 @@ export function detectListeningChoiceStandardFlowOverrides(question: any, curren
       if (actualUrl !== expectedUrl) patch.url = actualUrl
     }
 
+    if (expected.kind === 'recordGuide') {
+      const expectedShowQuestionTitle = getBool(expected, 'showQuestionTitle', true)
+      const actualShowQuestionTitle = getBool(actual, 'showQuestionTitle', true)
+      if (actualShowQuestionTitle !== expectedShowQuestionTitle) patch.showQuestionTitle = actualShowQuestionTitle
+
+      const expectedShowQuestionTitleDescription = getBool(expected, 'showQuestionTitleDescription', true)
+      const actualShowQuestionTitleDescription = getBool(actual, 'showQuestionTitleDescription', true)
+      if (actualShowQuestionTitleDescription !== expectedShowQuestionTitleDescription) patch.showQuestionTitleDescription = actualShowQuestionTitleDescription
+
+      const expectedShowGroupPrompt = getBool(expected, 'showGroupPrompt', false)
+      const actualShowGroupPrompt = getBool(actual, 'showGroupPrompt', false)
+      if (actualShowGroupPrompt !== expectedShowGroupPrompt) patch.showGroupPrompt = actualShowGroupPrompt
+
+      const expectedScreenStrategy = String((expected as any).screenStrategy || 'replaceBody')
+      const actualScreenStrategy = String((actual as any).screenStrategy || 'replaceBody')
+      if (actualScreenStrategy !== expectedScreenStrategy) patch.screenStrategy = actualScreenStrategy
+    }
+
     if (Object.keys(patch).length > 0) overrides[key] = patch
   }
 
@@ -706,7 +888,7 @@ export function concreteListeningChoiceStepsToTemplate(question: any, steps: any
       }
     }
 
-    if (s.kind === 'playAudio' || s.kind === 'groupPrompt' || s.kind === 'promptTone') {
+    if (s.kind === 'playAudio' || s.kind === 'groupPrompt' || s.kind === 'promptTone' || s.kind === 'recordGuide') {
       const gi = groupIndexById[String(s.groupId || '')]
       if (typeof gi === 'number') base.groupIndex = gi
       if (s.kind === 'playAudio') base.audioSource = normalizeAudioSource((s as any).audioSource)
@@ -715,9 +897,12 @@ export function concreteListeningChoiceStepsToTemplate(question: any, steps: any
         if (repeatGapSeconds != null) base.repeatGapSeconds = repeatGapSeconds
       }
       if (s.kind === 'promptTone' && typeof (s as any).url === 'string') base.url = (s as any).url
+      if (s.kind === 'recordGuide' && typeof (s as any).guideAudioUrl === 'string') base.guideAudioUrl = (s as any).guideAudioUrl
+      if (s.kind === 'recordGuide' && typeof (s as any).screenStrategy === 'string') base.screenStrategy = (s as any).screenStrategy
     }
 
     if (s.kind === 'answerChoice') {
+      if (typeof s.answerSeconds === 'number') base.answerSeconds = Math.max(0, Math.floor(s.answerSeconds))
       if (typeof s.showQuestionTitle === 'boolean') base.showQuestionTitle = s.showQuestionTitle
       if (typeof s.showQuestionTitleDescription === 'boolean') base.showQuestionTitleDescription = s.showQuestionTitleDescription
       if (typeof s.showGroupPrompt === 'boolean') base.showGroupPrompt = s.showGroupPrompt
@@ -739,6 +924,20 @@ export function concreteListeningChoiceStepsToTemplate(question: any, steps: any
       if (typeof s.showQuestionTitle === 'boolean') base.showQuestionTitle = s.showQuestionTitle
       if (typeof s.showQuestionTitleDescription === 'boolean') base.showQuestionTitleDescription = s.showQuestionTitleDescription
       if (typeof s.showGroupPrompt === 'boolean') base.showGroupPrompt = s.showGroupPrompt
+    }
+
+    if (s.kind === 'recordGuide') {
+      if (typeof s.showQuestionTitle === 'boolean') base.showQuestionTitle = s.showQuestionTitle
+      if (typeof s.showQuestionTitleDescription === 'boolean') base.showQuestionTitleDescription = s.showQuestionTitleDescription
+      if (typeof s.showGroupPrompt === 'boolean') base.showGroupPrompt = s.showGroupPrompt
+      const ids = Array.isArray(s.questionIds) ? s.questionIds : []
+      if (ids.length > 0) {
+        const orders = ids
+          .map((id: any) => orderByQuestionId[String(id)] || 0)
+          .filter((n: number) => n > 0)
+          .sort((a: number, b: number) => a - b)
+        base.questionOrders = orders
+      }
     }
 
     if (s.kind === 'finish') {
@@ -775,7 +974,7 @@ export function materializeListeningChoiceTemplateSteps(question: any, templateS
       if (typeof s.label === 'string') step.label = s.label
     }
 
-    if (s.kind === 'playAudio' || s.kind === 'groupPrompt' || s.kind === 'promptTone') {
+    if (s.kind === 'playAudio' || s.kind === 'groupPrompt' || s.kind === 'promptTone' || s.kind === 'recordGuide') {
       const gi = typeof s.groupIndex === 'number' ? s.groupIndex : -1
       const groupId = gi >= 0 && groups[gi]?.id ? String(groups[gi].id) : undefined
       if (groupId) step.groupId = groupId
@@ -785,9 +984,12 @@ export function materializeListeningChoiceTemplateSteps(question: any, templateS
         if (repeatGapSeconds != null) step.repeatGapSeconds = repeatGapSeconds
       }
       if (s.kind === 'promptTone' && typeof s.url === 'string') step.url = s.url
+      if (s.kind === 'recordGuide' && typeof s.guideAudioUrl === 'string') step.guideAudioUrl = s.guideAudioUrl
+      if (s.kind === 'recordGuide') step.screenStrategy = normalizeScreenStrategy((s as any).screenStrategy)
     }
 
     if (s.kind === 'answerChoice') {
+      if (typeof s.answerSeconds === 'number') step.answerSeconds = Math.max(0, Math.floor(s.answerSeconds))
       if (typeof s.showQuestionTitle === 'boolean') step.showQuestionTitle = s.showQuestionTitle
       if (typeof s.showQuestionTitleDescription === 'boolean') step.showQuestionTitleDescription = s.showQuestionTitleDescription
       if (typeof s.showGroupPrompt === 'boolean') step.showGroupPrompt = s.showGroupPrompt
@@ -800,6 +1002,18 @@ export function materializeListeningChoiceTemplateSteps(question: any, templateS
         const gi = s.groupIndex
         const groupId = gi >= 0 && groups[gi]?.id ? String(groups[gi].id) : undefined
         if (groupId) step.groupId = groupId
+      }
+    }
+
+    if (s.kind === 'recordGuide') {
+      if (typeof s.showQuestionTitle === 'boolean') step.showQuestionTitle = s.showQuestionTitle
+      if (typeof s.showQuestionTitleDescription === 'boolean') step.showQuestionTitleDescription = s.showQuestionTitleDescription
+      if (typeof s.showGroupPrompt === 'boolean') step.showGroupPrompt = s.showGroupPrompt
+
+      const orders = Array.isArray(s.questionOrders) ? s.questionOrders : []
+      if (orders.length > 0) {
+        const ids = orders.map((o: any) => idByOrder[toInt(o, 0)]).filter(Boolean)
+        if (ids.length > 0) step.questionIds = ids
       }
     }
 

@@ -112,9 +112,13 @@ test('questionDraft store should distinguish updateDraft and saveToRecent semant
   const fs = await import('node:fs/promises')
   const src = await fs.readFile(new URL('../stores/questionDraft.ts', import.meta.url), 'utf8')
 
+  assert.ok(src.includes("type DraftEntryMode = 'draft' | 'new' | 'library'"))
+  assert.ok(src.includes("entryMode: 'draft' as DraftEntryMode"))
   assert.ok(src.includes('dirty: false'))
   assert.ok(src.includes('updateDraft(nextQuestion: Question, options: { persistDraft?: boolean } = {})'))
   assert.ok(src.includes('const persistDraft = options.persistDraft === true'))
+  assert.ok(src.includes("entryMode: 'new'"))
+  assert.ok(src.includes("entryMode: 'library'"))
   assert.ok(src.includes('markDirty: true'))
   assert.ok(src.includes('this.state.dirty = false'))
   assert.ok(src.includes('this.state.originalQuestion = clone(current)'))
@@ -127,4 +131,15 @@ test('editor workspace should persist to recent list only after saveQuestionDraf
   assert.ok(src.includes('const result = saveQuestionDraft(questionData.value'))
   assert.ok(src.includes('if (!result.ok) {'))
   assert.ok(src.includes('questionDraft.saveToRecent(50)'))
+})
+
+test('editor workspace should switch save copy for library editing mode', async () => {
+  const fs = await import('node:fs/promises')
+  const src = await fs.readFile(new URL('../components/views/EditorWorkspace.vue', import.meta.url), 'utf8')
+
+  assert.ok(src.includes('@click="saveQuestion">{{ saveQuestionLabel }}</button>'))
+  assert.ok(src.includes("const isLibraryEditing = computed(() => questionDraft.state.entryMode === 'library')"))
+  assert.ok(src.includes("const saveQuestionLabel = computed(() => (isLibraryEditing.value ? '更新题目' : '保存题目'))"))
+  assert.ok(src.includes("const saveQuestionSuccessText = computed(() => (isLibraryEditing.value ? '更新成功' : '保存成功'))"))
+  assert.ok(src.includes("uni.showToast({ title: saveQuestionSuccessText.value, icon: 'success' })"))
 })

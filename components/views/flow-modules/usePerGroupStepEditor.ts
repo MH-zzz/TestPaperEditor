@@ -5,13 +5,14 @@ import type {
   ListeningChoiceStandardPerGroupStepDef
 } from '/flows/listeningChoiceFlowModules'
 
-export type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'answerChoice'
+export type PerGroupKind = 'playAudio' | 'countdown' | 'promptTone' | 'recordGuide' | 'answerChoice'
 export type AudioSource = 'description' | 'content'
 export type QuickAddPerGroupKind =
   | 'playAudioDescription'
   | 'playAudioContent'
   | 'countdown'
   | 'promptTone'
+  | 'recordGuide'
   | 'answerChoice'
 
 export type SelectedConfig =
@@ -37,6 +38,7 @@ function kindLabel(kind: string): string {
     countdown: '倒计时',
     playAudio: '播放音频',
     promptTone: '提示音',
+    recordGuide: '录音说明',
     answerChoice: '开始答题',
     groupPrompt: '题组提示',
     finish: '完成页'
@@ -48,6 +50,7 @@ function perGroupKindLabel(kind: PerGroupKind, audioSource?: AudioSource): strin
   if (kind === 'playAudio') return audioSource === 'description' ? '播放描述音频' : '播放正文音频'
   if (kind === 'countdown') return '倒计时'
   if (kind === 'promptTone') return '提示音'
+  if (kind === 'recordGuide') return '录音说明'
   return '开始答题'
 }
 
@@ -78,6 +81,18 @@ function createPerGroupStep(kind: QuickAddPerGroupKind): ListeningChoiceStandard
   if (kind === 'promptTone') {
     return { kind: 'promptTone', showTitle: true, url: '/static/audio/small_time.mp3' }
   }
+  if (kind === 'recordGuide') {
+    return {
+      kind: 'recordGuide',
+      showTitle: false,
+      showQuestionTitle: true,
+      showQuestionTitleDescription: true,
+      showGroupPrompt: false,
+      textSource: 'question',
+      audioSource: 'question',
+      screenStrategy: 'replaceBody'
+    }
+  }
   return {
     kind: 'answerChoice',
     showTitle: true,
@@ -88,7 +103,7 @@ function createPerGroupStep(kind: QuickAddPerGroupKind): ListeningChoiceStandard
 }
 
 function isPerGroupKind(kind: string): kind is PerGroupKind {
-  return kind === 'playAudio' || kind === 'countdown' || kind === 'promptTone' || kind === 'answerChoice'
+  return kind === 'playAudio' || kind === 'countdown' || kind === 'promptTone' || kind === 'recordGuide' || kind === 'answerChoice'
 }
 
 function getAudioSource(step: ListeningChoiceStandardPerGroupStepDef | undefined): AudioSource {
@@ -174,6 +189,7 @@ export function usePerGroupStepEditor(options: {
     items.push({ key: 'playAudioContent', label: '正文音频' })
     items.push({ key: 'countdown', label: '倒计时' })
     items.push({ key: 'promptTone', label: '提示音' })
+    items.push({ key: 'recordGuide', label: '录音说明' })
     items.push({ key: 'answerChoice', label: '开始答题' })
     return items
   })

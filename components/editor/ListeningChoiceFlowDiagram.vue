@@ -163,6 +163,7 @@ function kindLabel(kind: string): string {
     countdown: '倒计时',
     playAudio: '播放正文音频',
     promptTone: '提示音',
+    recordGuide: '录音说明',
     answerChoice: '开始答题',
     groupPrompt: '题组提示',
     finish: '完成页'
@@ -188,6 +189,7 @@ function getStepGroupCandidate(step: ListeningChoiceFlowStep | undefined): strin
     step.kind === 'groupPrompt' ||
     step.kind === 'playAudio' ||
     step.kind === 'promptTone' ||
+    step.kind === 'recordGuide' ||
     step.kind === 'answerChoice'
   ) {
     return typeof step.groupId === 'string' ? step.groupId : undefined
@@ -237,7 +239,10 @@ const nodes = computed(() => {
       const answerStep: FlowAnswerChoiceStep = step
       const gid = String(answerStep.groupId || '')
       const g = props.question.content.groups.find(x => x.id === gid)
-      const answerSeconds = Math.max(0, Number(g?.answerSeconds || 0))
+      const rawStepAnswerSeconds = Number(answerStep.answerSeconds)
+      const answerSeconds = Number.isFinite(rawStepAnswerSeconds)
+        ? Math.max(0, rawStepAnswerSeconds)
+        : Math.max(0, Number(g?.answerSeconds || 0))
       desc = answerSeconds > 0 ? `答题 ${answerSeconds}s` : '进入作答'
     } else if (step.kind === 'intro') {
       const cnt = Number(props.question.content?.intro?.audio?.playCount || 1)
@@ -262,6 +267,11 @@ const nodes = computed(() => {
       }
     } else if (step.kind === 'promptTone') {
       desc = '提示音'
+    } else if (step.kind === 'recordGuide') {
+      const strategy = step.screenStrategy === 'reusePrevious' ? '复用上一屏' : '替换主体'
+      const questionIds = Array.isArray(step.questionIds) ? step.questionIds.filter(Boolean) : []
+      const scope = questionIds.length > 0 ? `小题 ${questionIds.join(',')}` : '题组默认'
+      desc = `${scope} · ${strategy}`
     } else if (step.kind === 'finish') {
       const finishStep: FlowFinishStep = step
       const text = String(finishStep.text || '').trim()

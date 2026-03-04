@@ -25,6 +25,7 @@ import {
 type DraftQuestion = Question & {
   metadata?: QuestionMetadata
 }
+type DraftEntryMode = 'draft' | 'new' | 'library'
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value))
@@ -64,6 +65,7 @@ class QuestionDraftStore {
   state = reactive({
     currentQuestion: null as DraftQuestion | null,
     originalQuestion: null as DraftQuestion | null,
+    entryMode: 'draft' as DraftEntryMode,
     dirty: false,
     lastDraftSavedAt: '',
     lastLibrarySavedAt: ''
@@ -82,6 +84,7 @@ class QuestionDraftStore {
       persist?: boolean
       persistImmediately?: boolean
       markDirty?: boolean
+      entryMode?: DraftEntryMode
     } = {}
   ) {
     const snapshot = options.snapshot !== false
@@ -89,6 +92,7 @@ class QuestionDraftStore {
     const persist = options.persist === true
     const persistImmediately = options.persistImmediately === true
     const markDirty = options.markDirty === true
+    const entryMode = options.entryMode
 
     let normalized = clone(nextQuestion) as DraftQuestion
     if (normalizeFlow) normalized = normalizeListeningChoiceQuestion(normalized)
@@ -96,6 +100,7 @@ class QuestionDraftStore {
 
     this.state.currentQuestion = normalized
     if (snapshot) this.state.originalQuestion = clone(normalized)
+    if (entryMode) this.state.entryMode = entryMode
     if (markDirty) this.state.dirty = true
     if (persist) {
       if (persistImmediately) this.draftPersistence.flush()
@@ -121,7 +126,8 @@ class QuestionDraftStore {
         normalizeFlow: true,
         persist: true,
         persistImmediately: true,
-        markDirty: false
+        markDirty: false,
+        entryMode: 'draft'
       })
     } catch (e) {
       console.error('Failed to load current question from storage', e)
@@ -130,7 +136,8 @@ class QuestionDraftStore {
         normalizeFlow: true,
         persist: true,
         persistImmediately: true,
-        markDirty: false
+        markDirty: false,
+        entryMode: 'draft'
       })
     }
     this.state.dirty = false
@@ -153,7 +160,8 @@ class QuestionDraftStore {
       normalizeFlow: true,
       persist: true,
       persistImmediately: true,
-      markDirty: false
+      markDirty: false,
+      entryMode: 'new'
     })
     this.state.dirty = false
     return this.state.currentQuestion
@@ -165,7 +173,8 @@ class QuestionDraftStore {
       normalizeFlow: true,
       persist: true,
       persistImmediately: true,
-      markDirty: false
+      markDirty: false,
+      entryMode: 'library'
     })
     this.state.dirty = false
     return this.state.currentQuestion

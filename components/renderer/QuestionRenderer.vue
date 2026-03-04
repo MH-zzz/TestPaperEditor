@@ -32,12 +32,14 @@ const props = withDefaults(defineProps<{
   showAnswer?: boolean
   stepIndex?: number
   showStepNav?: boolean
+  fixedBottomDock?: boolean
 }>(), {
   mode: 'preview',
   answers: () => ({}),
   showAnswer: false,
   stepIndex: 0,
-  showStepNav: true
+  showStepNav: true,
+  fixedBottomDock: false
 })
 
 const emit = defineEmits<{
@@ -55,6 +57,7 @@ type RendererRoute = {
     showAnswer: boolean
     stepIndex: number
     showStepNav: boolean
+    fixedBottomDock: boolean
   }) => Record<string, any>
 }
 
@@ -67,7 +70,8 @@ const QUESTION_RENDERER_ROUTES: Record<string, RendererRoute> = {
       answers: p.answers,
       showAnswer: p.showAnswer,
       stepIndex: p.stepIndex,
-      showStepNav: p.showStepNav
+      showStepNav: p.showStepNav,
+      fixedBottomDock: p.fixedBottomDock
     })
   },
   speaking_hear_answer: {
@@ -78,7 +82,8 @@ const QUESTION_RENDERER_ROUTES: Record<string, RendererRoute> = {
       answers: p.answers,
       showAnswer: p.showAnswer,
       stepIndex: p.stepIndex,
-      showStepNav: p.showStepNav
+      showStepNav: p.showStepNav,
+      fixedBottomDock: p.fixedBottomDock
     })
   },
   listening_match: {
@@ -127,7 +132,8 @@ const activeRendererProps = computed(() => {
     answers: props.answers,
     showAnswer: props.showAnswer,
     stepIndex: props.stepIndex,
-    showStepNav: props.showStepNav
+    showStepNav: props.showStepNav,
+    fixedBottomDock: props.fixedBottomDock
   })
 })
 

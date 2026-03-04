@@ -1,5 +1,5 @@
 <template>
-    <view class="lc-flow">
+    <view class="lc-flow" :class="{ 'lc-flow--fixed-dock': fixedDockEnabled }">
       <view class="lc-flow__top">
       <view v-if="showStepNav" class="lc-flow__nav">
         <button class="btn btn-outline btn-sm" :disabled="currentStepIndex <= 0" @click="prevStep">上一步</button>
@@ -10,8 +10,8 @@
       <view v-if="activeTitle" class="lc-flow__title">{{ activeTitle }}</view>
     </view>
 
-    <scroll-view scroll-y class="lc-flow__body" v-if="displayStep">
-      <view class="lc-flow__body-inner">
+    <scroll-view scroll-y class="lc-flow__body" :class="{ 'lc-flow__body--fixed': fixedDockEnabled }" v-if="displayStep">
+      <view class="lc-flow__body-inner" :class="{ 'lc-flow__body-inner--fixed': fixedDockEnabled }">
         <component
           :is="displayRenderer"
           v-bind="displayRendererProps"
@@ -21,7 +21,7 @@
     </scroll-view>
 
     <!-- 底部状态栏（贴底，左右贴边） -->
-    <view v-if="bottomDockVisible" class="lc-flow__bottom">
+    <view v-if="bottomDockVisible" class="lc-flow__bottom" :class="{ 'lc-flow__bottom--fixed': fixedDockEnabled }">
       <view v-if="bottomRecordingIndicator" class="lc-bottom__recording">
         <view class="lc-bottom__recording-icon">
           <view class="lc-bottom__recording-stop" />
@@ -29,17 +29,31 @@
         <text class="lc-bottom__recording-text">正在录音 {{ bottomRecordingElapsedDisplay }}</text>
       </view>
 
-      <view v-else-if="bottomCountdown" class="lc-bottom__countdown">
-        <text class="lc-bottom__countdown-label">{{ bottomCountdown.label }}</text>
-        <text class="lc-bottom__countdown-number">{{ bottomCountdownDisplay }}</text>
+      <view v-else-if="bottomDockStatus" class="lc-bottom__countdown">
+        <view
+          class="lc-bottom__countdown-icon"
+          :class="{ 'is-paused': isCountdownPaused, 'is-disabled': !canToggleCountdownPause }"
+          @click="toggleCountdownPause"
+        >
+          <text class="lc-bottom__countdown-icon-symbol">{{ bottomCountdownPauseIcon }}</text>
+        </view>
+        <view class="lc-bottom__countdown-main">
+          <text v-if="bottomDockDisplayLabel" class="lc-bottom__countdown-label">{{ bottomDockDisplayLabel }}</text>
+          <text class="lc-bottom__countdown-number">{{ bottomDockDisplay }}</text>
+        </view>
       </view>
 
       <view v-if="bottomAudioUrl" class="lc-bottom__audio">
         <AudioPlayer
+          ref="audioPlayerRef"
           :key="audioKey"
           :src="bottomAudioUrl"
           :auto-play="shouldAutoPlay"
+          :hidden="mode === 'exam'"
           @play="onAudioPlay"
+          @pause="onAudioPause"
+          @timeupdate="onAudioTimeUpdate"
+          @durationchange="onAudioDurationChange"
           @ended="onAudioEnded"
         />
       </view>
@@ -76,6 +90,7 @@ import ListeningChoiceFinishBody from './listening-choice/ListeningChoiceFinishB
 import ListeningChoiceGroupPromptBody from './listening-choice/ListeningChoiceGroupPromptBody.vue'
 import ListeningChoiceIntroBody from './listening-choice/ListeningChoiceIntroBody.vue'
 import ListeningChoicePlayAudioBody from './listening-choice/ListeningChoicePlayAudioBody.vue'
+import ListeningChoiceRecordGuideBody from './listening-choice/ListeningChoiceRecordGuideBody.vue'
 import ListeningChoiceUnsupportedBody from './listening-choice/ListeningChoiceUnsupportedBody.vue'
 
 const props = withDefaults(defineProps<{
@@ -85,12 +100,14 @@ const props = withDefaults(defineProps<{
   showAnswer?: boolean
   stepIndex?: number
   showStepNav?: boolean
+  fixedBottomDock?: boolean
 }>(), {
   mode: 'preview',
   answers: () => ({}),
   showAnswer: false,
   stepIndex: 0,
-  showStepNav: true
+  showStepNav: true,
+  fixedBottomDock: false
 })
 
 const emit = defineEmits<{
@@ -150,6 +167,12 @@ const countdownLeft = ref(0)
 const introCountdownLeft = ref(0)
 const audioRepeatGapActive = ref(false)
 const audioRepeatGapSeconds = ref(0)
+const isCountdownPaused = ref(false)
+const audioPlayerRef = ref<any>(null)
+const audioCurrentTime = ref(0)
+const audioDuration = ref(0)
+const isBottomAudioPlaying = ref(false)
+const lastAudioEndedAt = ref(0)
 
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
@@ -160,6 +183,21 @@ function resolveDisplayStepIndex(index: number): number {
   const step = steps.value[index]
   if (!step) return -1
   if (!shouldReuseListeningChoicePreviousScreen(step)) return index
+
+  // Hear-answer: keep end-recording prompt tone on the same screen as
+  // start-recording prompt tone, avoiding a visual jump at recording end.
+  if (isHearAnswerVariant.value && isStepKind(step, 'promptTone')) {
+    const prev = steps.value[index - 1]
+    const startTone = steps.value[index - 2]
+    if (isStepKind(prev, 'answerChoice') && isStepKind(startTone, 'promptTone')) {
+      for (let i = index - 3; i >= 0; i -= 1) {
+        const anchor = steps.value[i]
+        if (!anchor) continue
+        if (shouldReuseListeningChoicePreviousScreen(anchor)) continue
+        return i
+      }
+    }
+  }
 
   // Steps like "promptTone" should keep the previous screen visible.
   for (let i = index - 1; i >= 0; i -= 1) {
@@ -183,6 +221,7 @@ const DISPLAY_RENDERERS: Record<ListeningChoiceStepRenderView, Component> = {
   groupPrompt: ListeningChoiceGroupPromptBody,
   countdown: ListeningChoiceCountdownBody,
   playAudio: ListeningChoicePlayAudioBody,
+  recordGuide: ListeningChoiceRecordGuideBody,
   answerChoice: ListeningChoiceAnswerChoiceBody,
   finish: ListeningChoiceFinishBody,
   unsupported: ListeningChoiceUnsupportedBody
@@ -206,7 +245,7 @@ function resolveStepGroupId(step: RendererStep | null | undefined): string | und
   const renderView = resolveListeningChoiceStepRenderView(step)
   if (renderView === 'answerChoice') return resolveAnswerChoiceGroupId(step)
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
-  if (renderView === 'groupPrompt' || renderView === 'playAudio' || carrier === 'promptTone') {
+  if (renderView === 'groupPrompt' || renderView === 'playAudio' || carrier === 'promptTone' || carrier === 'recordGuide') {
     return step.groupId ? String(step.groupId) : undefined
   }
   return undefined
@@ -214,12 +253,21 @@ function resolveStepGroupId(step: RendererStep | null | undefined): string | und
 
 function resolveAnswerSeconds(step: RendererStep | null | undefined): number {
   if (!step || resolveListeningChoiceStepRenderView(step) !== 'answerChoice') return 0
+  if (typeof (step as any).answerSeconds === 'number' && Number.isFinite((step as any).answerSeconds)) {
+    return Math.max(0, Math.floor((step as any).answerSeconds))
+  }
   const groupId = resolveAnswerChoiceGroupId(step)
   if (!groupId) return 0
   const raw = groupsById.value[groupId]?.answerSeconds
   const n = Math.floor(Number(raw))
   if (Number.isFinite(n) && n > 0) return n
   return 0
+}
+
+function toPositiveInt(value: unknown, fallback: number): number {
+  const n = Math.floor(Number(value))
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return n
 }
 
 const activeGroup = computed(() => {
@@ -231,30 +279,54 @@ const activeGroup = computed(() => {
 })
 
 const introAudioUrl = computed(() => props.data.content?.intro?.audio?.url || '')
-const introAudioPlayCount = computed(() => props.data.content?.intro?.audio?.playCount || 0)
+const introAudioPlayCount = computed(() => toPositiveInt(props.data.content?.intro?.audio?.playCount, 1))
 const introCountdownSeconds = computed(() => props.data.content?.intro?.countdown?.seconds || 0)
 const introCountdownLabel = computed(() => props.data.content?.intro?.countdown?.label || '准备')
 
+const activePlayAudioStep = computed<RendererStepOfKind<'playAudio'> | null>(() => {
+  const step = activeStep.value
+  if (isStepKind(step, 'playAudio')) return step
+  const display = displayStep.value
+  if (isStepKind(display, 'playAudio') && displayStepRenderView.value === 'playAudio') return display
+  return null
+})
+
 const activePlayAudioSource = computed<'description' | 'content'>(() => {
-  const step = displayStep.value
-  if (!isStepKind(step, 'playAudio') || displayStepRenderView.value !== 'playAudio') return 'content'
+  const step = activePlayAudioStep.value
+  if (!step) return 'content'
   return step.audioSource === 'description' ? 'description' : 'content'
 })
 
+const activePlayAudioGroup = computed(() => {
+  const step = activePlayAudioStep.value
+  if (!step) return null
+  const groupId = String(step.groupId || '')
+  if (!groupId) return null
+  return groupsById.value[groupId] || null
+})
+
 const playAudioUrl = computed(() => {
-  const g = activeGroup.value
+  const g = activePlayAudioGroup.value
   if (!g) return ''
   if (activePlayAudioSource.value === 'description') return g.descriptionAudio?.url || ''
   return g.audio?.url || ''
 })
 const playAudioPlayCount = computed(() => {
-  const g = activeGroup.value
+  const g = activePlayAudioGroup.value
   if (!g) return 0
-  if (activePlayAudioSource.value === 'description') return g.descriptionAudio?.playCount || 0
-  return g.audio?.playCount || 0
+  if (activePlayAudioSource.value === 'description') return toPositiveInt(g.descriptionAudio?.playCount, 1)
+  return toPositiveInt(g.audio?.playCount, 1)
 })
 
+function resolveStepPlayTimes(step: RendererStep | null | undefined): number {
+  if (!isStepKind(step, 'playAudio')) return 1
+  const explicit = Math.floor(Number((step as any)?.playTimes))
+  if (Number.isFinite(explicit) && explicit > 0) return explicit
+  return Math.max(1, playAudioPlayCount.value || 1)
+}
+
 const isPreview = computed(() => props.mode === 'preview')
+const fixedDockEnabled = computed(() => props.fixedBottomDock || !isPreview.value)
 const shouldAutoPlay = computed(() => props.mode === 'exam')
 const isHearAnswerVariant = computed(() => {
   const metadata = (props.data as any)?.metadata
@@ -340,7 +412,7 @@ const activeTitle = computed(() => {
 
   if (displayStepRenderView.value === 'intro') return buildIntroTitle(stepShowTitleDescription(step))
 
-  if (displayStepRenderView.value === 'playAudio' || displayStepRenderView.value === 'answerChoice') {
+  if (displayStepRenderView.value === 'playAudio' || displayStepRenderView.value === 'recordGuide' || displayStepRenderView.value === 'answerChoice') {
     // Keep question title at a fixed top position across steps.
     return activeContextTitle.value
   }
@@ -383,6 +455,22 @@ function hasSeparateIntroCountdownStep(index: number) {
   return resolveListeningChoiceStepRenderView(cur) === 'intro' && resolveListeningChoiceStepRenderView(next) === 'countdown'
 }
 
+function shouldSkipHearAnswerLegacyPostContentCountdown(index: number): boolean {
+  if (!isHearAnswerVariant.value) return false
+  const step = steps.value[index]
+  if (!isStepKind(step, 'countdown')) return false
+
+  const prev = steps.value[index - 1]
+  if (!isStepKind(prev, 'playAudio')) return false
+  if (prev.audioSource !== 'content') return false
+
+  const next = steps.value[index + 1]
+  const nextIsContentAudio = isStepKind(next, 'playAudio') && next.audioSource === 'content'
+  if (nextIsContentAudio) return false
+
+  return true
+}
+
 function resolveIntroStepForCountdown(index: number): RendererStepOfKind<'intro'> | null {
   const prev = steps.value[index - 1]
   if (isStepKind(prev, 'intro')) return prev
@@ -393,6 +481,7 @@ function resolveIntroStepForCountdown(index: number): RendererStepOfKind<'intro'
 const activeIntroShowDescription = computed(() => {
   const step = displayStep.value
   if (!isStepKind(step, 'intro') || displayStepRenderView.value !== 'intro') return true
+  if (!isPreview.value) return true
   return stepShowDescription(step)
 })
 
@@ -437,6 +526,7 @@ const bottomAudioUrl = computed(() => {
   if (carrier === 'intro') return introAudioUrl.value
   if (carrier === 'playAudio') return playAudioUrl.value
   if (carrier === 'promptTone' && isStepKind(step, 'promptTone')) return String(step.url || '')
+  if (carrier === 'recordGuide' && isStepKind(step, 'recordGuide')) return String((step as any).guideAudioUrl || '')
   return ''
 })
 
@@ -453,8 +543,35 @@ const bottomMissingAudioText = computed(() => {
   if (carrier === 'intro') return '未配置说明音频 URL'
   if (carrier === 'playAudio') return activePlayAudioSource.value === 'description' ? '未配置题组描述音频 URL' : '未配置题组正文音频 URL'
   if (carrier === 'promptTone') return '未配置提示音 URL'
+  if (carrier === 'recordGuide') return '未配置录音说明音频 URL'
   return ''
 })
+
+const activeRecordGuideText = computed(() => {
+  const step = displayStep.value
+  if (!step || displayStepRenderView.value !== 'recordGuide') return null
+  return ((step as any).guideText || activeGroup.value?.recordGuideText || activeGroup.value?.prompt || null) as any
+})
+
+function resolveHearAnswerAnswerGuideText(step: RendererStep | null | undefined) {
+  if (!isHearAnswerVariant.value) return null
+  if (!isStepKind(step, 'answerChoice')) return null
+
+  const ids = Array.isArray(step.questionIds)
+    ? step.questionIds.map(id => String(id || '')).filter(Boolean)
+    : []
+
+  for (const id of ids) {
+    const sq = questionsById.value[id] as any
+    if (sq?.recordGuideText) return sq.recordGuideText
+  }
+
+  const groupId = resolveAnswerChoiceGroupId(step) || String(step.groupId || '')
+  const group = groupId ? (groupsById.value[groupId] as any) : null
+  if (group?.recordGuideText) return group.recordGuideText
+
+  return null
+}
 
 const activeQuestions = computed(() => {
   const step = displayStep.value
@@ -479,6 +596,16 @@ const contextQuestions = computed(() => {
 
   // Answer page: honor explicit questionIds first (if provided).
   if (displayStepRenderView.value === 'answerChoice') return activeQuestions.value
+
+  if (displayStepRenderView.value === 'recordGuide' && isStepKind(step, 'recordGuide')) {
+    const ids = Array.isArray(step.questionIds) ? step.questionIds.map(id => String(id || '')).filter(Boolean) : []
+    if (ids.length > 0) {
+      return ids.map(id => questionsById.value[id]).filter(Boolean)
+    }
+    const groupId = String(step.groupId || '')
+    if (!groupId) return []
+    return (groupsById.value[groupId]?.subQuestions || []) as SubQuestion[]
+  }
 
   if (displayStepRenderView.value === 'groupPrompt' || displayStepRenderView.value === 'playAudio') {
     const groupId = resolveStepGroupId(step)
@@ -557,7 +684,27 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
     }
   }
 
+  if (displayStepRenderView.value === 'recordGuide') {
+    return {
+      ...shared,
+      contextTitle: '',
+      contextGroupTitle: activeContextGroupTitle.value,
+      contextShowPrompt: activeContextShowPrompt.value,
+      prompt: activeGroup.value?.prompt,
+      guideText: activeRecordGuideText.value,
+      showQuestionNumber: true,
+      questions: contextQuestions.value
+    }
+  }
+
   if (displayStepRenderView.value === 'answerChoice') {
+    const answerPrompt = isHearAnswerVariant.value
+      ? (resolveHearAnswerAnswerGuideText(step) || activeGroup.value?.prompt || null)
+      : (activeGroup.value?.prompt || null)
+    const answerContextShowPrompt = isHearAnswerVariant.value
+      ? Boolean(answerPrompt)
+      : activeContextShowPrompt.value
+
     return {
       ...shared,
       isHearAnswer: isHearAnswerVariant.value,
@@ -565,8 +712,8 @@ const displayRendererProps = computed<Record<string, unknown>>(() => {
       recordingSecondsLeft: countdownLeft.value,
       contextTitle: '',
       contextGroupTitle: activeContextGroupTitle.value,
-      contextShowPrompt: activeContextShowPrompt.value,
-      prompt: activeGroup.value?.prompt,
+      contextShowPrompt: answerContextShowPrompt,
+      prompt: answerPrompt as any,
       showQuestionNumber: true,
       questions: activeQuestions.value
     }
@@ -607,10 +754,13 @@ const bottomCountdown = computed(() => {
     const nextCarrier = resolveListeningChoiceStepAudioCarrier(next)
 
     const stepLabel = isStepKind(step, 'countdown') ? step.label : undefined
+    const isReplayGapCountdown = typeof stepLabel === 'string' && stepLabel.includes('重播间隔')
     let label = stepLabel ? `${stepLabel}-倒计时` : '倒计时'
     if (countdownContext.value?.kind === 'intro') {
       // Intro countdown is already self-explanatory; keep it stable regardless of what comes next.
       label = `${stepLabel || introCountdownLabel.value || '准备'}-倒计时`
+    } else if (isReplayGapCountdown) {
+      label = '正文重播前-倒计时'
     } else if (nextRenderView === 'playAudio') {
       const nextSource = isStepKind(next, 'playAudio') && next.audioSource === 'description' ? 'description' : 'content'
       label = nextSource === 'description' ? '播放描述音频前-倒计时' : '播放正文音频前-倒计时'
@@ -663,11 +813,75 @@ const bottomCountdown = computed(() => {
   return null
 })
 
+const bottomAudioDock = computed(() => {
+  if (isPreview.value) return null
+  if (!bottomAudioUrl.value) return null
+  if (bottomRecordingIndicator.value) return null
+  if (bottomCountdown.value) return null
+
+  const renderView = activeStepRenderView.value
+  if (renderView !== 'intro' && renderView !== 'playAudio' && renderView !== 'groupPrompt' && renderView !== 'recordGuide') return null
+
+  const fallbackSeconds = renderView === 'intro' ? 30 : 0
+  const remain = Math.ceil(Math.max(0, audioDuration.value - audioCurrentTime.value))
+  const seconds = remain > 0 ? remain : Math.max(0, Math.floor(audioDuration.value || fallbackSeconds))
+  const label = renderView === 'playAudio' && activePlayAudioSource.value === 'content'
+    ? '听语音'
+    : '放音'
+  return {
+    label,
+    seconds
+  }
+})
+
 const bottomCountdownDisplay = computed(() => {
   const v = bottomCountdown.value
   if (!v) return ''
-  if (v.seconds <= 99) return String(v.seconds)
-  return formatSeconds(v.seconds)
+  return formatClockSeconds(v.seconds)
+})
+
+const bottomCountdownDisplayLabel = computed(() => {
+  const text = String(bottomCountdown.value?.label || '').trim()
+  if (!text) return '答题准备'
+
+  if (text.includes('正文重播前-倒计时')) return ''
+  if (text.includes('播放正文音频前-倒计时')) return '答题准备'
+  if (text.includes('播放描述音频前-倒计时')) return '答题准备'
+  if (text.includes('答题前-倒计时')) return '答题准备'
+  if (text.includes('题组提示前-倒计时')) return '答题准备'
+  if (text.includes('提示音前-倒计时')) return '答题准备'
+  if (text.includes('介绍页-')) return '答题准备'
+
+  if (text.includes('录音准备倒计时')) return '录音准备'
+  if (text.includes('录音倒计时')) return '录音中'
+  if (text.includes('答题倒计时')) return isHearAnswerVariant.value ? '答题中' : '请选择'
+
+  return text.replace(/-倒计时$/u, '') || '答题准备'
+})
+
+const bottomDockStatus = computed(() => {
+  return bottomCountdown.value || bottomAudioDock.value
+})
+
+const bottomDockDisplayLabel = computed(() => {
+  if (bottomCountdown.value) return bottomCountdownDisplayLabel.value
+  return bottomAudioDock.value?.label || '放音'
+})
+
+const bottomDockDisplay = computed(() => {
+  if (bottomCountdown.value) return bottomCountdownDisplay.value
+  return formatClockSeconds(bottomAudioDock.value?.seconds || 0)
+})
+
+const canToggleCountdownPause = computed(() => {
+  if (isPreview.value) return false
+  if (bottomCountdown.value) return Boolean(tickTimer)
+  if (bottomAudioDock.value) return Boolean(bottomAudioUrl.value)
+  return false
+})
+
+const bottomCountdownPauseIcon = computed(() => {
+  return isCountdownPaused.value ? '▶' : '⏸'
 })
 
 const bottomRecordingIndicator = computed(() => {
@@ -696,8 +910,8 @@ const bottomRecordingElapsedDisplay = computed(() => {
 const bottomDockVisible = computed(() => {
   return Boolean(
     bottomRecordingIndicator.value
-    || bottomAudioUrl.value
-    || bottomCountdown.value
+    || bottomDockStatus.value
+    || (isPreview.value && bottomAudioUrl.value)
     || (isPreview.value && bottomExpectAudio.value)
   )
 })
@@ -706,6 +920,7 @@ function clearTickTimer() {
   if (!tickTimer) return
   clearInterval(tickTimer)
   tickTimer = null
+  isCountdownPaused.value = false
 }
 
 function dispatchRuntime(event: ListeningChoiceRuntimeEvent) {
@@ -731,8 +946,10 @@ function nextStep() {
 
 function startCountdown(seconds: number, onDone: () => void) {
   clearTickTimer()
+  isCountdownPaused.value = false
   countdownLeft.value = seconds
   tickTimer = setInterval(() => {
+    if (isCountdownPaused.value) return
     countdownLeft.value -= 1
     if (countdownLeft.value <= 0) {
       countdownLeft.value = 0
@@ -789,8 +1006,10 @@ function startIntroCountdown() {
   }
 
   clearTickTimer()
+  isCountdownPaused.value = false
   introCountdownLeft.value = seconds
   tickTimer = setInterval(() => {
+    if (isCountdownPaused.value) return
     introCountdownLeft.value -= 1
     if (introCountdownLeft.value <= 0) {
       introCountdownLeft.value = 0
@@ -811,6 +1030,24 @@ function startAudioLoop(playCount: number, onDone: () => void) {
     audioRemaining.value = 0
     onDone()
   }
+}
+
+function replayBottomAudio() {
+  const player = audioPlayerRef.value
+  if (!player) {
+    // Fallback: rebuild player instance and let autoPlay kick in.
+    audioKey.value += 1
+    return
+  }
+  if (typeof player.restart === 'function') {
+    player.restart()
+    return
+  }
+  if (typeof player.play === 'function') {
+    player.play()
+    return
+  }
+  audioKey.value += 1
 }
 
 function shouldAddReplayGap(step: RendererStep | null | undefined): boolean {
@@ -850,6 +1087,21 @@ function startAudioReplayGap(seconds: number, onDone: () => void) {
   })
 }
 
+function toggleCountdownPause() {
+  if (!canToggleCountdownPause.value) return
+  if (bottomCountdown.value) {
+    isCountdownPaused.value = !isCountdownPaused.value
+    return
+  }
+
+  if (!bottomAudioDock.value) return
+  if (isBottomAudioPlaying.value) {
+    audioPlayerRef.value?.pause?.()
+  } else {
+    audioPlayerRef.value?.play?.()
+  }
+}
+
 function enterActiveStep() {
   stopHearAnswerRecording()
   clearTickTimer()
@@ -859,10 +1111,21 @@ function enterActiveStep() {
   audioRepeatGapSeconds.value = 0
   audioRemaining.value = 0
   activeRecordingQuestionId.value = ''
+  audioCurrentTime.value = 0
+  audioDuration.value = 0
+  isBottomAudioPlaying.value = false
+  lastAudioEndedAt.value = 0
 
   const step = activeStep.value
   if (!step) return
   const renderView = activeStepRenderView.value
+
+  // Runtime guard: hear-answer should not keep a standalone countdown right after
+  // the final content playback. Legacy data may still contain this stale step.
+  if (!isPreview.value && shouldSkipHearAnswerLegacyPostContentCountdown(currentStepIndex.value)) {
+    dispatchRuntime({ type: 'countdownEnded' })
+    return
+  }
 
   if (isPreview.value) {
     // Preview mode should never auto-play audio, start timers, or auto-advance steps.
@@ -934,8 +1197,8 @@ function enterActiveStep() {
   }
 
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
-  if (carrier === 'playAudio') {
-    const count = Math.max(1, playAudioPlayCount.value || 1)
+  if (carrier === 'playAudio' || carrier === 'recordGuide') {
+    const count = resolveStepPlayTimes(step)
 
     startAudioLoop(count, () => {
       dispatchRuntime({ type: 'audioEnded' })
@@ -969,6 +1232,13 @@ function enterActiveStep() {
 }
 
 function onAudioEnded() {
+  const now = Date.now()
+  if (audioRepeatGapActive.value) return
+  if (now - lastAudioEndedAt.value < 180) return
+  lastAudioEndedAt.value = now
+
+  isBottomAudioPlaying.value = false
+  isCountdownPaused.value = false
   if (audioRemaining.value <= 0) return
   audioRemaining.value -= 1
   if (audioRemaining.value > 0) {
@@ -976,11 +1246,11 @@ function onAudioEnded() {
     const gapSeconds = resolveReplayGapSeconds(step)
     if (!isPreview.value && gapSeconds > 0) {
       startAudioReplayGap(gapSeconds, () => {
-        if (audioRemaining.value > 0) audioKey.value += 1
+        if (audioRemaining.value > 0) replayBottomAudio()
       })
       return
     }
-    audioKey.value += 1
+    replayBottomAudio()
     return
   }
 
@@ -1003,16 +1273,30 @@ function onAudioEnded() {
   }
 
   const carrier = resolveListeningChoiceStepAudioCarrier(step)
-  if (carrier === 'playAudio' || carrier === 'promptTone') {
+  if (carrier === 'playAudio' || carrier === 'promptTone' || carrier === 'recordGuide') {
     dispatchRuntime({ type: 'audioEnded' })
   }
 }
 
 function onAudioPlay() {
-  // No-op in exam mode. In preview mode there should be no timers, but keep this as defensive cleanup.
-  if (!isPreview.value) return
-  clearTickTimer()
-  countdownLeft.value = 0
+  isBottomAudioPlaying.value = true
+  if (bottomAudioDock.value) isCountdownPaused.value = false
+}
+
+function onAudioPause() {
+  isBottomAudioPlaying.value = false
+  if (bottomAudioDock.value) isCountdownPaused.value = true
+}
+
+function onAudioTimeUpdate(time: number) {
+  const t = Number(time)
+  if (Number.isFinite(t)) audioCurrentTime.value = Math.max(0, t)
+}
+
+function onAudioDurationChange(duration: number) {
+  const d = Number(duration)
+  if (!Number.isFinite(d) || d <= 0) return
+  audioDuration.value = d
 }
 
 watch(() => props.stepIndex, (v) => {
@@ -1029,13 +1313,6 @@ onUnmounted(() => {
   stopHearAnswerRecording()
   clearTickTimer()
 })
-
-function formatSeconds(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds))
-  const mins = Math.floor(s / 60)
-  const secs = s % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
 
 function formatClockSeconds(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds))
@@ -1056,12 +1333,17 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: #f3f5f7;
+  overflow: hidden;
+}
+
+.lc-flow--fixed-dock {
+  position: relative;
 }
 
 .lc-flow__top {
-  padding: $spacing-md;
-  border-bottom: 1px solid #eee;
-  background: #fff;
+  padding: 28rpx 32rpx 0;
+  background: #f3f5f7;
 }
 
 .lc-flow__nav {
@@ -1076,14 +1358,18 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 }
 
 .lc-flow__title {
-  margin-top: $spacing-sm;
-  font-size: 16px;
+  margin-top: 0;
+  font-size: 36rpx;
   font-weight: 600;
-  color: $text-primary;
+  line-height: 1.35;
+  color: #1a1a1a;
+  background: #fff;
+  border-radius: 20rpx 20rpx 0 0;
+  padding: 28rpx 32rpx 20rpx;
 }
 
 .lc-flow__timer {
-  margin-top: 6px;
+  margin-top: 12rpx;
   font-size: $font-size-sm;
   color: $warning-color;
 }
@@ -1092,42 +1378,90 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
   flex: 1;
   min-height: 0;
   height: 0;
+  padding: 0 32rpx 28rpx;
+  box-sizing: border-box;
+  background: #f3f5f7;
+}
+
+.lc-flow__body--fixed {
+  padding-bottom: calc(208rpx + env(safe-area-inset-bottom));
 }
 
 .lc-flow__body-inner {
   min-height: 100%;
-  padding: $spacing-md;
+  padding: 20rpx 32rpx 28rpx;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  background: #fff;
+  border-radius: 0 0 20rpx 20rpx;
+}
+
+.lc-flow__body-inner--fixed {
+  padding-bottom: 28rpx;
 }
 
 .lc-flow__bottom {
   flex-shrink: 0;
-  background: #f3f5f7;
-  border-top: 1px solid #e9edf3;
-  /* No horizontal padding here so the dock can touch the phone frame edges. */
+  background: transparent;
+  border-top: 0;
   padding: 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 8rpx);
 
   .lc-bottom__countdown {
     display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
+    align-items: center;
+    gap: 24rpx;
+    padding: 20rpx 32rpx 16rpx;
+  }
+
+  .lc-bottom__countdown-icon {
+    width: 120rpx;
+    height: 120rpx;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #fd6f27;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .lc-bottom__countdown-icon.is-paused {
+    background: #ef7a2a;
+  }
+
+  .lc-bottom__countdown-icon.is-disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .lc-bottom__countdown-icon-symbol {
+    color: #fff;
+    font-size: 48rpx;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .lc-bottom__countdown-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 8rpx;
   }
 
   .lc-bottom__recording {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: 24rpx;
+    padding: 20rpx 24rpx;
   }
 
   .lc-bottom__recording-icon {
-    width: 42px;
-    height: 42px;
+    width: 84rpx;
+    height: 84rpx;
     border-radius: 50%;
     border: 2px solid rgba(244, 63, 94, 0.45);
     background: #fff;
@@ -1138,47 +1472,50 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
   }
 
   .lc-bottom__recording-stop {
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
+    width: 28rpx;
+    height: 28rpx;
+    border-radius: 6rpx;
     background: #ef4444;
   }
 
   .lc-bottom__recording-text {
-    font-size: 12px;
+    font-size: 24rpx;
     color: rgba(15, 23, 42, 0.78);
     font-weight: 600;
   }
 
   .lc-bottom__countdown-label {
-    font-size: 12px;
-    color: $text-secondary;
-    font-weight: 500;
+    font-size: 36rpx;
+    color: #1a1a1a;
+    font-weight: 400;
+    line-height: 1.2;
   }
 
   .lc-bottom__countdown-number {
-    font-size: 44px;
-    font-weight: 800;
-    color: $primary-color;
+    font-size: 40rpx;
+    font-weight: 700;
+    color: #1a1a1a;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
+    font-family: 'DIN Alternate', 'PingFang SC', sans-serif;
   }
 
   .lc-bottom__timer {
-    padding: 10px 12px;
+    padding: 20rpx 24rpx;
   }
 
   .lc-bottom__timer-text {
-    font-size: 12px;
+    font-size: 24rpx;
     color: $warning-color;
     font-weight: 600;
   }
 
   .lc-bottom__no-audio {
-    padding: 10px 12px;
+    padding: 20rpx 24rpx;
   }
 
   .lc-bottom__no-audio-text {
-    font-size: 12px;
+    font-size: 24rpx;
     color: $text-hint;
     font-weight: 600;
   }
@@ -1186,19 +1523,27 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
   :deep(.audio-player) {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 12px 10px;
+    padding: 16rpx 24rpx 20rpx;
     background: transparent;
     border-radius: 0;
   }
 
   :deep(.audio-player__btn) {
-    width: 48px;
-    height: 48px;
+    width: 96rpx;
+    height: 96rpx;
   }
 }
 
+.lc-flow__bottom--fixed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
 .lc-step__heading {
-  font-size: 16px;
+  font-size: 32rpx;
   font-weight: 600;
   margin-bottom: $spacing-sm;
 }
@@ -1215,7 +1560,7 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 
 .lc-step--center {
   flex: 1;
-  min-height: 240px;
+  min-height: 480rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1225,11 +1570,11 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 
 .lc-step__countdown-label {
   color: $text-secondary;
-  font-size: 14px;
+  font-size: 28rpx;
 }
 
 .lc-step__countdown-seconds {
-  font-size: 48px;
+  font-size: 96rpx;
   font-weight: 700;
   color: $primary-color;
 }
@@ -1248,7 +1593,7 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 }
 
 .lc-question__number {
-  min-width: 18px;
+  min-width: 36rpx;
   font-weight: 600;
   color: $text-primary;
 }
@@ -1286,20 +1631,20 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 }
 
 .lc-option__radio {
-  width: 16px;
-  height: 16px;
+  width: 32rpx;
+  height: 32rpx;
   border-radius: 50%;
   border: 2px solid #bbb;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 4rpx;
 }
 
 .lc-option__key {
-  width: 18px;
+  width: 36rpx;
   font-weight: 600;
   color: $text-secondary;
   flex-shrink: 0;
-  margin-top: 1px;
+  margin-top: 2rpx;
 }
 
 .lc-option__content {
@@ -1315,6 +1660,6 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 
 .lc-step__finish-text {
   color: $text-secondary;
-  font-size: 14px;
+  font-size: 28rpx;
 }
 </style>

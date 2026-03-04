@@ -4,12 +4,13 @@ import {
   listListeningChoiceStepPlugins
 } from '/engine/flow/plugins/listening-choice/index.ts'
 
-export type ListeningChoiceStepAudioCarrier = 'intro' | 'playAudio' | 'promptTone' | null
+export type ListeningChoiceStepAudioCarrier = 'intro' | 'playAudio' | 'promptTone' | 'recordGuide' | null
 export type ListeningChoiceStepRenderView =
   | 'intro'
   | 'groupPrompt'
   | 'countdown'
   | 'playAudio'
+  | 'recordGuide'
   | 'answerChoice'
   | 'finish'
   | 'unsupported'
@@ -19,6 +20,7 @@ export type ListeningChoiceStepKind =
   | 'countdown'
   | 'playAudio'
   | 'promptTone'
+  | 'recordGuide'
   | 'answerChoice'
   | 'finish'
   | 'unknown'
@@ -50,6 +52,7 @@ function normalizeRendererView(view: unknown): ListeningChoiceStepRenderView {
     next === 'groupPrompt' ||
     next === 'countdown' ||
     next === 'playAudio' ||
+    next === 'recordGuide' ||
     next === 'answerChoice' ||
     next === 'finish'
   ) {
@@ -60,7 +63,7 @@ function normalizeRendererView(view: unknown): ListeningChoiceStepRenderView {
 
 function normalizeAudioCarrier(carrier: unknown): ListeningChoiceStepAudioCarrier {
   const next = String(carrier || '').trim()
-  if (next === 'intro' || next === 'playAudio' || next === 'promptTone') return next
+  if (next === 'intro' || next === 'playAudio' || next === 'promptTone' || next === 'recordGuide') return next
   return null
 }
 
@@ -98,6 +101,7 @@ export function getListeningChoiceStepKind(step: unknown): ListeningChoiceStepKi
     kind === 'countdown' ||
     kind === 'playAudio' ||
     kind === 'promptTone' ||
+    kind === 'recordGuide' ||
     kind === 'answerChoice' ||
     kind === 'finish'
   ) {

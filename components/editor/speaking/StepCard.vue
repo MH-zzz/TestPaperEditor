@@ -105,9 +105,11 @@
               class="form-input"
               :value="step.audio?.url || ''"
               @input="(e) => updateAudioUrl(e.detail.value)"
-              placeholder="音频 URL 或选择文件"
+              placeholder="音频 URL 或选择内置"
             />
-            <button class="btn btn-outline btn-sm" @click="selectAudio">选择</button>
+            <picker :range="LOCAL_AUDIO_OPTIONS" @change="onSelectLocalAudio">
+              <button class="btn btn-outline btn-sm">内置音频</button>
+            </picker>
           </view>
           <view v-if="step.audio?.url" class="audio-preview">
             <text class="audio-name">{{ step.audio.name || '音频文件' }}</text>
@@ -295,6 +297,7 @@ import type {
   AssessmentMode
 } from '/types'
 import RichTextEditor from '../RichTextEditor.vue'
+import { LOCAL_AUDIO_OPTIONS, getLocalAudioUrl } from '/utils/audioOptions'
 
 const props = defineProps<{
   step: SpeakingStepsStep
@@ -406,9 +409,11 @@ function updateAudioUrl(url: string) {
 }
 
 // 选择音频
-function selectAudio() {
-  // TODO: 实现音频选择器
-  console.log('Select audio')
+function onSelectLocalAudio(e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateAudioUrl(url)
 }
 
 // 播放音频

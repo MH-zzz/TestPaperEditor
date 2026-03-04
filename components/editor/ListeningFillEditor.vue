@@ -19,9 +19,15 @@
           <view class="audio-upload">
             <view v-if="modelValue.audio.url" class="audio-preview">
               <text class="audio-url">{{ modelValue.audio.url }}</text>
-              <button class="btn btn-outline btn-sm" @click="uploadAudio">更换</button>
+              <picker :range="LOCAL_AUDIO_OPTIONS" @change="onSelectLocalAudio">
+                <button class="btn btn-outline btn-sm">更换内置音频</button>
+              </picker>
             </view>
-            <button v-else class="btn btn-outline upload-btn" @click="uploadAudio">上传音频</button>
+            <view v-else class="upload-actions">
+              <picker :range="LOCAL_AUDIO_OPTIONS" @change="onSelectLocalAudio">
+                <button class="btn btn-outline upload-btn">选择内置音频</button>
+              </picker>
+            </view>
           </view>
         </view>
       </view>
@@ -142,6 +148,7 @@
 import { computed } from 'vue'
 import type { ListeningFillQuestion, RichTextContent, FillInputMode } from '/types'
 import RichTextEditor from './RichTextEditor.vue'
+import { LOCAL_AUDIO_OPTIONS, getLocalAudioUrl } from '/utils/audioOptions'
 
 const props = defineProps<{
   modelValue: ListeningFillQuestion
@@ -168,8 +175,10 @@ function updateStem(content: RichTextContent) {
   emit('update:modelValue', { ...props.modelValue, stem: content })
 }
 
-function uploadAudio() {
-  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3'
+function onSelectLocalAudio(e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
   emit('update:modelValue', {
     ...props.modelValue,
     audio: { ...props.modelValue.audio, url }
@@ -312,7 +321,12 @@ function isAnswerWord(word: string): boolean {
     padding: 4px 12px;
     border-radius: 4px;
     align-items: center;
-    .audio-url { flex: 1; font-size: 12px; color: #666; }
+    .audio-url { flex: 1; font-size: 12px; color: #666; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  }
+
+  .upload-actions {
+    display: flex;
+    gap: 12px;
   }
 }
 

@@ -76,6 +76,74 @@ function normalizeListeningChoiceModule(input: unknown): ListeningChoiceFlowModu
   }
 }
 
+function isHearAnswerModuleId(moduleId: unknown): boolean {
+  const id = normalizeText(moduleId) || ''
+  if (!id) return false
+  return id === LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID || id.startsWith('listening_hear_answer.line.')
+}
+
+type PerGroupStepDef = ListeningChoiceFlowModuleV1['perGroupSteps'][number]
+
+function createHearAnswerRecordGuideStep(): PerGroupStepDef {
+  return {
+    kind: 'recordGuide',
+    showTitle: false,
+    showQuestionTitle: true,
+    showQuestionTitleDescription: true,
+    showGroupPrompt: false,
+    textSource: 'question',
+    audioSource: 'question',
+    screenStrategy: 'replaceBody'
+  }
+}
+
+function ensureHearAnswerRecordGuideStep(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
+  if (!isHearAnswerModuleId(module.id)) return module
+  const steps = Array.isArray(module.perGroupSteps) ? module.perGroupSteps : []
+  const hasAnswerChoice = steps.some((step) => step.kind === 'answerChoice')
+  const hasRecordGuide = steps.some((step) => step.kind === 'recordGuide')
+  if (!hasAnswerChoice || hasRecordGuide) return module
+
+  const nextSteps: PerGroupStepDef[] = []
+  for (const step of steps) {
+    if (step.kind === 'answerChoice') {
+      let inserted = false
+      let insertIndex = -1
+      for (let i = nextSteps.length - 1; i >= 0; i -= 1) {
+        const current = nextSteps[i]
+        if (current.kind === 'answerChoice') break
+        if (current.kind === 'promptTone') {
+          insertIndex = i
+          break
+        }
+      }
+
+      if (insertIndex >= 0) {
+        const prev = nextSteps[insertIndex - 1]
+        if (!prev || prev.kind !== 'recordGuide') {
+          nextSteps.splice(insertIndex, 0, createHearAnswerRecordGuideStep())
+        }
+        inserted = true
+      }
+
+      if (!inserted) {
+        const prev = nextSteps[nextSteps.length - 1]
+        if (!prev || prev.kind !== 'recordGuide') {
+          nextSteps.push(createHearAnswerRecordGuideStep())
+        }
+      }
+    }
+    nextSteps.push(step)
+  }
+
+  if (nextSteps.length === steps.length) return module
+  return {
+    ...module,
+    perGroupSteps: nextSteps,
+    updatedAt: nowIso()
+  }
+}
+
 function isLegacyHearAnswerStandardTitleConfig(module: ListeningChoiceFlowModuleV1): boolean {
   if (String(module?.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return false
   const steps = Array.isArray(module?.perGroupSteps) ? module.perGroupSteps : []
@@ -108,8 +176,36 @@ function isLegacyHearAnswerStandardTitleConfig(module: ListeningChoiceFlowModule
     && fifth.showGroupPrompt === true
 }
 
+function isLegacyHearAnswerPromptToneConfig(module: ListeningChoiceFlowModuleV1): boolean {
+  if (String(module?.id || '') !== LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID) return false
+  const steps = Array.isArray(module?.perGroupSteps) ? module.perGroupSteps : []
+  if (steps.length !== 5) return false
+  const kinds = steps.map((step) => String((step as { kind?: unknown })?.kind || ''))
+  if (kinds.join(',') !== 'playAudio,countdown,playAudio,promptTone,answerChoice') return false
+
+  const first = steps[0] as { audioSource?: unknown }
+  const second = steps[1] as { seconds?: unknown; label?: unknown }
+  const third = steps[2] as { audioSource?: unknown }
+  const fourth = steps[3] as { url?: unknown }
+
+  return first.audioSource === 'description'
+    && Number(second.seconds || 0) === 5
+    && String(second.label || '') === '答题准备'
+    && third.audioSource === 'content'
+    && String(fourth.url || '') === '/static/audio/small_time.mp3'
+}
+
 function applyHearAnswerDefaultTitleConfig(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
   const perGroupSteps = (module.perGroupSteps || []).map((step) => ({ ...step, showTitle: false }))
+  return normalizeListeningChoiceModule({
+    ...module,
+    perGroupSteps,
+    updatedAt: nowIso()
+  })
+}
+
+function applyHearAnswerDefaultPromptToneConfig(module: ListeningChoiceFlowModuleV1): ListeningChoiceFlowModuleV1 {
+  const perGroupSteps = (DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps || []).map((step) => ({ ...step }))
   return normalizeListeningChoiceModule({
     ...module,
     perGroupSteps,
@@ -207,9 +303,23 @@ class FlowModulesStore {
       const normalized = list.map((m: unknown) => normalizeListeningChoiceModule(m))
       let migrated = false
       const migratedList = normalized.map((module) => {
-        if (!isLegacyHearAnswerStandardTitleConfig(module)) return module
-        migrated = true
-        return applyHearAnswerDefaultTitleConfig(module)
+        let next = module
+        if (isLegacyHearAnswerStandardTitleConfig(next)) {
+          migrated = true
+          next = applyHearAnswerDefaultTitleConfig(next)
+        }
+        if (isLegacyHearAnswerPromptToneConfig(next)) {
+          migrated = true
+          next = applyHearAnswerDefaultPromptToneConfig(next)
+        }
+        const beforeHasRecordGuide = (next.perGroupSteps || []).some((step) => step.kind === 'recordGuide')
+        const ensured = ensureHearAnswerRecordGuideStep(next)
+        const afterHasRecordGuide = (ensured.perGroupSteps || []).some((step) => step.kind === 'recordGuide')
+        if (!beforeHasRecordGuide && afterHasRecordGuide) {
+          migrated = true
+        }
+        next = ensured
+        return next
       })
       this.state.listeningChoice = migratedList.length
         ? ensurePublishedStandardBaseline(migratedList)
@@ -289,7 +399,8 @@ class FlowModulesStore {
           ...src,
           status: defaultStatus
         }
-    const module = normalizeListeningChoiceModule({ ...normalizedInput, updatedAt: nowIso() })
+    const normalizedModule = normalizeListeningChoiceModule({ ...normalizedInput, updatedAt: nowIso() })
+    const module = ensureHearAnswerRecordGuideStep(normalizedModule)
     const nextIdx = this.state.listeningChoice.findIndex(m => m.id === module.id && m.version === module.version)
     if (nextIdx >= 0) {
       const createdAt = this.state.listeningChoice[nextIdx].createdAt || module.createdAt

@@ -57,6 +57,10 @@ export interface SubQuestion {
   order: number
   stem: RichTextContent
   audio?: AudioConfig
+  // Hear-answer V2: optional per-question recording guide text/audio and duration override.
+  recordGuideText?: RichTextContent
+  recordGuideAudio?: ListeningAudio
+  answerSeconds?: number
   options: QuestionOption[]
   // Per-question interaction mode (single choice vs multiple choice).
   // Stored on the question itself for maximum flexibility within a paper.
@@ -91,6 +95,9 @@ export interface ListeningChoiceGroup {
   id: string
   title?: string
   prompt?: RichTextContent
+  // Hear-answer V2: optional recording guide defaults at group level.
+  recordGuideText?: RichTextContent
+  recordGuideAudio?: ListeningAudio
   prepareSeconds?: number
   answerSeconds?: number
   descriptionAudio?: ListeningAudio
@@ -104,6 +111,7 @@ export interface ListeningChoiceContent {
 }
 
 export type FlowAutoNext = 'tapNext' | 'audioEnded' | 'countdownEnded' | 'timeEnded'
+export type FlowScreenStrategy = 'replaceBody' | 'reusePrevious'
 
 export interface FlowEffectPlaySfx {
   kind: 'playSfx'
@@ -117,6 +125,8 @@ export interface FlowStepBase {
   kind: string
   title?: string
   showTitle?: boolean
+  // V2: controls whether this step should replace body or reuse the previous screen.
+  screenStrategy?: FlowScreenStrategy
   autoNext?: FlowAutoNext
   onEnterEffects?: FlowEffect[]
   onEndEffects?: FlowEffect[]
@@ -144,6 +154,10 @@ export interface FlowPlayAudioStep extends FlowStepBase {
   kind: 'playAudio'
   groupId: string
   audioSource: 'description' | 'content'
+  // Explicit play count for this concrete step instance.
+  // Standard flow compilation may split multi-play into multiple concrete steps,
+  // each with playTimes = 1.
+  playTimes?: number
   repeatGapSeconds?: number
   showQuestionTitle?: boolean
   showQuestionTitleDescription?: boolean
@@ -156,10 +170,23 @@ export interface FlowPromptToneStep extends FlowStepBase {
   url?: string
 }
 
+export interface FlowRecordGuideStep extends FlowStepBase {
+  kind: 'recordGuide'
+  groupId?: string
+  questionIds?: string[]
+  guideText?: RichTextContent
+  guideAudioUrl?: string
+  showQuestionTitle?: boolean
+  showQuestionTitleDescription?: boolean
+  showGroupPrompt?: boolean
+}
+
 export interface FlowAnswerChoiceStep extends FlowStepBase {
   kind: 'answerChoice'
   groupId?: string
   questionIds?: string[]
+  // Optional per-step duration override; used by hear-answer V2 per-question timing.
+  answerSeconds?: number
   showQuestionTitle?: boolean
   showQuestionTitleDescription?: boolean
   showGroupPrompt?: boolean
@@ -176,6 +203,7 @@ export type ListeningChoiceFlowStep =
   | FlowCountdownStep
   | FlowPlayAudioStep
   | FlowPromptToneStep
+  | FlowRecordGuideStep
   | FlowAnswerChoiceStep
   | FlowFinishStep
 
@@ -220,12 +248,17 @@ export interface SpeakingHearAnswerSubQuestion {
   order: number
   stem: RichTextContent
   audio?: AudioConfig
+  recordGuideText?: RichTextContent
+  recordGuideAudio?: ListeningAudio
+  answerSeconds?: number
 }
 
 export interface SpeakingHearAnswerGroup {
   id: string
   title?: string
   prompt?: RichTextContent
+  recordGuideText?: RichTextContent
+  recordGuideAudio?: ListeningAudio
   prepareSeconds?: number
   answerSeconds?: number
   descriptionAudio?: ListeningAudio

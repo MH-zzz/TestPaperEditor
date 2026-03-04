@@ -17,12 +17,13 @@
         :prompt="groupPrompt"
       />
 
-      <RichTextRenderer
-        v-else-if="groupPrompt"
-        :content="groupPrompt"
-        image-layout="full-row"
-        placeholder="请输入题组说明"
-      />
+      <view v-else-if="groupPrompt" class="lc-step__prompt">
+        <RichTextRenderer
+          :content="groupPrompt"
+          image-layout="full-row"
+          placeholder="请输入题组说明"
+        />
+      </view>
 
       <ListeningChoiceQuestionList
         v-if="questions.length > 0"
@@ -81,6 +82,25 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 </script>
 
 <style lang="scss" scoped>
+.lc-step__prompt {
+  margin-bottom: 24rpx;
+
+  :deep(.rich-text-renderer) {
+    display: block;
+    font-size: 36rpx;
+    white-space: normal;
+    text-indent: 0;
+    line-height: 1.5;
+    color: #333;
+  }
+
+  :deep(.rich-text-renderer text) {
+    white-space: normal;
+    text-indent: 0;
+    word-break: break-word;
+  }
+}
+
 .lc-step__hint {
   margin-top: $spacing-md;
   color: $text-hint;

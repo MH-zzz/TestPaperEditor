@@ -22,7 +22,7 @@
       <text>{{ playAudioSource === 'description' ? '未配置题组描述音频 URL' : '未配置题组正文音频 URL' }}</text>
     </view>
 
-    <view v-if="audioRemaining > 0" class="lc-step__hint">
+    <view v-if="mode === 'preview' && audioRemaining > 0" class="lc-step__hint">
       <text>剩余播放 {{ audioRemaining }} 次</text>
     </view>
 

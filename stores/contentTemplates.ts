@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import type {
   AudioConfig,
+  ListeningAudio,
   ListeningChoiceContent,
   ListeningChoiceGroup,
   OptionStyle,
@@ -70,6 +71,13 @@ function normalizePositiveInt(v: unknown, fallback: number): number {
   return Math.max(1, fallback)
 }
 
+function normalizeOptionalNonNegativeInt(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined
+  const n = Math.floor(Number(v))
+  if (Number.isFinite(n) && n >= 0) return n
+  return undefined
+}
+
 function normalizeOptions(input: unknown): QuestionOption[] {
   if (!Array.isArray(input)) return [
     { key: 'A', content: emptyRichText() },
@@ -101,6 +109,17 @@ function normalizeAudioConfig(input: unknown): AudioConfig | undefined {
   }
 }
 
+function normalizeListeningAudio(input: unknown, fallbackPlayCount = 1): ListeningAudio | undefined {
+  if (!isObjectRecord(input)) return undefined
+  const url = typeof input.url === 'string' ? input.url.trim() : ''
+  if (!url) return undefined
+  return {
+    url,
+    playCount: normalizePositiveInt(input.playCount, fallbackPlayCount),
+    note: typeof input.note === 'string' ? input.note : undefined
+  }
+}
+
 function normalizeSubQuestions(input: unknown): SubQuestion[] {
   if (!Array.isArray(input)) return []
   const out = input
@@ -113,6 +132,9 @@ function normalizeSubQuestions(input: unknown): SubQuestion[] {
         id: nonEmptyString(q.id) || `tpl_q_${idx + 1}`,
         order: Number.isFinite(Number(q.order)) ? Number(q.order) : idx + 1,
         stem: normalizeRichText(q.stem),
+        recordGuideText: q.recordGuideText ? normalizeRichText(q.recordGuideText) : undefined,
+        recordGuideAudio: normalizeListeningAudio(q.recordGuideAudio, 1),
+        answerSeconds: normalizeOptionalNonNegativeInt(q.answerSeconds),
         options,
         answerMode: q.answerMode === 'multiple' ? 'multiple' : 'single',
         answer: answer.length ? answer : [options[0].key]
@@ -132,6 +154,8 @@ function normalizeGroups(input: unknown): ListeningChoiceGroup[] {
         id: nonEmptyString(g.id) || `tpl_g_${idx + 1}`,
         title: nonEmptyString(g.title),
         prompt: g.prompt ? normalizeRichText(g.prompt) : undefined,
+        recordGuideText: g.recordGuideText ? normalizeRichText(g.recordGuideText) : undefined,
+        recordGuideAudio: normalizeListeningAudio(g.recordGuideAudio, 1),
         prepareSeconds: normalizeNonNegativeInt(g.prepareSeconds, 3),
         answerSeconds: normalizeNonNegativeInt(g.answerSeconds, 0),
         descriptionAudio: descriptionAudio ? {
@@ -158,7 +182,10 @@ function normalizeHearAnswerSubQuestions(input: unknown): SpeakingHearAnswerSubQ
       id: nonEmptyString(q.id) || `tpl_ha_q_${idx + 1}`,
       order: Number.isFinite(Number(q.order)) ? Number(q.order) : idx + 1,
       stem: normalizeRichText(q.stem),
-      audio: normalizeAudioConfig(q.audio)
+      audio: normalizeAudioConfig(q.audio),
+      recordGuideText: q.recordGuideText ? normalizeRichText(q.recordGuideText) : undefined,
+      recordGuideAudio: normalizeListeningAudio(q.recordGuideAudio, 1),
+      answerSeconds: normalizeOptionalNonNegativeInt(q.answerSeconds)
     }))
   return out
 }
@@ -174,6 +201,8 @@ function normalizeHearAnswerGroups(input: unknown): SpeakingHearAnswerGroup[] {
         id: nonEmptyString(g.id) || `tpl_ha_g_${idx + 1}`,
         title: nonEmptyString(g.title),
         prompt: g.prompt ? normalizeRichText(g.prompt) : undefined,
+        recordGuideText: g.recordGuideText ? normalizeRichText(g.recordGuideText) : undefined,
+        recordGuideAudio: normalizeListeningAudio(g.recordGuideAudio, 1),
         prepareSeconds: normalizeNonNegativeInt(g.prepareSeconds, 5),
         answerSeconds: normalizeNonNegativeInt(g.answerSeconds, 10),
         descriptionAudio: descriptionAudio ? {

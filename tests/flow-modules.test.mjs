@@ -81,6 +81,36 @@ test('hear-answer default standard module should hide group titles by default', 
   const steps = mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE.perGroupSteps || []
   assert.ok(steps.length > 0)
   assert.ok(steps.every((step) => step.showTitle === false))
+  assert.deepEqual(steps.map((step) => step.kind), ['playAudio', 'countdown', 'playAudio', 'recordGuide', 'promptTone', 'answerChoice', 'promptTone'])
+  assert.equal(steps[4].url, '/static/audio/开始录音.mp3')
+  assert.equal(steps[6].url, '/static/audio/停止录音.mp3')
+})
+
+test('hear-answer standard flow should insert start/end prompt tones around recording', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const q = makeListeningChoiceQuestion({ groupCount: 1, qsPerGroup: 2, answerSeconds: 10 })
+  q.metadata = { ...(q.metadata || {}), questionVariant: 'hear_answer' }
+
+  const steps = mod.materializeListeningChoiceStandardSteps(q, {
+    generateId: makeIdFactory('h'),
+    module: mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  })
+
+  assert.deepEqual(steps.map((s) => s.kind), [
+    'intro',
+    'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio',
+    'recordGuide', 'promptTone', 'answerChoice', 'promptTone',
+    'recordGuide', 'promptTone', 'answerChoice', 'promptTone'
+  ])
+
+  assert.deepEqual(steps[6].questionIds, ['q1'])
+  assert.equal(steps[7].url, '/static/audio/开始录音.mp3')
+  assert.deepEqual(steps[8].questionIds, ['q1'])
+  assert.equal(steps[9].url, '/static/audio/停止录音.mp3')
+  assert.deepEqual(steps[10].questionIds, ['q2'])
+  assert.equal(steps[11].url, '/static/audio/开始录音.mp3')
+  assert.deepEqual(steps[12].questionIds, ['q2'])
+  assert.equal(steps[13].url, '/static/audio/停止录音.mp3')
 })
 
 test('flow module store should expose max-version and archive helpers', async () => {
@@ -119,6 +149,8 @@ test('flow module store should migrate legacy hear-answer title defaults', async
   const content = await src.readFile(file, 'utf8')
   assert.ok(content.includes('isLegacyHearAnswerStandardTitleConfig'))
   assert.ok(content.includes('applyHearAnswerDefaultTitleConfig'))
+  assert.ok(content.includes('isLegacyHearAnswerPromptToneConfig'))
+  assert.ok(content.includes('applyHearAnswerDefaultPromptToneConfig'))
   assert.ok(content.includes('this.save()'))
 })
 
@@ -186,8 +218,12 @@ test('standard flow materialization should match expected step shape', async () 
   const genId = makeIdFactory('s')
 
   const steps = mod.materializeListeningChoiceStandardSteps(q, { generateId: genId, overrides: {} })
-  assert.equal(steps.length, 9)
-  assert.deepEqual(steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'answerChoice', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
+  assert.equal(steps.length, 13)
+  assert.deepEqual(steps.map(s => s.kind), [
+    'intro',
+    'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio', 'answerChoice',
+    'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio', 'answerChoice'
+  ])
 
   assert.equal(steps[0].autoNext, 'audioEnded')
   assert.equal(steps[0].showTitleDescription, true)
@@ -195,17 +231,20 @@ test('standard flow materialization should match expected step shape', async () 
   assert.equal(steps[1].autoNext, 'audioEnded')
   assert.equal(steps[2].autoNext, 'countdownEnded')
   assert.equal(steps[3].autoNext, 'audioEnded')
-  assert.equal(steps[4].autoNext, 'tapNext')
+  assert.equal(steps[4].autoNext, 'countdownEnded')
+  assert.equal(steps[6].autoNext, 'tapNext')
 
   assert.equal(steps[1].audioSource, 'description')
   assert.equal(steps[3].audioSource, 'content')
-  assert.equal(steps[5].audioSource, 'description')
-  assert.equal(steps[7].audioSource, 'content')
+  assert.equal(steps[5].audioSource, 'content')
+  assert.equal(steps[7].audioSource, 'description')
+  assert.equal(steps[9].audioSource, 'content')
+  assert.equal(steps[11].audioSource, 'content')
 
   assert.equal(steps[1].groupId, 'g1')
+  assert.equal(steps[6].groupId, 'g1')
   assert.equal(steps[7].groupId, 'g2')
-  assert.equal(steps[4].groupId, 'g1')
-  assert.equal(steps[8].groupId, 'g2')
+  assert.equal(steps[12].groupId, 'g2')
 })
 
 test('standard flow should omit intro countdown step when intro countdown is disabled in module', async () => {
@@ -216,18 +255,20 @@ test('standard flow should omit intro countdown step when intro countdown is dis
     introCountdownEnabled: false
   }
   const steps = mod.materializeListeningChoiceStandardSteps(q, { generateId: makeIdFactory('s'), overrides: {}, module })
-  assert.deepEqual(steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
+  assert.deepEqual(steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
   assert.equal(steps[1].audioSource, 'description')
   assert.equal(steps[3].audioSource, 'content')
+  assert.equal(steps[5].audioSource, 'content')
 })
 
 test('standard flow should use group template timing for countdown and answer stage', async () => {
   const mod = await import('../flows/listeningChoiceFlowModules.ts')
   const q = makeListeningChoiceQuestion({ groupCount: 1, qsPerGroup: 1, prepareSeconds: 8, answerSeconds: 90 })
   const steps = mod.materializeListeningChoiceStandardSteps(q, { generateId: makeIdFactory('s'), overrides: {} })
-  assert.deepEqual(steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
+  assert.deepEqual(steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
   assert.equal(steps[2].seconds, 8)
-  assert.equal(steps[4].autoNext, 'timeEnded')
+  assert.equal(steps[4].seconds, 8)
+  assert.equal(steps[6].autoNext, 'timeEnded')
 })
 
 test('standard flow should carry repeat gap config on content audio step', async () => {
@@ -246,6 +287,42 @@ test('standard flow should carry repeat gap config on content audio step', async
   assert.equal(steps[3].kind, 'playAudio')
   assert.equal(steps[3].audioSource, 'content')
   assert.equal(steps[3].repeatGapSeconds, 6)
+  assert.equal(steps[4].kind, 'countdown')
+  assert.equal(steps[4].seconds, 6)
+  assert.equal(steps[5].kind, 'playAudio')
+  assert.equal(steps[5].repeatGapSeconds, 6)
+})
+
+test('hear-answer flow should ignore explicit countdown placed after content audio', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const q = makeListeningChoiceQuestion({ groupCount: 1, qsPerGroup: 1, prepareSeconds: 5, answerSeconds: 10 })
+  q.metadata = { ...(q.metadata || {}), questionVariant: 'hear_answer' }
+
+  const moduleWithLegacyPostContentCountdown = {
+    ...mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE,
+    perGroupSteps: [
+      { kind: 'playAudio', showTitle: false, audioSource: 'description', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+      { kind: 'countdown', showTitle: false, showQuestionTitle: true, seconds: 5, label: '答题准备' },
+      { kind: 'playAudio', showTitle: false, audioSource: 'content', showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+      { kind: 'countdown', showTitle: false, showQuestionTitle: true, seconds: 5, label: '旧版多余倒计时' },
+      { kind: 'recordGuide', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: false, textSource: 'question', audioSource: 'question', screenStrategy: 'replaceBody' },
+      { kind: 'promptTone', showTitle: false, url: '/static/audio/开始录音.mp3' },
+      { kind: 'answerChoice', showTitle: false, showQuestionTitle: true, showQuestionTitleDescription: true, showGroupPrompt: true },
+      { kind: 'promptTone', showTitle: false, url: '/static/audio/停止录音.mp3' }
+    ]
+  }
+
+  const steps = mod.materializeListeningChoiceStandardSteps(q, {
+    generateId: makeIdFactory('ha_countdown'),
+    module: moduleWithLegacyPostContentCountdown
+  })
+
+  assert.deepEqual(steps.map((s) => s.kind), [
+    'intro',
+    'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio',
+    'recordGuide', 'promptTone', 'answerChoice', 'promptTone'
+  ])
+  assert.equal(steps[6].kind, 'recordGuide')
 })
 
 test('standard flow override detection should return overrides for whitelisted param changes', async () => {
@@ -258,7 +335,7 @@ test('standard flow override detection should return overrides for whitelisted p
   const current = standard.map(s => ({ ...s }))
   current[0] = { ...current[0], showTitleDescription: false, showDescription: false } // intro
   current[2] = { ...current[2], seconds: 5, label: 'Ready' } // g1 countdown (seconds should be ignored; label kept)
-  current[8] = { ...current[8], showGroupPrompt: false, showQuestionTitleDescription: false } // g2 answerChoice
+  current[12] = { ...current[12], showGroupPrompt: false, showQuestionTitleDescription: false } // g2 answerChoice
 
   const result = mod.detectListeningChoiceStandardFlowOverrides(q, current)
   assert.equal(result.ok, true)
@@ -289,6 +366,22 @@ test('standard flow override detection should fail when structure differs', asyn
   ]
   const result = mod.detectListeningChoiceStandardFlowOverrides(q, current)
   assert.equal(result.ok, false)
+})
+
+test('standard flow override detection should accept hear-answer questionIds shape', async () => {
+  const mod = await import('../flows/listeningChoiceFlowModules.ts')
+  const q = makeListeningChoiceQuestion({ introCountdownSeconds: 0, groupCount: 1, qsPerGroup: 2, answerSeconds: 10 })
+  q.metadata = { ...(q.metadata || {}), questionVariant: 'hear_answer' }
+  const steps = mod.materializeListeningChoiceStandardSteps(q, {
+    generateId: makeIdFactory('ha'),
+    module: mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  })
+
+  const result = mod.detectListeningChoiceStandardFlowOverrides(q, steps, {
+    module: mod.DEFAULT_LISTENING_HEAR_ANSWER_STANDARD_MODULE
+  })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.overrides, {})
 })
 
 test('concrete -> template -> materialize roundtrip should map groupIndex/questionOrders correctly', async () => {

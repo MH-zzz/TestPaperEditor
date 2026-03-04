@@ -27,25 +27,31 @@ const props = withDefaults(defineProps<{
   content: RichTextContent | null | undefined
   placeholder?: string
   imageLayout?: 'inline' | 'full-row'
+  forceColor?: string
 }>(), {
   placeholder: '',
-  imageLayout: 'inline'
+  imageLayout: 'inline',
+  forceColor: ''
 })
 
 // 根据 marks 生成样式
 function getNodeStyle(marks?: TextMark[]): Record<string, string> {
-  if (!marks) return {}
-
   const style: Record<string, string> = {}
 
-  marks.forEach(mark => {
-    if (mark.startsWith('color:')) {
-      style.color = mark.split(':')[1]
-    }
-    if (mark.startsWith('bg:')) {
-      style.backgroundColor = mark.split(':')[1]
-    }
-  })
+  if (marks) {
+    marks.forEach(mark => {
+      if (mark.startsWith('color:')) {
+        style.color = mark.split(':')[1]
+      }
+      if (mark.startsWith('bg:')) {
+        style.backgroundColor = mark.split(':')[1]
+      }
+    })
+  }
+
+  if (props.forceColor) {
+    style.color = props.forceColor
+  }
 
   return style
 }

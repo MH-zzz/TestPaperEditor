@@ -19,12 +19,19 @@
           :key="opt.key"
           class="lc-option"
           :class="getOptionClass(sq.id, opt.key, sq.answer)"
-          @click="handleOptionClick(sq.id, opt.key)"
+          @tap.stop="handleOptionClick(sq.id, opt.key)"
+          @click.stop="handleOptionClick(sq.id, opt.key)"
+          @touchstart.stop
+          @touchend.stop
         >
           <view class="lc-option__radio"></view>
-          <view class="lc-option__key">{{ opt.key }}</view>
-          <view class="lc-option__content">
-            <RichTextRenderer :content="opt.content" placeholder="选项内容" />
+          <view class="lc-option__text">
+            <RichTextRenderer
+              class="lc-option__content"
+              :content="buildOptionContent(opt.key, opt.content)"
+              :force-color="resolveOptionTextColor(sq.id, opt.key)"
+              placeholder="选项内容"
+            />
           </view>
         </view>
       </view>
@@ -33,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import type { RenderMode, SubQuestion } from '/types'
+import type { RenderMode, RichTextContent, SubQuestion } from '/types'
 import AudioPlayer from '../AudioPlayer.vue'
 import RichTextRenderer from '../RichTextRenderer.vue'
 
@@ -60,14 +67,33 @@ function displayNumber(sq: SubQuestion, fallbackIndex: number) {
 }
 
 function getOptionClass(subQuestionId: string, optionKey: string, correctAnswer: string[]) {
-  const userAnswer = props.answers[subQuestionId]
-  const isSelected = Array.isArray(userAnswer) ? userAnswer.includes(optionKey) : userAnswer === optionKey
+  const isSelected = isOptionSelected(subQuestionId, optionKey)
   const isCorrect = correctAnswer.includes(optionKey)
 
   return {
     'is-selected': isSelected,
     'is-correct': props.showAnswer && isCorrect,
     'is-wrong': props.showAnswer && isSelected && !isCorrect
+  }
+}
+
+function isOptionSelected(subQuestionId: string, optionKey: string) {
+  const userAnswer = props.answers[subQuestionId]
+  return Array.isArray(userAnswer) ? userAnswer.includes(optionKey) : userAnswer === optionKey
+}
+
+function resolveOptionTextColor(subQuestionId: string, optionKey: string) {
+  return isOptionSelected(subQuestionId, optionKey) ? '#FD6F27' : '#333333'
+}
+
+function buildOptionContent(optionKey: string, content: RichTextContent | null | undefined): RichTextContent {
+  const safeNodes = Array.isArray(content?.content) ? content.content : []
+  return {
+    type: 'richtext',
+    content: [
+      { type: 'text', text: `${optionKey}. ` },
+      ...safeNodes
+    ]
   }
 }
 
@@ -81,72 +107,128 @@ function handleOptionClick(subQuestionId: string, optionKey: string) {
 .lc-questions {
   display: flex;
   flex-direction: column;
-  gap: $spacing-lg;
+  gap: 36rpx;
 }
 
 .lc-question__stem {
-  display: flex;
-  gap: $spacing-sm;
-  align-items: flex-start;
-  margin-bottom: $spacing-sm;
+  display: block;
+  margin-bottom: 20rpx;
+  background: transparent;
+
+  :deep(.rich-text-renderer) {
+    display: inline;
+    font-size: 36rpx;
+    white-space: normal;
+    line-height: 1.35;
+    color: #333;
+  }
+
+  :deep(.rich-text-renderer text) {
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 
 .lc-question__number {
-  min-width: 18px;
-  font-weight: 600;
-  color: $text-primary;
+  display: inline;
+  margin-right: 4rpx;
+  min-width: 0;
+  font-weight: 400;
+  font-size: 36rpx;
+  color: #333;
+  line-height: 1.35;
 }
 
 .lc-question__options {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: 24rpx;
 }
 
 .lc-option {
   display: flex;
   align-items: flex-start;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
-  border: 1px solid #eee;
-  border-radius: $border-radius-md;
-  background: #fff;
+  gap: 16rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .lc-option.is-selected {
-  border-color: $primary-color;
-  background: $primary-light;
+  background: transparent;
+
+  .lc-option__radio {
+    border-color: #fd6f27;
+    background: #fff;
+    position: relative;
+  }
+
+  .lc-option__radio::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 18rpx;
+    height: 18rpx;
+    border-radius: 50%;
+    background: #fd6f27;
+    transform: translate(-50%, -50%);
+  }
+
+  .lc-option__text {
+    color: #fd6f27;
+  }
 }
 
 .lc-option.is-correct {
-  border-color: $success-color;
-  background: rgba(76, 175, 80, 0.12);
+  background: transparent;
 }
 
 .lc-option.is-wrong {
-  border-color: $error-color;
-  background: rgba(244, 67, 54, 0.12);
+  background: transparent;
 }
 
 .lc-option__radio {
-  width: 16px;
-  height: 16px;
+  width: 36rpx;
+  height: 36rpx;
   border-radius: 50%;
-  border: 2px solid #bbb;
+  border: 1px solid #bdbdbd;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 4rpx;
+  box-sizing: border-box;
+  background: #fff;
 }
 
-.lc-option__key {
-  width: 18px;
-  font-weight: 600;
-  color: $text-secondary;
-  flex-shrink: 0;
-  margin-top: 1px;
+.lc-option__text {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  min-width: 0;
+  font-size: 36rpx;
+  line-height: 1.35;
+  color: #333;
 }
 
 .lc-option__content {
+  display: block;
   flex: 1;
   min-width: 0;
+
+  :deep(.rich-text-renderer) {
+    display: block;
+    font-size: 36rpx;
+    white-space: normal;
+    line-height: 1.35;
+    color: #333;
+  }
+
+  :deep(.rich-text-renderer text) {
+    font-size: 36rpx;
+    line-height: 1.35;
+    color: inherit;
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 </style>

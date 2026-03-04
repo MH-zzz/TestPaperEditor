@@ -26,20 +26,40 @@ defineProps<{
 
 <style lang="scss" scoped>
 .lc-step__context {
-  margin-bottom: $spacing-md;
+  margin-bottom: 24rpx;
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 8rpx;
 }
 
 .lc-step__context-title {
-  font-size: 14px;
+  font-size: 36rpx;
   font-weight: 700;
   color: $text-primary;
 }
 
 .lc-step__context-group {
-  font-size: 13px;
+  font-size: 36rpx;
   color: $text-secondary;
+}
+
+.lc-step__context {
+  :deep(.rich-text-renderer) {
+    display: block;
+    font-size: 36rpx;
+    line-height: 1.5;
+    color: #333;
+    text-indent: 0;
+    white-space: normal;
+  }
+
+  :deep(.rich-text-renderer text) {
+    font-size: 36rpx;
+    line-height: 1.5;
+    color: #333;
+    text-indent: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 </style>

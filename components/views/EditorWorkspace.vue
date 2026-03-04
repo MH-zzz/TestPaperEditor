@@ -12,7 +12,7 @@
         <view class="workspace-actions__buttons">
           <button class="btn btn-outline btn-sm" @click="toggleRuntimeDebug">调试</button>
           <button class="btn btn-outline btn-sm" @click="resetQuestion">重置</button>
-          <button class="btn btn-primary btn-sm" @click="saveQuestion">保存题目</button>
+          <button class="btn btn-primary btn-sm" @click="saveQuestion">{{ saveQuestionLabel }}</button>
         </view>
       </view>
     </view>
@@ -223,6 +223,9 @@ const questionData = computed<Question | null>({
     questionDraft.updateDraft(next, { persistDraft: true })
   }
 })
+const isLibraryEditing = computed(() => questionDraft.state.entryMode === 'library')
+const saveQuestionLabel = computed(() => (isLibraryEditing.value ? '更新题目' : '保存题目'))
+const saveQuestionSuccessText = computed(() => (isLibraryEditing.value ? '更新成功' : '保存成功'))
 const previewAnswers = ref<Record<string, string | string[]>>({})
 const showAnswer = ref(false)
 const originalData = computed<Question | null>(() => questionDraft.state.originalQuestion as Question | null)
@@ -604,7 +607,7 @@ function saveQuestion() {
     })
   }
 
-  uni.showToast({ title: '保存成功', icon: 'success' })
+  uni.showToast({ title: saveQuestionSuccessText.value, icon: 'success' })
 }
 
 // 重置

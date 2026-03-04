@@ -79,7 +79,9 @@
                 @input="(e) => updateStep(index, 'audioUrl', e.detail.value)"
                 placeholder="音频 URL"
               />
-              <button class="btn btn-outline btn-sm" @click="selectAudio(index)">选择</button>
+              <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectLocalAudio(index, e)">
+                <button class="btn btn-outline btn-sm">内置音频</button>
+              </picker>
             </view>
           </view>
 
@@ -192,6 +194,7 @@
 import type { SpeakingQuestion, SpeakingStep, SpeakingStepBehavior, RichTextContent } from '/types'
 import { generateId, createEmptyRichText } from '/templates'
 import RichTextEditor from './RichTextEditor.vue'
+import { LOCAL_AUDIO_OPTIONS, getLocalAudioUrl } from '/utils/audioOptions'
 
 const props = defineProps<{
   modelValue: SpeakingQuestion
@@ -274,11 +277,11 @@ function toggleContent(index: number, field: 'instruction' | 'passage' | 'imageU
   updateStep(index, field, newValue)
 }
 
-function selectAudio(index: number) {
-  // Demo: 使用示例音频
-  const url = 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3'
+function onSelectLocalAudio(index: number, e: any) {
+  const fileIndex = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[fileIndex]
+  const url = getLocalAudioUrl(filename)
   updateStep(index, 'audioUrl', url)
-  uni.showToast({ title: '已选择示例音频', icon: 'success' })
 }
 
 function selectImage(index: number) {

@@ -84,6 +84,22 @@ export type ListeningChoiceFlowModulePerGroupStepV1 =
       url?: string
     }
   | {
+      // Hear-answer V2: recording guide step between content playback and recording.
+      kind: 'recordGuide'
+      showTitle?: boolean
+      showQuestionTitle?: boolean
+      showQuestionTitleDescription?: boolean
+      showGroupPrompt?: boolean
+      // Text source for guide body.
+      textSource?: 'question' | 'group'
+      // Audio source for guide playback.
+      audioSource?: 'question' | 'group' | 'fixed'
+      // Used when audioSource = fixed.
+      url?: string
+      // Controls whether this step replaces page body or keeps previous screen.
+      screenStrategy?: 'replaceBody' | 'reusePrevious'
+    }
+  | {
       kind: 'answerChoice'
       showTitle?: boolean
       showQuestionTitle?: boolean

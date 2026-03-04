@@ -15,7 +15,7 @@ withDefaults(defineProps<{
 <style lang="scss" scoped>
 .lc-step--center {
   flex: 1;
-  min-height: 240px;
+  min-height: 480rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

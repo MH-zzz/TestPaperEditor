@@ -6,6 +6,7 @@
     :show-answer="showAnswer"
     :step-index="stepIndex"
     :show-step-nav="showStepNav"
+    :fixed-bottom-dock="fixedBottomDock"
     @select="(subQuestionId, optionKey) => emit('select', subQuestionId, optionKey)"
     @step-change="(step) => emit('stepChange', step)"
   />
@@ -23,12 +24,14 @@ const props = withDefaults(defineProps<{
   showAnswer?: boolean
   stepIndex?: number
   showStepNav?: boolean
+  fixedBottomDock?: boolean
 }>(), {
   mode: 'preview',
   answers: () => ({}),
   showAnswer: false,
   stepIndex: 0,
-  showStepNav: true
+  showStepNav: true,
+  fixedBottomDock: false
 })
 
 const emit = defineEmits<{

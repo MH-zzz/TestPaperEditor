@@ -36,6 +36,33 @@ withDefaults(defineProps<{
 </script>
 
 <style lang="scss" scoped>
+.lc-intro-body {
+  background: transparent;
+  border-radius: 0;
+  padding: 20rpx 0 36rpx;
+  min-height: 720rpx;
+  box-sizing: border-box;
+
+  :deep(.rich-text-renderer) {
+    display: block;
+    font-size: 36rpx;
+    margin-left: 0;
+    padding-left: 0;
+    text-indent: 0;
+    white-space: normal;
+    line-height: 1.5;
+    color: #1a1a1a;
+  }
+
+  :deep(.rich-text-renderer text) {
+    margin-left: 0;
+    padding-left: 0;
+    text-indent: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
 .lc-step__hint {
   margin-top: $spacing-md;
   color: $text-hint;

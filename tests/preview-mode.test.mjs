@@ -66,6 +66,41 @@ test('ListeningChoiceRenderer countdown labels should reflect what happens next'
   assert.ok(src.includes('repeatGapSeconds'))
 })
 
+test('ListeningChoiceRenderer should present countdown with concise label and clock format', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes('const bottomCountdownDisplayLabel = computed(() => {'))
+  assert.ok(src.includes("if (text.includes('播放正文音频前-倒计时')) return '答题准备'"))
+  assert.ok(src.includes("if (text.includes('答题前-倒计时')) return '答题准备'"))
+  assert.ok(src.includes("if (text.includes('介绍页-')) return '答题准备'"))
+  assert.ok(src.includes('return formatClockSeconds(v.seconds)'))
+  assert.ok(src.includes('lc-bottom__countdown-icon'))
+})
+
+test('ListeningChoiceRenderer should support pause/resume for exam countdown in learning mode', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes('@click="toggleCountdownPause"'))
+  assert.ok(src.includes('{{ bottomCountdownPauseIcon }}'))
+  assert.ok(src.includes('const isCountdownPaused = ref(false)'))
+  assert.ok(src.includes('const canToggleCountdownPause = computed(() => {'))
+  assert.ok(src.includes('function toggleCountdownPause() {'))
+  assert.ok(src.includes('if (isCountdownPaused.value) return'))
+})
+
+test('ListeningChoiceRenderer should replay content audio via player restart for multi-play loops', async () => {
+  const rendererSrc = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  const audioPlayerSrc = await readFile('components/renderer/AudioPlayer.vue')
+
+  assert.ok(rendererSrc.includes('function replayBottomAudio()'))
+  assert.ok(rendererSrc.includes('if (typeof player.restart === \'function\')'))
+  assert.ok(rendererSrc.includes('if (audioRemaining.value > 0) replayBottomAudio()'))
+  assert.ok(rendererSrc.includes('replayBottomAudio()'))
+  assert.ok(audioPlayerSrc.includes('function restart()'))
+  assert.ok(audioPlayerSrc.includes('const suppressEndedOnce = ref(false)'))
+  assert.ok(audioPlayerSrc.includes('if (suppressEndedOnce.value) {'))
+  assert.ok(audioPlayerSrc.includes('audioContext.seek(0)'))
+  assert.ok(audioPlayerSrc.includes('restart,'))
+})
+
 test('FlowModulesManager should support template-data + flow-rule + preview workflow', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
   assert.ok(src.includes('<ListeningChoiceEditor'))
@@ -85,6 +120,14 @@ test('FlowModulesManager should support template-data + flow-rule + preview work
   assert.ok(src.includes(':display-total-steps="previewDisplayTotalSteps"'))
   assert.ok(src.includes(':nav-step-index="previewVirtualIndex"'))
   assert.ok(src.includes('setPreviewVirtualIndex(previewVirtualIndex.value + 1)'))
+})
+
+test('FlowModulesManager preview replay expansion should prioritize compiled step playTimes to avoid double-expansion', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  assert.ok(src.includes('function resolvePreviewAudioPlayCount(step: ListeningChoiceFlowStep, groupById: Map<string, FlowPreviewGroup>): number {'))
+  assert.ok(src.includes('const explicit = Math.floor(Number((step as any)?.playTimes))'))
+  assert.ok(src.includes('if (Number.isFinite(explicit) && explicit > 0)'))
+  assert.ok(src.includes('return Math.max(1, explicit)'))
 })
 
 test('ListeningChoiceRenderer answerChoice should not render early-next button', async () => {
@@ -137,6 +180,36 @@ test('ListeningChoiceRenderer promptTone should reuse previous view instead of s
   const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
   assert.ok(src.includes('function resolveDisplayStepIndex'))
   assert.ok(!src.includes('<text>播放提示音</text>'))
+})
+
+test('ListeningChoiceRenderer should keep hear-answer end prompt tone aligned with start prompt tone screen anchor', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes("if (isHearAnswerVariant.value && isStepKind(step, 'promptTone'))"))
+  assert.ok(src.includes("if (isStepKind(prev, 'answerChoice') && isStepKind(startTone, 'promptTone'))"))
+  assert.ok(src.includes('for (let i = index - 3; i >= 0; i -= 1)'))
+})
+
+test('ListeningChoiceRenderer should auto-skip legacy hear-answer post-content countdown in exam mode', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes('function shouldSkipHearAnswerLegacyPostContentCountdown(index: number): boolean'))
+  assert.ok(src.includes('if (!isPreview.value && shouldSkipHearAnswerLegacyPostContentCountdown(currentStepIndex.value))'))
+  assert.ok(src.includes("dispatchRuntime({ type: 'countdownEnded' })"))
+})
+
+test('ListeningChoiceRenderer hear-answer answer stage should prefer record-guide prompt text', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes('function resolveHearAnswerAnswerGuideText(step: RendererStep | null | undefined)'))
+  assert.ok(src.includes('if (sq?.recordGuideText) return sq.recordGuideText'))
+  assert.ok(src.includes('if (group?.recordGuideText) return group.recordGuideText'))
+  assert.ok(src.includes('contextShowPrompt: answerContextShowPrompt'))
+})
+
+test('ListeningChoiceRenderer recordGuide should resolve per-question stems from questionIds', async () => {
+  const src = await readFile('components/renderer/ListeningChoiceRenderer.vue')
+  assert.ok(src.includes("if (displayStepRenderView.value === 'recordGuide' && isStepKind(step, 'recordGuide'))"))
+  assert.ok(src.includes('const ids = Array.isArray(step.questionIds) ? step.questionIds.map(id => String(id || \'\')).filter(Boolean) : []'))
+  assert.ok(src.includes('return ids.map(id => questionsById.value[id]).filter(Boolean)'))
+  assert.ok(src.includes('questions: contextQuestions.value'))
 })
 
 test('ListeningChoiceFlowDiagram should expose drag handle and reorder emit', async () => {
@@ -204,6 +277,18 @@ test('question library should load recent questions via repository', async () =>
   const src = await readFile('components/views/QuestionLibrary.vue')
   assert.ok(src.includes("import { loadRecentQuestions } from '/infra/repository/questionRepository'"))
   assert.ok(src.includes('questions.value = loadRecentQuestions<Question>()'))
+})
+
+test('question library should export flow data from current flow stores instead of legacy flow library key', async () => {
+  const src = await readFile('components/views/QuestionLibrary.vue')
+  assert.ok(src.includes("import { flowModules } from '/stores/flowModules'"))
+  assert.ok(src.includes("import { flowProfiles } from '/stores/flowProfiles'"))
+  assert.ok(src.includes("import { loadFlowModulePublishLogs } from '/infra/repository/flowModuleRepository'"))
+  assert.ok(src.includes('function buildFlowExportPayload() {'))
+  assert.ok(src.includes('listeningChoiceModules: flowModules.listListeningChoice()'))
+  assert.ok(src.includes('flowProfiles: [...flowProfiles.state.profiles]'))
+  assert.ok(src.includes('publishLogs: loadFlowModulePublishLogs()'))
+  assert.ok(!src.includes("uni.getStorageSync('editor_flow_library_v1')"))
 })
 
 test('learning workspace should support local-library simulation, flow context, and step traces', async () => {

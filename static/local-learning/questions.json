@@ -1,0 +1,818 @@
+[
+  {
+    "id": "1772525795990_q7qsm6hgq",
+    "type": "speaking_hear_answer",
+    "metadata": {
+      "questionVariant": "hear_answer",
+      "tags": [],
+      "updatedAt": "2026/3/3 16:24:20"
+    },
+    "content": {
+      "intro": {
+        "title": "听后回答",
+        "title_description": "(共12分,每小题2分)",
+        "text": {
+          "type": "richtext",
+          "content": [
+            {
+              "type": "text",
+              "text": "听下面一段对话，回答第1小题。现在，你有5秒钟的时间阅读这道小题。"
+            }
+          ]
+        },
+        "audio": {
+          "url": "/static/audio/听后回答-介绍描述.mp3",
+          "playCount": 1,
+          "note": "说明音频（可为空）"
+        },
+        "countdown": {
+          "seconds": 5,
+          "label": "准备",
+          "endBeepUrl": "/static/beep.mp3"
+        }
+      },
+      "groups": [
+        {
+          "id": "1772525795990_dxyw8g1mp",
+          "title": "第一题组（单题）",
+          "prompt": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "听下面一段对话回答第1小题，现在你有5秒钟的时间阅读这道小题。"
+              }
+            ]
+          },
+          "prepareSeconds": 5,
+          "answerSeconds": 10,
+          "descriptionAudio": {
+            "url": "/static/audio/听后回答-听下面对话回答1小题介绍音频.mp3",
+            "playCount": 1,
+            "note": "题组描述音频（可为空）"
+          },
+          "audio": {
+            "url": "/static/audio/听后回答-1小题正文音频.mp3",
+            "playCount": 2,
+            "note": "题组音频（占位）"
+          },
+          "subQuestions": [
+            {
+              "id": "1772525795990_kabytgyx6",
+              "order": 1,
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Who is the boy talking to on the phone?"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "1772525795990_rz0lmx1n0",
+          "title": "第二题组（双题）",
+          "prompt": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "听下面一段对话回答第4-5小题，现在你有10秒钟的时间阅读这两道小题。"
+              }
+            ]
+          },
+          "prepareSeconds": 10,
+          "answerSeconds": 10,
+          "descriptionAudio": {
+            "url": "/static/audio/听后回答-听下面对话回答5-6小题介绍音频.mp3",
+            "playCount": 1,
+            "note": "题组描述音频（可为空）"
+          },
+          "audio": {
+            "url": "/static/audio/听后回答-5-6正文音频.mp3",
+            "playCount": 2,
+            "note": "题组音频（占位）"
+          },
+          "subQuestions": [
+            {
+              "id": "1772525795990_6fcys18l4",
+              "order": 4,
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "How often should the girl water the plant?"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "1772525795990_g3w324e3f",
+              "order": 5,
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "What will the speakers do next?"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "flow": {
+      "version": 1,
+      "mode": "semi-auto",
+      "source": {
+        "kind": "standard",
+        "id": "listening_hear_answer.standard.v1",
+        "version": 1,
+        "overrides": {}
+      },
+      "steps": [
+        {
+          "id": "1772526260963_5i6o58nig",
+          "kind": "intro",
+          "showTitle": true,
+          "showTitleDescription": true,
+          "showDescription": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_57ptngz5u",
+          "kind": "playAudio",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "audioSource": "description",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_6yfi8763s",
+          "kind": "countdown",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "seconds": 5,
+          "label": "答题准备",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772526260963_ap1dgwdu2",
+          "kind": "playAudio",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "audioSource": "content",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_m5jha2wvt",
+          "kind": "countdown",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "seconds": 5,
+          "label": "重播间隔",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772526260963_xki51332m",
+          "kind": "playAudio",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "audioSource": "content",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_yuegudkfa",
+          "kind": "promptTone",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "showTitle": false,
+          "url": "/static/audio/开始录音.mp3",
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_4gyshgpcj",
+          "kind": "answerChoice",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "questionIds": [
+            "1772525795990_kabytgyx6"
+          ],
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "timeEnded"
+        },
+        {
+          "id": "1772526260963_ma0mftoeu",
+          "kind": "promptTone",
+          "groupId": "1772525795990_dxyw8g1mp",
+          "showTitle": false,
+          "url": "/static/audio/停止录音.mp3",
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_t9oarytmh",
+          "kind": "playAudio",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "audioSource": "description",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_04f38174q",
+          "kind": "countdown",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "seconds": 10,
+          "label": "答题准备",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772526260963_rf8fju00v",
+          "kind": "playAudio",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "audioSource": "content",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_iwyrc7zmd",
+          "kind": "countdown",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "seconds": 10,
+          "label": "重播间隔",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772526260963_b04ljov1k",
+          "kind": "playAudio",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "audioSource": "content",
+          "playTimes": 1,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_a34pp5nri",
+          "kind": "promptTone",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "showTitle": false,
+          "url": "/static/audio/开始录音.mp3",
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_qogzhuu33",
+          "kind": "answerChoice",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "questionIds": [
+            "1772525795990_6fcys18l4"
+          ],
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "timeEnded"
+        },
+        {
+          "id": "1772526260963_lia6rpwzz",
+          "kind": "promptTone",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "showTitle": false,
+          "url": "/static/audio/停止录音.mp3",
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_ppl4x7bda",
+          "kind": "promptTone",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "showTitle": false,
+          "url": "/static/audio/开始录音.mp3",
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772526260963_t8tf2h3ej",
+          "kind": "answerChoice",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "questionIds": [
+            "1772525795990_g3w324e3f"
+          ],
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "timeEnded"
+        },
+        {
+          "id": "1772526260963_1kqs4opvr",
+          "kind": "promptTone",
+          "groupId": "1772525795990_rz0lmx1n0",
+          "showTitle": false,
+          "url": "/static/audio/停止录音.mp3",
+          "autoNext": "audioEnded"
+        }
+      ]
+    },
+    "optionStyle": "ABCD"
+  },
+  {
+    "id": "1772506420111_8ayb4d2js",
+    "type": "listening_choice",
+    "optionStyle": "ABCD",
+    "content": {
+      "intro": {
+        "title": "听后选择",
+        "title_description": "(共9分,每小题1.5分)",
+        "text": {
+          "type": "richtext",
+          "content": [
+            {
+              "type": "text",
+              "text": "听对话或独白，依据所听内容从每题所给的A、B、C三个选项中选择最佳选项，并用鼠标点击该选项。听每段对话或独白前，你有5秒钟的时间阅读每小题。听完后，你有5秒钟的时间作答。每段对话或独白你将听两遍。",
+              "marks": [
+                "color:#000000"
+              ]
+            }
+          ]
+        },
+        "audio": {
+          "url": "/static/audio/听后选择-介绍描述.mp3",
+          "playCount": 1,
+          "note": "说明音频（可为空）"
+        },
+        "countdown": {
+          "seconds": 3,
+          "label": "准备",
+          "endBeepUrl": "/static/beep.mp3"
+        }
+      },
+      "groups": [
+        {
+          "id": "1772506420111_y8sd9qrta",
+          "title": "第一题组对话",
+          "prompt": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "听下面一段对话，回答第1至第2小题。现在，你有10秒钟的时间阅读这两道小题。",
+                "marks": [
+                  "color:#000000"
+                ]
+              }
+            ]
+          },
+          "prepareSeconds": 10,
+          "answerSeconds": 20,
+          "descriptionAudio": {
+            "url": "/static/audio/听后选择-听下面对话回答1-2小题介绍音频.mp3",
+            "playCount": 1,
+            "note": "题组描述音频（可为空）"
+          },
+          "audio": {
+            "url": "/static/audio/听后选择-1-2小题正文音频.mp3",
+            "playCount": 2,
+            "note": "题组音频（占位）"
+          },
+          "subQuestions": [
+            {
+              "id": "1772506420111_c7bomuqa3",
+              "order": 1,
+              "answerMode": "single",
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Who is Martin",
+                    "marks": [
+                      "color:#000000"
+                    ]
+                  }
+                ]
+              },
+              "options": [
+                {
+                  "key": "A",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "The boy's classmate.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "B",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "The boy's brother.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "C",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "The boy's friend.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "answer": [
+                "A"
+              ]
+            },
+            {
+              "id": "1772506420111_f7ezzbnbb",
+              "order": 2,
+              "answerMode": "single",
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Where does Martin come from?",
+                    "marks": [
+                      "color:#000000"
+                    ]
+                  }
+                ]
+              },
+              "options": [
+                {
+                  "key": "A",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "China.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "B",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "England.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "C",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": " Australia.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "answer": [
+                "A"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "1772507828029_etvxqvgur",
+          "title": "第 2 题组",
+          "prompt": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "听下面一段对话，回答第3至第4小题。现在，你有10秒钟的时间阅读这两道小题。",
+                "marks": [
+                  "color:rgb(0, 0, 0)"
+                ]
+              }
+            ]
+          },
+          "prepareSeconds": 3,
+          "answerSeconds": 20,
+          "descriptionAudio": {
+            "url": "/static/audio/听后选择-听下面对话回答3-4小题介绍音频.mp3",
+            "playCount": 1,
+            "note": "题组描述音频（可为空）"
+          },
+          "audio": {
+            "url": "/static/audio/听后选择-3-4小题正文音频.mp3",
+            "playCount": 2
+          },
+          "subQuestions": [
+            {
+              "id": "1772507903539_6i72j66s6",
+              "order": 3,
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "What class is the girl in?",
+                    "marks": [
+                      "color:#000000"
+                    ]
+                  }
+                ]
+              },
+              "options": [
+                {
+                  "key": "A",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Class",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "B",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Class 5, Grade 7",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "C",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Class 8",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "answerMode": "single",
+              "answer": [
+                "A"
+              ]
+            },
+            {
+              "id": "1772507905415_tf3tcidpc",
+              "order": 4,
+              "stem": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "What can we know about the boy?",
+                    "marks": [
+                      "color:#000000"
+                    ]
+                  }
+                ]
+              },
+              "options": [
+                {
+                  "key": "A",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "He is a new student.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "B",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "He is from Canada.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "C",
+                  "content": {
+                    "type": "richtext",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "He is in the chess club.",
+                        "marks": [
+                          "color:#000000"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "answerMode": "single",
+              "answer": [
+                "A"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "flow": {
+      "version": 1,
+      "mode": "semi-auto",
+      "source": {
+        "kind": "standard",
+        "id": "listening_choice.standard.v1",
+        "version": 1,
+        "profileId": "profile:listening_choice:default",
+        "overrides": {}
+      },
+      "steps": [
+        {
+          "id": "1772518693553_bul3bislc",
+          "kind": "intro",
+          "showTitle": true,
+          "showTitleDescription": true,
+          "showDescription": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772518693553_lv31k2k6k",
+          "kind": "playAudio",
+          "groupId": "1772506420111_y8sd9qrta",
+          "audioSource": "description",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772518693553_j6vhf7bj9",
+          "kind": "countdown",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "seconds": 10,
+          "label": "准备",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772518693553_lypcu0mdq",
+          "kind": "playAudio",
+          "groupId": "1772506420111_y8sd9qrta",
+          "audioSource": "content",
+          "repeatGapSeconds": 3,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772518693553_jbemre32h",
+          "kind": "answerChoice",
+          "groupId": "1772506420111_y8sd9qrta",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "timeEnded"
+        },
+        {
+          "id": "1772518693553_lm9ivl4gd",
+          "kind": "playAudio",
+          "groupId": "1772507828029_etvxqvgur",
+          "audioSource": "description",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772518693553_34this6gv",
+          "kind": "countdown",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "seconds": 3,
+          "label": "准备",
+          "autoNext": "countdownEnded"
+        },
+        {
+          "id": "1772518693553_f9727o9ii",
+          "kind": "playAudio",
+          "groupId": "1772507828029_etvxqvgur",
+          "audioSource": "content",
+          "repeatGapSeconds": 3,
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "audioEnded"
+        },
+        {
+          "id": "1772518693553_lxsuwweu9",
+          "kind": "answerChoice",
+          "groupId": "1772507828029_etvxqvgur",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true,
+          "autoNext": "timeEnded"
+        }
+      ]
+    },
+    "metadata": {
+      "tags": [],
+      "updatedAt": "2026/3/3 14:18:13"
+    }
+  }
+]

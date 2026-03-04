@@ -64,10 +64,11 @@ test('flow engine compiler should compile listening-choice module', async () => 
     ]
   }
   const out = engine.compileListeningChoiceFlow(question, module, { generateId: makeIdFactory('s') })
-  assert.deepEqual(out.steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
+  assert.deepEqual(out.steps.map(s => s.kind), ['intro', 'playAudio', 'countdown', 'playAudio', 'countdown', 'playAudio', 'answerChoice'])
   assert.equal(out.steps[2].seconds, 5)
   assert.equal(out.steps[3].repeatGapSeconds, 4)
-  assert.equal(out.steps[4].autoNext, 'timeEnded')
+  assert.equal(out.steps[4].seconds, 4)
+  assert.equal(out.steps[6].autoNext, 'timeEnded')
 })
 
 test('flow engine runtime reducer should honor autoNext events', async () => {

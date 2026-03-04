@@ -68,6 +68,39 @@ function isHearAnswerVariant(question: ListeningChoiceCompileQuestion): boolean 
   return variant === 'hear_answer'
 }
 
+function resolveSubQuestionById(
+  group: ListeningChoiceGroup,
+  questionId: string | undefined
+): ListeningChoiceGroup['subQuestions'][number] | null {
+  if (!group || !questionId) return null
+  const list = Array.isArray(group.subQuestions) ? group.subQuestions : []
+  return list.find((sq) => String(sq?.id || '') === String(questionId)) || null
+}
+
+function resolveHearAnswerAnswerSeconds(group: ListeningChoiceGroup, questionId?: string): number {
+  const groupSeconds = Math.max(0, toInt(group?.answerSeconds, 0))
+  if (!questionId) return groupSeconds
+  const sq = resolveSubQuestionById(group, questionId)
+  if (!sq) return groupSeconds
+  if (sq.answerSeconds == null || sq.answerSeconds === '') return groupSeconds
+  return Math.max(0, toInt(sq.answerSeconds, groupSeconds))
+}
+
+function normalizeScreenStrategy(v: unknown): 'replaceBody' | 'reusePrevious' {
+  return v === 'reusePrevious' ? 'reusePrevious' : 'replaceBody'
+}
+
+function shouldSkipHearAnswerPostContentCountdown(
+  hearAnswerVariant: boolean,
+  def: PerGroupStepDef,
+  prevDef?: PerGroupStepDef
+): boolean {
+  if (!hearAnswerVariant) return false
+  if (def.kind !== 'countdown') return false
+  if (!prevDef || prevDef.kind !== 'playAudio') return false
+  return normalizeAudioSource(prevDef.audioSource) === 'content'
+}
+
 function readOverrideBool(override: Record<string, unknown>, key: string): boolean | undefined {
   const value = override[key]
   return typeof value === 'boolean' ? value : undefined
@@ -127,6 +160,21 @@ function applyOverride(step: ListeningChoiceFlowStep, override: unknown): Listen
     const url = readOverrideString(override, 'url')
     if (typeof showTitle === 'boolean') next.showTitle = showTitle
     if (typeof url === 'string') next.url = url
+    return next
+  }
+
+  if (step.kind === 'recordGuide') {
+    const next = { ...step }
+    const showTitle = readOverrideBool(override, 'showTitle')
+    const showQuestionTitle = readOverrideBool(override, 'showQuestionTitle')
+    const showQuestionTitleDescription = readOverrideBool(override, 'showQuestionTitleDescription')
+    const showGroupPrompt = readOverrideBool(override, 'showGroupPrompt')
+    const guideAudioUrl = readOverrideString(override, 'guideAudioUrl') || readOverrideString(override, 'url')
+    if (typeof showTitle === 'boolean') next.showTitle = showTitle
+    if (typeof showQuestionTitle === 'boolean') next.showQuestionTitle = showQuestionTitle
+    if (typeof showQuestionTitleDescription === 'boolean') next.showQuestionTitleDescription = showQuestionTitleDescription
+    if (typeof showGroupPrompt === 'boolean') next.showGroupPrompt = showGroupPrompt
+    if (typeof guideAudioUrl === 'string') next.guideAudioUrl = guideAudioUrl
     return next
   }
 
@@ -191,7 +239,7 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
       ? g.subQuestions.map((sq) => String(sq?.id || '')).filter(Boolean)
       : ['']
 
-    const appendPlanByDef = (def: PerGroupStepDef, questionId?: string) => {
+    const appendPlanByDef = (def: PerGroupStepDef, questionId?: string, prevDef?: PerGroupStepDef) => {
       const kind = String(def?.kind || '')
       kindCount[kind] = (kindCount[kind] || 0) + 1
       const suffix = kindCount[kind] > 1 ? String(kindCount[kind]) : ''
@@ -203,24 +251,57 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
         const repeatGapSeconds = audioSource === 'content'
           ? normalizeOptionalNonNegativeInt(repeatGapRaw)
           : undefined
-        plan.push({
-          key,
-          step: {
-            kind: 'playAudio',
-            groupId,
-            audioSource,
-            ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
-            showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : true,
-            showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
-            showQuestionTitleDescription: typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true,
-            showGroupPrompt: typeof def.showGroupPrompt === 'boolean' ? def.showGroupPrompt : true,
-            autoNext: 'audioEnded'
-          }
-        })
+        const rawPlayCount = audioSource === 'description'
+          ? toInt(g?.descriptionAudio?.playCount, 1)
+          : toInt(g?.audio?.playCount, 1)
+        const totalPlayTimes = Math.max(1, rawPlayCount)
+        const showTitle = typeof def.showTitle === 'boolean' ? def.showTitle : true
+        const showQuestionTitle = typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true
+        const showQuestionTitleDescription = typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true
+        const showGroupPrompt = typeof def.showGroupPrompt === 'boolean' ? def.showGroupPrompt : true
+
+        for (let playIndex = 0; playIndex < totalPlayTimes; playIndex += 1) {
+          const isLastPlay = playIndex >= totalPlayTimes - 1
+          const playKey = totalPlayTimes > 1 ? `${key}.loop${playIndex + 1}` : key
+          plan.push({
+            key: playKey,
+            step: {
+              kind: 'playAudio',
+              groupId,
+              audioSource,
+              playTimes: 1,
+              ...(repeatGapSeconds == null ? {} : { repeatGapSeconds }),
+              showTitle,
+              showQuestionTitle,
+              showQuestionTitleDescription,
+              showGroupPrompt,
+              autoNext: 'audioEnded'
+            }
+          })
+
+          if (isLastPlay || audioSource !== 'content') continue
+
+          const fallbackGapSeconds = Math.max(0, toInt(g?.prepareSeconds, 3))
+          const gapSeconds = repeatGapSeconds == null ? fallbackGapSeconds : repeatGapSeconds
+          plan.push({
+            key: `${key}.gap${playIndex + 1}`,
+            step: {
+              kind: 'countdown',
+              showTitle: false,
+              showQuestionTitle,
+              seconds: Math.max(0, gapSeconds),
+              label: '重播间隔',
+              autoNext: 'countdownEnded'
+            }
+          })
+        }
         return
       }
 
       if (def.kind === 'countdown') {
+        if (shouldSkipHearAnswerPostContentCountdown(hearAnswerVariant, def, prevDef)) {
+          return
+        }
         const seconds = Math.max(0, toInt(g.prepareSeconds, Math.max(0, toInt(def.seconds, 3))))
         const label = typeof def?.label === 'string' ? def.label : '准备'
         plan.push({
@@ -252,14 +333,50 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
         return
       }
 
+      if (def.kind === 'recordGuide') {
+        const sq = resolveSubQuestionById(g, questionId)
+        const textSource = def.textSource === 'group' ? 'group' : 'question'
+        const audioSource = def.audioSource === 'group' || def.audioSource === 'fixed'
+          ? def.audioSource
+          : 'question'
+        const guideText = textSource === 'group'
+          ? g.recordGuideText || g.prompt
+          : (sq?.recordGuideText || g.recordGuideText || g.prompt)
+        const guideAudioUrl = audioSource === 'fixed'
+          ? String(def.url || '')
+          : (audioSource === 'group'
+            ? String((g.recordGuideAudio?.url) || '')
+            : String((sq?.recordGuideAudio?.url) || (g.recordGuideAudio?.url) || ''))
+        plan.push({
+          key,
+          step: {
+            kind: 'recordGuide',
+            groupId,
+            questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
+            showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : false,
+            showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
+            showQuestionTitleDescription: typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true,
+            showGroupPrompt: typeof def.showGroupPrompt === 'boolean' ? def.showGroupPrompt : false,
+            guideText,
+            guideAudioUrl,
+            screenStrategy: normalizeScreenStrategy(def.screenStrategy),
+            autoNext: 'audioEnded'
+          }
+        })
+        return
+      }
+
       if (def.kind === 'answerChoice') {
-        const answerSeconds = Math.max(0, toInt(g.answerSeconds, 0))
+        const answerSeconds = hearAnswerVariant
+          ? resolveHearAnswerAnswerSeconds(g, questionId)
+          : Math.max(0, toInt(g.answerSeconds, 0))
         plan.push({
           key,
           step: {
             kind: 'answerChoice',
             groupId,
             questionIds: hearAnswerVariant && questionId ? [String(questionId)] : undefined,
+            answerSeconds,
             showTitle: typeof def.showTitle === 'boolean' ? def.showTitle : true,
             showQuestionTitle: typeof def.showQuestionTitle === 'boolean' ? def.showQuestionTitle : true,
             showQuestionTitleDescription: typeof def.showQuestionTitleDescription === 'boolean' ? def.showQuestionTitleDescription : true,
@@ -271,18 +388,18 @@ function compilePlan(question: ListeningChoiceCompileQuestion, module: Listening
     }
 
     if (!hearAnswerVariant) {
-      perSteps.forEach((def) => appendPlanByDef(def))
+      perSteps.forEach((def, defIndex) => appendPlanByDef(def, undefined, perSteps[defIndex - 1]))
       return
     }
 
     // Hear-answer variant runs per-question recording loops:
     // group-level steps run once before the loop, promptTone/answerChoice repeat for each sub-question.
     perQuestionIds.forEach((questionId, questionIndex) => {
-      perSteps.forEach((def) => {
+      perSteps.forEach((def, defIndex) => {
         const kind = String(def?.kind || '')
-        const isPerQuestionStep = kind === 'promptTone' || kind === 'answerChoice'
+        const isPerQuestionStep = kind === 'promptTone' || kind === 'recordGuide' || kind === 'answerChoice'
         if (!isPerQuestionStep && questionIndex > 0) return
-        appendPlanByDef(def, questionId)
+        appendPlanByDef(def, questionId, perSteps[defIndex - 1])
       })
     })
   })

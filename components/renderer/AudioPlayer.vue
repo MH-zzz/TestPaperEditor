@@ -1,5 +1,5 @@
 <template>
-  <view class="audio-player" v-if="src">
+  <view class="audio-player" v-if="src && !hidden">
     <view class="audio-player__controls">
       <view
         class="audio-player__btn"
@@ -30,8 +30,10 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 const props = withDefaults(defineProps<{
   src: string
   autoPlay?: boolean
+  hidden?: boolean
 }>(), {
-  autoPlay: false
+  autoPlay: false,
+  hidden: false
 })
 
 const emit = defineEmits<{
@@ -39,11 +41,13 @@ const emit = defineEmits<{
   (e: 'pause'): void
   (e: 'ended'): void
   (e: 'timeupdate', time: number): void
+  (e: 'durationchange', duration: number): void
 }>()
 
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
+const suppressEndedOnce = ref(false)
 
 let audioContext: UniApp.InnerAudioContext | null = null
 
@@ -73,6 +77,7 @@ function initAudio() {
 
   audioContext.onCanplay(() => {
     duration.value = audioContext?.duration || 0
+    emit('durationchange', duration.value)
   })
 
   audioContext.onTimeUpdate(() => {
@@ -91,6 +96,10 @@ function initAudio() {
   })
 
   audioContext.onEnded(() => {
+    if (suppressEndedOnce.value) {
+      suppressEndedOnce.value = false
+      return
+    }
     isPlaying.value = false
     currentTime.value = 0
     emit('ended')
@@ -114,11 +123,45 @@ function togglePlay() {
   if (!audioContext) return
 
   if (isPlaying.value) {
-    audioContext.pause()
+    pause()
   } else {
-    audioContext.play()
+    play()
   }
 }
+
+function play() {
+  if (!audioContext) return
+  audioContext.play()
+}
+
+function pause() {
+  if (!audioContext) return
+  audioContext.pause()
+}
+
+function restart() {
+  if (!audioContext) return
+  suppressEndedOnce.value = true
+  try {
+    audioContext.stop()
+  } catch {}
+  try {
+    audioContext.seek(0)
+  } catch {}
+  setTimeout(() => {
+    audioContext?.play()
+  }, 60)
+}
+
+defineExpose({
+  play,
+  pause,
+  restart,
+  togglePlay,
+  getDuration: () => duration.value,
+  getCurrentTime: () => currentTime.value,
+  isPlaying
+})
 
 // 监听 src 变化
 watch(() => props.src, () => {

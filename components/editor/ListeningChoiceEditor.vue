@@ -40,9 +40,11 @@
             placeholder="https://..."
             @input="(e) => updateIntroAudioUrl(e.detail.value)"
           />
-          <button class="btn btn-outline btn-sm" @click="setIntroDemoAudio">示例</button>
+            <picker :range="LOCAL_AUDIO_OPTIONS" @change="onSelectIntroLocalAudio">
+              <button class="btn btn-outline btn-sm">内置音频</button>
+            </picker>
+          </view>
         </view>
-      </view>
     </view>
 
     <!-- Content: Groups -->
@@ -102,7 +104,9 @@
               placeholder="https://..."
               @input="(e) => updateGroupDescriptionAudioUrl(gIndex, e.detail.value)"
             />
-            <button class="btn btn-outline btn-sm" @click="setGroupDescriptionDemoAudio(gIndex)">示例</button>
+            <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectGroupDescriptionLocalAudio(gIndex, e)">
+              <button class="btn btn-outline btn-sm">内置音频</button>
+            </picker>
           </view>
         </view>
 
@@ -126,7 +130,9 @@
               placeholder="https://..."
               @input="(e) => updateGroupAudioUrl(gIndex, e.detail.value)"
             />
-            <button class="btn btn-outline btn-sm" @click="setGroupDemoAudio(gIndex)">示例</button>
+            <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectGroupLocalAudio(gIndex, e)">
+              <button class="btn btn-outline btn-sm">内置音频</button>
+            </picker>
           </view>
         </view>
 
@@ -161,6 +167,30 @@
             placeholder="例如：120"
             @input="(e) => updateGroupAnswerSeconds(gIndex, e.detail.value)"
           />
+        </view>
+
+        <view v-if="isHearAnswerMode" class="form-item">
+          <text class="form-item__label">录音说明文案（题组默认）</text>
+          <RichTextEditor
+            :model-value="g.recordGuideText || createEmptyRichText()"
+            @update:model-value="(val) => updateGroupRecordGuideText(gIndex, val)"
+            placeholder="可选：默认录音说明文案（未配置小题文案时使用）"
+          />
+        </view>
+
+        <view v-if="isHearAnswerMode" class="form-item">
+          <text class="form-item__label">录音说明音频 URL（题组默认）</text>
+          <view class="row">
+            <input
+              class="text-input"
+              :value="g.recordGuideAudio?.url || ''"
+              placeholder="/static/audio/xxx.mp3"
+              @input="(e) => updateGroupRecordGuideAudioUrl(gIndex, e.detail.value)"
+            />
+            <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectGroupRecordGuideLocalAudio(gIndex, e)">
+              <button class="btn btn-outline btn-sm">内置音频</button>
+            </picker>
+          </view>
         </view>
 
         <view class="form-item">
@@ -218,6 +248,44 @@
                     placeholder="https://..."
                     @input="(e) => updateSubAudioUrl(gIndex, sqIndex, e.detail.value)"
                   />
+                  <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectSubLocalAudio(gIndex, sqIndex, e)">
+                    <button class="btn btn-outline btn-sm">内置音频</button>
+                  </picker>
+                </view>
+              </view>
+
+              <view v-if="isHearAnswerMode" class="form-item">
+                <text class="form-item__label">本题作答时长（秒，可选，留空=沿用题组）</text>
+                <input
+                  class="text-input"
+                  type="number"
+                  :value="sq.answerSeconds == null ? '' : String(Number(sq.answerSeconds || 0))"
+                  placeholder="例如：10"
+                  @input="(e) => updateSubAnswerSeconds(gIndex, sqIndex, e.detail.value)"
+                />
+              </view>
+
+              <view v-if="isHearAnswerMode" class="form-item">
+                <text class="form-item__label">本题录音说明文案（可选）</text>
+                <RichTextEditor
+                  :model-value="sq.recordGuideText || createEmptyRichText()"
+                  @update:model-value="(val) => updateSubRecordGuideText(gIndex, sqIndex, val)"
+                  placeholder="可选：本题录音说明文案（优先于题组默认）"
+                />
+              </view>
+
+              <view v-if="isHearAnswerMode" class="form-item">
+                <text class="form-item__label">本题录音说明音频 URL（可选）</text>
+                <view class="row">
+                  <input
+                    class="text-input"
+                    :value="sq.recordGuideAudio?.url || ''"
+                    placeholder="/static/audio/xxx.mp3"
+                    @input="(e) => updateSubRecordGuideAudioUrl(gIndex, sqIndex, e.detail.value)"
+                  />
+                  <picker :range="LOCAL_AUDIO_OPTIONS" @change="(e) => onSelectSubRecordGuideLocalAudio(gIndex, sqIndex, e)">
+                    <button class="btn btn-outline btn-sm">内置音频</button>
+                  </picker>
                 </view>
               </view>
 
@@ -288,12 +356,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { ListeningChoiceQuestion, RichTextContent, SubQuestion } from '/types'
+import type { ListeningAudio, ListeningChoiceQuestion, RichTextContent, SubQuestion } from '/types'
 import { generateId, createEmptyRichText, createRichText } from '/templates'
 import {
   resolveListeningChoiceQuestion
 } from '../../engine/flow/listening-choice/binding.ts'
 import RichTextEditor from './RichTextEditor.vue'
+import { LOCAL_AUDIO_OPTIONS, getLocalAudioUrl } from '/utils/audioOptions'
 
 const props = withDefaults(defineProps<{
   modelValue: ListeningChoiceQuestion
@@ -524,9 +593,11 @@ function regenerateFlowStepsFromSource(question: ListeningChoiceQuestion): Liste
   return resolveListeningChoiceQuestion(question, { generateId })
 }
 
-function setIntroDemoAudio() {
-  updateIntroAudioUrl('https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
-  uni.showToast({ title: '已关联示例音频', icon: 'success' })
+function onSelectIntroLocalAudio(e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateIntroAudioUrl(url)
 }
 
 function addGroup() {
@@ -539,6 +610,8 @@ function addGroup() {
       prompt: createRichText('请听一段对话，完成若干小题。'),
       prepareSeconds: 3,
       answerSeconds: 0,
+      recordGuideText: createEmptyRichText(),
+      recordGuideAudio: { url: '', playCount: 1, note: '录音说明音频（可为空）' },
       descriptionAudio: { url: '', playCount: 1, note: '题组描述音频（可为空）' },
       audio: { url: '', playCount: 2 },
       subQuestions: []
@@ -602,6 +675,27 @@ function updateGroupAnswerSeconds(gIndex: number, rawValue: any) {
   update(next)
 }
 
+function updateGroupRecordGuideText(gIndex: number, recordGuideText: RichTextContent) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  groups[gIndex] = { ...g, recordGuideText }
+  update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+}
+
+function updateGroupRecordGuideAudioUrl(gIndex: number, url: string) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const current = (g.recordGuideAudio || { url: '', playCount: 1 }) as ListeningAudio
+  groups[gIndex] = {
+    ...g,
+    recordGuideAudio: {
+      ...current,
+      url
+    }
+  }
+  update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+}
+
 function updateGroupAudioUrl(gIndex: number, url: string) {
   const groups = [...props.modelValue.content.groups]
   const g = groups[gIndex]
@@ -636,14 +730,39 @@ function updateGroupDescriptionAudioPlayCount(gIndex: number, rawValue: any) {
   update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
 }
 
-function setGroupDemoAudio(gIndex: number) {
-  updateGroupAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
-  uni.showToast({ title: '已关联示例音频', icon: 'success' })
+function onSelectGroupLocalAudio(gIndex: number, e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateGroupAudioUrl(gIndex, url)
 }
 
-function setGroupDescriptionDemoAudio(gIndex: number) {
-  updateGroupDescriptionAudioUrl(gIndex, 'https://3eketang.oss-cn-beijing.aliyuncs.com/prog/uniapp/test/test/big_time.mp3')
-  uni.showToast({ title: '已关联示例音频', icon: 'success' })
+function onSelectGroupDescriptionLocalAudio(gIndex: number, e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateGroupDescriptionAudioUrl(gIndex, url)
+}
+
+function onSelectSubLocalAudio(gIndex: number, sqIndex: number, e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateSubAudioUrl(gIndex, sqIndex, url)
+}
+
+function onSelectGroupRecordGuideLocalAudio(gIndex: number, e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateGroupRecordGuideAudioUrl(gIndex, url)
+}
+
+function onSelectSubRecordGuideLocalAudio(gIndex: number, sqIndex: number, e: any) {
+  const index = e.detail.value
+  const filename = LOCAL_AUDIO_OPTIONS[index]
+  const url = getLocalAudioUrl(filename)
+  updateSubRecordGuideAudioUrl(gIndex, sqIndex, url)
 }
 
 function addSubQuestion(gIndex: number) {
@@ -655,7 +774,10 @@ function addSubQuestion(gIndex: number) {
       id: generateId(),
       order: nextOrder,
       stem: createEmptyRichText(),
-      audio: { url: '', position: 'above' }
+      audio: { url: '', position: 'above' },
+      answerSeconds: undefined,
+      recordGuideText: createEmptyRichText(),
+      recordGuideAudio: { url: '', playCount: 1, note: '录音说明音频（可为空）' }
     }
     : {
       id: generateId(),
@@ -727,6 +849,54 @@ function updateSubAudioUrl(gIndex: number, sqIndex: number, url: string) {
       url
     }
   } as any
+  groups[gIndex] = { ...g, subQuestions: list }
+  update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+}
+
+function updateSubAnswerSeconds(gIndex: number, sqIndex: number, rawValue: string) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const list = [...(g.subQuestions || [])]
+  const current = list[sqIndex]
+  if (!current) return
+
+  const text = String(rawValue || '').trim()
+  if (!text) {
+    const nextSub = { ...current } as SubQuestion & { answerSeconds?: number }
+    delete (nextSub as Record<string, unknown>).answerSeconds
+    list[sqIndex] = nextSub
+  } else {
+    const seconds = Math.max(0, toInt(text))
+    list[sqIndex] = { ...current, answerSeconds: seconds }
+  }
+
+  groups[gIndex] = { ...g, subQuestions: list }
+  const next = regenerateFlowStepsFromSource({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+  update(next)
+}
+
+function updateSubRecordGuideText(gIndex: number, sqIndex: number, recordGuideText: RichTextContent) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const list = [...(g.subQuestions || [])]
+  const current = list[sqIndex]
+  if (!current) return
+  list[sqIndex] = { ...current, recordGuideText }
+  groups[gIndex] = { ...g, subQuestions: list }
+  update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
+}
+
+function updateSubRecordGuideAudioUrl(gIndex: number, sqIndex: number, url: string) {
+  const groups = [...props.modelValue.content.groups]
+  const g = groups[gIndex]
+  const list = [...(g.subQuestions || [])]
+  const current = list[sqIndex]
+  if (!current) return
+  const nextAudio: ListeningAudio = {
+    ...((current.recordGuideAudio || { url: '', playCount: 1 }) as ListeningAudio),
+    url
+  }
+  list[sqIndex] = { ...current, recordGuideAudio: nextAudio }
   groups[gIndex] = { ...g, subQuestions: list }
   update({ ...props.modelValue, content: { ...props.modelValue.content, groups } })
 }
