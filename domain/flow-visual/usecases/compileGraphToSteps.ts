@@ -1,5 +1,6 @@
 import type {
   FlowStepBranchProtocol,
+  FlowStepLoopProtocol,
   FlowVisualCompileIssue,
   FlowVisualCompileResult,
   FlowVisualGraph
@@ -17,6 +18,11 @@ export type VisualBranchMvpStep = VisualLinearStep & {
   branch?: FlowStepBranchProtocol
 }
 
+export type VisualLoopMvpStep = VisualLinearStep & {
+  nextStepId?: string
+  loop?: FlowStepLoopProtocol
+}
+
 type VisualLinearLintResult = {
   errors: FlowVisualCompileIssue[]
   warnings: FlowVisualCompileIssue[]
@@ -27,6 +33,7 @@ type NodePayload = {
   autoNext?: unknown
   groupId?: unknown
   branchScoreThreshold?: unknown
+  loopMaxIterations?: unknown
 }
 
 function readNodePayload(node: { data?: unknown }): NodePayload {
@@ -57,6 +64,14 @@ function normalizeBranchScoreThreshold(value: unknown): number | null {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
+}
+
+function normalizeLoopMaxIterations(value: unknown): number | null {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  const normalized = Math.floor(parsed)
+  if (normalized <= 0) return null
+  return normalized
 }
 
 const GROUP_BOUND_STEP_KINDS = new Set([
@@ -242,6 +257,24 @@ function buildTopologicalNodeOrder(graph: FlowVisualGraph, adjacency: Adjacency)
   return order
 }
 
+function buildReachableNodeOrder(entryId: string, adjacency: Adjacency): string[] {
+  const visited = new Set<string>()
+  const queue: string[] = [entryId]
+  const order: string[] = []
+
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    if (visited.has(current)) continue
+    visited.add(current)
+    order.push(current)
+    for (const next of adjacency.outMap.get(current) || []) {
+      if (!visited.has(next)) queue.push(next)
+    }
+  }
+
+  return order
+}
+
 function validateBranchMvpGraph(graph: FlowVisualGraph): FlowVisualCompileResult {
   const errors: FlowVisualCompileIssue[] = []
   const warnings: FlowVisualCompileIssue[] = []
@@ -347,6 +380,119 @@ function validateBranchMvpGraph(graph: FlowVisualGraph): FlowVisualCompileResult
   }
 
   if (visited.size !== nodes.length) {
+    errors.push(createIssue(
+      'graph_disconnected',
+      '流程图不是单一连通链路，存在无法从入口访问的节点。',
+      'graph.nodes'
+    ))
+  }
+
+  return {
+    ok: errors.length <= 0,
+    steps: [],
+    errors,
+    warnings
+  }
+}
+
+function validateLoopMvpGraph(graph: FlowVisualGraph): FlowVisualCompileResult {
+  const errors: FlowVisualCompileIssue[] = []
+  const warnings: FlowVisualCompileIssue[] = []
+  const nodes = graph.nodes || []
+  const edges = graph.edges || []
+
+  if (nodes.length <= 0) {
+    errors.push(createIssue('graph_empty', '流程图不能为空。', 'graph.nodes'))
+    return { ok: false, steps: [], errors, warnings }
+  }
+
+  const nodeIdSet = new Set(nodes.map((n) => String(n.id || '')))
+  for (const edge of edges) {
+    if (!nodeIdSet.has(String(edge.source || ''))) {
+      errors.push(createIssue('edge_missing_source', `连线 ${edge.id} 的 source 节点不存在。`, `graph.edges(${edge.id}).source`))
+    }
+    if (!nodeIdSet.has(String(edge.target || ''))) {
+      errors.push(createIssue('edge_missing_target', `连线 ${edge.id} 的 target 节点不存在。`, `graph.edges(${edge.id}).target`))
+    }
+  }
+  if (errors.length > 0) return { ok: false, steps: [], errors, warnings }
+
+  const adjacency = buildAdjacency(graph)
+  const entries = nodes.filter((node) => (adjacency.degreeMap.get(node.id)?.in || 0) === 0)
+  const exits = nodes.filter((node) => (adjacency.degreeMap.get(node.id)?.out || 0) === 0)
+
+  if (entries.length !== 1) {
+    errors.push(createIssue(
+      'entry_count_invalid',
+      `循环流程要求且仅允许 1 个入口节点，当前为 ${entries.length} 个。`,
+      'graph.nodes'
+    ))
+  }
+
+  if (exits.length <= 0) {
+    errors.push(createIssue(
+      'exit_count_invalid',
+      '循环流程至少需要 1 个出口节点。',
+      'graph.nodes'
+    ))
+  }
+
+  let loopNodeCount = 0
+  for (const node of nodes) {
+    const degree = adjacency.degreeMap.get(node.id) || { in: 0, out: 0 }
+    const kind = resolveNodeStepKind(node)
+
+    if (nodes.length > 1 && degree.in === 0 && degree.out === 0) {
+      errors.push(createIssue(
+        'isolated_node',
+        `节点 ${node.id} 是孤立节点，无法参与执行链路。`,
+        `graph.nodes(${node.id})`
+      ))
+    }
+
+    if (kind === 'loopNode') {
+      loopNodeCount += 1
+      if (degree.out !== 2) {
+        errors.push(createIssue(
+          'loop_out_degree_invalid',
+          `循环节点 ${node.id} 需要且仅允许 2 条输出路径（continue/exit），当前为 ${degree.out}。`,
+          `graph.nodes(${node.id})`
+        ))
+      }
+      const payload = readNodePayload(node)
+      if (normalizeLoopMaxIterations(payload.loopMaxIterations) === null) {
+        errors.push(createIssue(
+          'loop_max_iterations_invalid',
+          `循环节点 ${node.id} 的 maxIterations 必须为正整数。`,
+          `graph.nodes(${node.id}).data.loopMaxIterations`
+        ))
+      }
+      continue
+    }
+
+    if (degree.out > 1) {
+      errors.push(createIssue(
+        'loop_node_required',
+        `节点 ${node.id} 存在 ${degree.out} 条输出路径，需改为 loopNode 节点。`,
+        `graph.nodes(${node.id})`
+      ))
+    }
+  }
+
+  const hasCycle = !validateNoCycle(graph, adjacency)
+  if (hasCycle && loopNodeCount <= 0) {
+    errors.push(createIssue(
+      'cycle_without_loop',
+      '流程图存在环路，但未配置 loopNode 节点。',
+      'graph.edges'
+    ))
+  }
+
+  if (errors.length > 0) return { ok: false, steps: [], errors, warnings }
+
+  const entry = entries[0]
+  const reachableOrder = buildReachableNodeOrder(entry.id, adjacency)
+  if (reachableOrder.length !== nodes.length) {
     errors.push(createIssue(
       'graph_disconnected',
       '流程图不是单一连通链路，存在无法从入口访问的节点。',
@@ -580,6 +726,80 @@ export function compileFlowVisualGraphToBranchMvpSteps(
           passStepId,
           failStepId,
           defaultStepId: failStepId
+        }
+      }
+    }
+
+    steps.push(step)
+  }
+
+  const lint = lintLinearSteps(steps)
+  const warnings = [...validation.warnings, ...lint.warnings]
+  const errors = [...lint.errors]
+  return {
+    ok: errors.length <= 0,
+    steps,
+    errors,
+    warnings
+  }
+}
+
+export function compileFlowVisualGraphToLoopMvpSteps(
+  graph: FlowVisualGraph
+): FlowVisualCompileResult<VisualLoopMvpStep> {
+  const validation = validateLoopMvpGraph(graph)
+  if (!validation.ok) {
+    return {
+      ok: false,
+      steps: [],
+      errors: validation.errors,
+      warnings: validation.warnings
+    }
+  }
+
+  const adjacency = buildAdjacency(graph)
+  const entry = (graph.nodes || []).find((node) => (adjacency.degreeMap.get(node.id)?.in || 0) === 0)
+  if (!entry) {
+    return {
+      ok: false,
+      steps: [],
+      errors: [createIssue('entry_not_found', '未找到入口节点。', 'graph.nodes')],
+      warnings: []
+    }
+  }
+
+  const order = buildReachableNodeOrder(entry.id, adjacency)
+  const idToNode = new Map((graph.nodes || []).map((node) => [node.id, node]))
+  const steps: VisualLoopMvpStep[] = []
+
+  for (const id of order) {
+    const node = idToNode.get(id)
+    if (!node) continue
+
+    const payload = readNodePayload(node)
+    const kind = resolveNodeStepKind(node)
+    const autoNext = normalizeOptionalString(payload.autoNext)
+    const groupId = normalizeOptionalString(payload.groupId)
+    const outgoing = adjacency.outMap.get(id) || []
+
+    const step: VisualLoopMvpStep = {
+      id,
+      kind,
+      autoNext,
+      groupId,
+      nextStepId: outgoing[0]
+    }
+
+    if (kind === 'loopNode') {
+      const maxIterations = normalizeLoopMaxIterations(payload.loopMaxIterations)
+      const continueStepId = outgoing[0]
+      const exitStepId = outgoing[1]
+      if (maxIterations !== null && continueStepId && exitStepId) {
+        step.loop = {
+          maxIterations,
+          continueStepId,
+          exitStepId,
+          defaultStepId: exitStepId
         }
       }
     }

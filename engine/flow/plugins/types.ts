@@ -27,6 +27,7 @@ export type FlowStepConfigField =
   | 'url'
   | 'textSource'
   | 'screenStrategy'
+  | 'maxIterations'
 
 export type FlowStepPluginRenderer = {
   view: string

@@ -1,7 +1,8 @@
-import type { FlowStepBranchProtocol, FlowStepProtocol } from '/types'
+import type { FlowStepBranchProtocol, FlowStepLoopProtocol, FlowStepProtocol } from '/types'
 
 export interface FlowRuntimeState {
   stepIndex: number
+  loopCounters?: Record<string, number>
 }
 
 export type FlowRuntimeEvent =
@@ -49,6 +50,31 @@ function normalizeStepId(v: unknown): string | undefined {
   return normalized || undefined
 }
 
+function normalizeLoopMaxIterations(v: unknown): number | null {
+  const parsed = Number(v)
+  if (!Number.isFinite(parsed)) return null
+  const normalized = Math.floor(parsed)
+  if (normalized <= 0) return null
+  return normalized
+}
+
+function cloneLoopCounters(
+  counters: Record<string, number> | undefined
+): Record<string, number> | undefined {
+  if (!counters || typeof counters !== 'object') return undefined
+  return { ...counters }
+}
+
+function withLoopCounters(
+  stepIndex: number,
+  counters: Record<string, number> | undefined
+): FlowRuntimeState {
+  if (!counters || Object.keys(counters).length <= 0) {
+    return { stepIndex }
+  }
+  return { stepIndex, loopCounters: counters }
+}
+
 function resolveBranchConditionResult(
   branch: FlowStepBranchProtocol,
   context?: FlowRuntimeBranchContext
@@ -87,6 +113,13 @@ function shouldTriggerBranchTransition(step: FlowStepProtocol, eventType: string
   return eventType === autoNext
 }
 
+function shouldTriggerLoopTransition(step: FlowStepProtocol, eventType: string): boolean {
+  if (eventType === 'next') return true
+  const autoNext = normalizeEventType(step.autoNext)
+  if (!autoNext || autoNext === 'tapNext') return false
+  return eventType === autoNext
+}
+
 function buildStepIdIndexMap<TStep extends FlowStepProtocol>(steps: TStep[]): Map<string, number> {
   const map = new Map<string, number>()
   for (let i = 0; i < steps.length; i += 1) {
@@ -101,7 +134,10 @@ function normalizeReducerState(state: FlowRuntimeState | null, current: number, 
   if (!state || typeof state !== 'object') return null
   const raw = typeof state.stepIndex === 'number' ? state.stepIndex : Number.NaN
   if (!Number.isFinite(raw)) return { stepIndex: current }
-  return { stepIndex: clampStep(Math.floor(raw), total) }
+  return withLoopCounters(
+    clampStep(Math.floor(raw), total),
+    cloneLoopCounters(state.loopCounters)
+  )
 }
 
 export function createFlowRuntimeState(initialStep = 0): FlowRuntimeState {
@@ -118,13 +154,14 @@ export function reduceFlowRuntimeStateWithStepReducer<TStep extends FlowStepProt
   const current = clampStep(state.stepIndex, total)
   const active = steps[current] as TStep | undefined
   const eventType = normalizeEventType(event?.type)
+  const counters = cloneLoopCounters(state.loopCounters)
 
   if (event.type === 'goToStep' || eventType === 'goToStep') {
     const target = Number(event.type === 'goToStep' ? event.stepIndex : 0)
-    return { stepIndex: clampStep(target, total) }
+    return withLoopCounters(clampStep(target, total), counters)
   }
-  if (eventType === 'next') return { stepIndex: clampStep(current + 1, total) }
-  if (eventType === 'prev') return { stepIndex: clampStep(current - 1, total) }
+  if (eventType === 'next') return withLoopCounters(clampStep(current + 1, total), counters)
+  if (eventType === 'prev') return withLoopCounters(clampStep(current - 1, total), counters)
 
   const customReducer = typeof resolveStepReducer === 'function' && active
     ? resolveStepReducer(active, current)
@@ -147,14 +184,14 @@ export function reduceFlowRuntimeStateWithStepReducer<TStep extends FlowStepProt
   const autoNext = normalizeEventType(active?.autoNext)
   // "tapNext" means manual navigation; runtime auto events should not advance.
   if (!autoNext || autoNext === 'tapNext') {
-    return { stepIndex: current }
+    return withLoopCounters(current, counters)
   }
 
   if (eventType === autoNext) {
-    return { stepIndex: clampStep(current + 1, total) }
+    return withLoopCounters(clampStep(current + 1, total), counters)
   }
 
-  return { stepIndex: current }
+  return withLoopCounters(current, counters)
 }
 
 export function reduceFlowRuntimeStateWithBranch<TStep extends FlowStepProtocol>(
@@ -167,13 +204,14 @@ export function reduceFlowRuntimeStateWithBranch<TStep extends FlowStepProtocol>
   const current = clampStep(state.stepIndex, total)
   const active = steps[current] as TStep | undefined
   const eventType = normalizeEventType(event?.type)
+  const counters = cloneLoopCounters(state.loopCounters)
 
   if (event.type === 'goToStep' || eventType === 'goToStep') {
     const target = Number(event.type === 'goToStep' ? event.stepIndex : 0)
-    return { stepIndex: clampStep(target, total) }
+    return withLoopCounters(clampStep(target, total), counters)
   }
   if (eventType === 'prev') {
-    return { stepIndex: clampStep(current - 1, total) }
+    return withLoopCounters(clampStep(current - 1, total), counters)
   }
 
   if (active?.branch && shouldTriggerBranchTransition(active, eventType)) {
@@ -183,21 +221,107 @@ export function reduceFlowRuntimeStateWithBranch<TStep extends FlowStepProtocol>
       ? stepIdIndexMap.get(targetStepId)
       : undefined
     if (typeof targetStepIndex === 'number') {
-      return { stepIndex: clampStep(targetStepIndex, total) }
+      return withLoopCounters(clampStep(targetStepIndex, total), counters)
     }
-    return { stepIndex: current }
+    return withLoopCounters(current, counters)
   }
 
-  if (eventType === 'next') return { stepIndex: clampStep(current + 1, total) }
+  if (eventType === 'next') return withLoopCounters(clampStep(current + 1, total), counters)
 
   const autoNext = normalizeEventType(active?.autoNext)
   if (!autoNext || autoNext === 'tapNext') {
-    return { stepIndex: current }
+    return withLoopCounters(current, counters)
   }
   if (eventType === autoNext) {
-    return { stepIndex: clampStep(current + 1, total) }
+    return withLoopCounters(clampStep(current + 1, total), counters)
   }
-  return { stepIndex: current }
+  return withLoopCounters(current, counters)
+}
+
+function resolveLoopTargetStepId(
+  loop: FlowStepLoopProtocol,
+  loopCount: number
+): {
+  shouldContinue: boolean
+  primaryStepId?: string
+  fallbackStepId?: string
+} {
+  const maxIterations = normalizeLoopMaxIterations(loop.maxIterations) || 1
+  const continueStepId = normalizeStepId(loop.continueStepId)
+  const exitStepId = normalizeStepId(loop.exitStepId)
+  const defaultStepId = normalizeStepId(loop.defaultStepId) || exitStepId || continueStepId
+  const shouldContinue = loopCount < maxIterations
+
+  if (shouldContinue) {
+    return {
+      shouldContinue,
+      primaryStepId: continueStepId,
+      fallbackStepId: defaultStepId
+    }
+  }
+
+  return {
+    shouldContinue,
+    primaryStepId: exitStepId || defaultStepId,
+    fallbackStepId: defaultStepId
+  }
+}
+
+export function reduceFlowRuntimeStateWithLoop<TStep extends FlowStepProtocol>(
+  state: FlowRuntimeState,
+  steps: TStep[],
+  event: FlowRuntimeEvent
+): FlowRuntimeState {
+  const total = Array.isArray(steps) ? steps.length : 0
+  const current = clampStep(state.stepIndex, total)
+  const active = steps[current] as TStep | undefined
+  const eventType = normalizeEventType(event?.type)
+  const counters = cloneLoopCounters(state.loopCounters)
+
+  if (event.type === 'goToStep' || eventType === 'goToStep') {
+    const target = Number(event.type === 'goToStep' ? event.stepIndex : 0)
+    return withLoopCounters(clampStep(target, total), counters)
+  }
+  if (eventType === 'prev') {
+    return withLoopCounters(clampStep(current - 1, total), counters)
+  }
+
+  if (active?.loop && shouldTriggerLoopTransition(active, eventType)) {
+    const stepId = normalizeStepId(active.id) || ''
+    const currentLoopCount = stepId
+      ? Math.max(0, Math.floor(Number(counters?.[stepId]) || 0))
+      : 0
+    const target = resolveLoopTargetStepId(active.loop, currentLoopCount)
+    const stepIdIndexMap = buildStepIdIndexMap(steps)
+
+    let targetStepIndex = typeof target.primaryStepId === 'string'
+      ? stepIdIndexMap.get(target.primaryStepId)
+      : undefined
+    if (typeof targetStepIndex !== 'number' && typeof target.fallbackStepId === 'string') {
+      targetStepIndex = stepIdIndexMap.get(target.fallbackStepId)
+    }
+
+    const nextCounters = counters || {}
+    if (stepId && target.shouldContinue) {
+      nextCounters[stepId] = currentLoopCount + 1
+    }
+
+    if (typeof targetStepIndex === 'number') {
+      return withLoopCounters(clampStep(targetStepIndex, total), nextCounters)
+    }
+    return withLoopCounters(current, nextCounters)
+  }
+
+  if (eventType === 'next') return withLoopCounters(clampStep(current + 1, total), counters)
+
+  const autoNext = normalizeEventType(active?.autoNext)
+  if (!autoNext || autoNext === 'tapNext') {
+    return withLoopCounters(current, counters)
+  }
+  if (eventType === autoNext) {
+    return withLoopCounters(clampStep(current + 1, total), counters)
+  }
+  return withLoopCounters(current, counters)
 }
 
 export function reduceFlowRuntimeState<TStep extends FlowStepProtocol>(

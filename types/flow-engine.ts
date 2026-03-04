@@ -28,6 +28,13 @@ export interface FlowStepBranchProtocol {
   defaultStepId?: string
 }
 
+export interface FlowStepLoopProtocol {
+  maxIterations: number
+  continueStepId: string
+  exitStepId: string
+  defaultStepId?: string
+}
+
 export interface FlowStepProtocol {
   id: string
   kind: string
@@ -36,6 +43,7 @@ export interface FlowStepProtocol {
   autoNext?: FlowAutoNextSignal | string
   nextStepId?: string
   branch?: FlowStepBranchProtocol
+  loop?: FlowStepLoopProtocol
   onEnterEffects?: FlowEffectProtocol[]
   onEndEffects?: FlowEffectProtocol[]
 }
