@@ -11,12 +11,31 @@ export interface FlowModuleRef {
 
 export type FlowAutoNextSignal = 'tapNext' | 'audioEnded' | 'countdownEnded' | 'timeEnded'
 
+export type FlowBranchConditionProtocol =
+  | {
+      type: 'score_gte'
+      threshold: number
+    }
+  | {
+      type: string
+      [key: string]: unknown
+    }
+
+export interface FlowStepBranchProtocol {
+  condition: FlowBranchConditionProtocol
+  passStepId: string
+  failStepId: string
+  defaultStepId?: string
+}
+
 export interface FlowStepProtocol {
   id: string
   kind: string
   title?: string
   showTitle?: boolean
   autoNext?: FlowAutoNextSignal | string
+  nextStepId?: string
+  branch?: FlowStepBranchProtocol
   onEnterEffects?: FlowEffectProtocol[]
   onEndEffects?: FlowEffectProtocol[]
 }

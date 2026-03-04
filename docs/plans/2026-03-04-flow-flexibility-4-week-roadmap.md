@@ -22,13 +22,16 @@
 7. Week 3 / Task 7（第一版）：新增流程片段能力（连续选区保存、片段版本化、片段回插），并接入可视流程侧栏；插入时自动尝试继承上下文题组绑定，且保留原有 lint/门禁链路。
 8. Week 3 / Task 8（第一版）：可视画布新增节点右键菜单“从此步预览”，支持按节点启动局部预览并注入最小上下文（题组/题号数/计时状态）；预览面板新增“局部预览模式”标识与退出入口。
 9. Week 3 / Task 9（第一版）：接入批量参数编辑（多选交集属性面板 + 批量 patch API）；批量修改复用同一字段能力约束与编译校验链路，且一次批量应用对应一次撤销历史快照。
+10. Week 4 / Task 10（第一版）：新增 `branchScore` 受控分支 MVP。编译层支持 `compileFlowVisualGraphToBranchMvpSteps`（阈值条件、pass/fail/default 路径、分支合法性校验），运行时新增 `reduceFlowRuntimeStateWithBranch` 按评分上下文执行跳转。
 
 ### 验证结果
 1. `node --test tests/flow-step-plugin-registry.test.mjs tests/flow-modules.test.mjs`：通过。
 2. `node --test tests/flow-visual-snippets.test.mjs tests/flow-visual-history.test.mjs`：通过。
 3. `node --test tests/preview-mode.test.mjs tests/runtime-unified-entry.test.mjs`：通过。
 4. `node --test tests/flow-visual-history.test.mjs tests/flow-profile-routing.test.mjs`：通过。
-5. `npm run test`：184/184 全通过。
+5. `node --test tests/flow-visual-branch-mvp.test.mjs tests/runtime-branch-mvp.test.mjs`：通过。
+6. `node --test tests/flow-visual-compiler.test.mjs tests/flow-engine.test.mjs tests/runtime-unified-entry.test.mjs`：通过。
+7. `npm run test`：190/190 全通过。
 
 ---
 

@@ -1,4 +1,5 @@
 import type {
+  FlowStepBranchProtocol,
   FlowVisualCompileIssue,
   FlowVisualCompileResult,
   FlowVisualGraph
@@ -11,6 +12,11 @@ export type VisualLinearStep = {
   groupId?: string
 }
 
+export type VisualBranchMvpStep = VisualLinearStep & {
+  nextStepId?: string
+  branch?: FlowStepBranchProtocol
+}
+
 type VisualLinearLintResult = {
   errors: FlowVisualCompileIssue[]
   warnings: FlowVisualCompileIssue[]
@@ -20,6 +26,7 @@ type NodePayload = {
   stepKind?: unknown
   autoNext?: unknown
   groupId?: unknown
+  branchScoreThreshold?: unknown
 }
 
 function readNodePayload(node: { data?: unknown }): NodePayload {
@@ -31,6 +38,25 @@ function readNodePayload(node: { data?: unknown }): NodePayload {
 
 function createIssue(code: string, message: string, path: string): FlowVisualCompileIssue {
   return { code, message, path }
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  return normalized || undefined
+}
+
+function resolveNodeStepKind(node: { kind?: unknown; data?: unknown }): string {
+  const payload = readNodePayload(node)
+  const normalized = normalizeOptionalString(payload.stepKind)
+    || normalizeOptionalString(node.kind)
+  return normalized || 'unknown'
+}
+
+function normalizeBranchScoreThreshold(value: unknown): number | null {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, Math.floor(parsed))
 }
 
 const GROUP_BOUND_STEP_KINDS = new Set([
@@ -194,6 +220,148 @@ function validateNoCycle(graph: FlowVisualGraph, adjacency: Adjacency): boolean 
   return visited === (graph.nodes || []).length
 }
 
+function buildTopologicalNodeOrder(graph: FlowVisualGraph, adjacency: Adjacency): string[] {
+  const inDegree = new Map<string, number>()
+  const queue: string[] = []
+  for (const node of graph.nodes || []) {
+    const value = Number(adjacency.degreeMap.get(node.id)?.in || 0)
+    inDegree.set(node.id, value)
+    if (value === 0) queue.push(node.id)
+  }
+
+  const order: string[] = []
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    order.push(current)
+    for (const next of adjacency.outMap.get(current) || []) {
+      const updated = (inDegree.get(next) || 0) - 1
+      inDegree.set(next, updated)
+      if (updated === 0) queue.push(next)
+    }
+  }
+  return order
+}
+
+function validateBranchMvpGraph(graph: FlowVisualGraph): FlowVisualCompileResult {
+  const errors: FlowVisualCompileIssue[] = []
+  const warnings: FlowVisualCompileIssue[] = []
+  const nodes = graph.nodes || []
+  const edges = graph.edges || []
+
+  if (nodes.length <= 0) {
+    errors.push(createIssue('graph_empty', '流程图不能为空。', 'graph.nodes'))
+    return { ok: false, steps: [], errors, warnings }
+  }
+
+  const nodeIdSet = new Set(nodes.map((n) => String(n.id || '')))
+  for (const edge of edges) {
+    if (!nodeIdSet.has(String(edge.source || ''))) {
+      errors.push(createIssue('edge_missing_source', `连线 ${edge.id} 的 source 节点不存在。`, `graph.edges(${edge.id}).source`))
+    }
+    if (!nodeIdSet.has(String(edge.target || ''))) {
+      errors.push(createIssue('edge_missing_target', `连线 ${edge.id} 的 target 节点不存在。`, `graph.edges(${edge.id}).target`))
+    }
+  }
+  if (errors.length > 0) return { ok: false, steps: [], errors, warnings }
+
+  const adjacency = buildAdjacency(graph)
+  const entries = nodes.filter((node) => (adjacency.degreeMap.get(node.id)?.in || 0) === 0)
+  const exits = nodes.filter((node) => (adjacency.degreeMap.get(node.id)?.out || 0) === 0)
+
+  if (entries.length !== 1) {
+    errors.push(createIssue(
+      'entry_count_invalid',
+      `分支流程要求且仅允许 1 个入口节点，当前为 ${entries.length} 个。`,
+      'graph.nodes'
+    ))
+  }
+
+  if (exits.length !== 1) {
+    errors.push(createIssue(
+      'exit_count_invalid',
+      `分支流程要求且仅允许 1 个出口节点，当前为 ${exits.length} 个。`,
+      'graph.nodes'
+    ))
+  }
+
+  for (const node of nodes) {
+    const degree = adjacency.degreeMap.get(node.id) || { in: 0, out: 0 }
+    const kind = resolveNodeStepKind(node)
+
+    if (nodes.length > 1 && degree.in === 0 && degree.out === 0) {
+      errors.push(createIssue(
+        'isolated_node',
+        `节点 ${node.id} 是孤立节点，无法参与执行链路。`,
+        `graph.nodes(${node.id})`
+      ))
+    }
+
+    if (kind === 'branchScore') {
+      if (degree.out !== 2) {
+        errors.push(createIssue(
+          'branch_out_degree_invalid',
+          `分支节点 ${node.id} 需要且仅允许 2 条输出路径，当前为 ${degree.out}。`,
+          `graph.nodes(${node.id})`
+        ))
+      }
+      const payload = readNodePayload(node)
+      if (normalizeBranchScoreThreshold(payload.branchScoreThreshold) === null) {
+        errors.push(createIssue(
+          'branch_threshold_invalid',
+          `分支节点 ${node.id} 的分数阈值无效。`,
+          `graph.nodes(${node.id}).data.branchScoreThreshold`
+        ))
+      }
+      continue
+    }
+
+    if (degree.out > 1) {
+      errors.push(createIssue(
+        'branch_node_required',
+        `节点 ${node.id} 存在 ${degree.out} 条输出路径，需改为 branchScore 节点。`,
+        `graph.nodes(${node.id})`
+      ))
+    }
+  }
+
+  if (!validateNoCycle(graph, adjacency)) {
+    errors.push(createIssue(
+      'cycle_detected',
+      '流程图存在环路，分支 MVP 不支持循环。',
+      'graph.edges'
+    ))
+  }
+
+  if (errors.length > 0) return { ok: false, steps: [], errors, warnings }
+
+  const entry = entries[0]
+  const visited = new Set<string>()
+  const queue: string[] = [entry.id]
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    if (visited.has(current)) continue
+    visited.add(current)
+    for (const next of adjacency.outMap.get(current) || []) {
+      if (!visited.has(next)) queue.push(next)
+    }
+  }
+
+  if (visited.size !== nodes.length) {
+    errors.push(createIssue(
+      'graph_disconnected',
+      '流程图不是单一连通链路，存在无法从入口访问的节点。',
+      'graph.nodes'
+    ))
+  }
+
+  return {
+    ok: errors.length <= 0,
+    steps: [],
+    errors,
+    warnings
+  }
+}
+
 export function validateFlowVisualGraph(graph: FlowVisualGraph): FlowVisualCompileResult {
   const errors: FlowVisualCompileIssue[] = []
   const warnings: FlowVisualCompileIssue[] = []
@@ -343,6 +511,80 @@ export function compileFlowVisualGraphToLinearSteps(
     const next = adjacency.outMap.get(current)?.[0]
     if (!next) break
     current = next
+  }
+
+  const lint = lintLinearSteps(steps)
+  const warnings = [...validation.warnings, ...lint.warnings]
+  const errors = [...lint.errors]
+  return {
+    ok: errors.length <= 0,
+    steps,
+    errors,
+    warnings
+  }
+}
+
+export function compileFlowVisualGraphToBranchMvpSteps(
+  graph: FlowVisualGraph
+): FlowVisualCompileResult<VisualBranchMvpStep> {
+  const validation = validateBranchMvpGraph(graph)
+  if (!validation.ok) {
+    return {
+      ok: false,
+      steps: [],
+      errors: validation.errors,
+      warnings: validation.warnings
+    }
+  }
+
+  const adjacency = buildAdjacency(graph)
+  const idToNode = new Map((graph.nodes || []).map((node) => [node.id, node]))
+  const order = buildTopologicalNodeOrder(graph, adjacency)
+  if (order.length !== (graph.nodes || []).length) {
+    return {
+      ok: false,
+      steps: [],
+      errors: [createIssue('cycle_detected', '流程图存在环路，分支 MVP 不支持循环。', 'graph.edges')],
+      warnings: []
+    }
+  }
+
+  const steps: VisualBranchMvpStep[] = []
+  for (const id of order) {
+    const node = idToNode.get(id)
+    if (!node) continue
+    const payload = readNodePayload(node)
+    const kind = resolveNodeStepKind(node)
+    const autoNext = normalizeOptionalString(payload.autoNext)
+    const groupId = normalizeOptionalString(payload.groupId)
+    const outgoing = adjacency.outMap.get(id) || []
+
+    const step: VisualBranchMvpStep = {
+      id,
+      kind,
+      autoNext,
+      groupId,
+      nextStepId: outgoing[0]
+    }
+
+    if (kind === 'branchScore') {
+      const threshold = normalizeBranchScoreThreshold(payload.branchScoreThreshold)
+      const passStepId = outgoing[0]
+      const failStepId = outgoing[1]
+      if (threshold !== null && passStepId && failStepId) {
+        step.branch = {
+          condition: {
+            type: 'score_gte',
+            threshold
+          },
+          passStepId,
+          failStepId,
+          defaultStepId: failStepId
+        }
+      }
+    }
+
+    steps.push(step)
   }
 
   const lint = lintLinearSteps(steps)
