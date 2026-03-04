@@ -11,6 +11,11 @@ export type VisualLinearStep = {
   groupId?: string
 }
 
+type VisualLinearLintResult = {
+  errors: FlowVisualCompileIssue[]
+  warnings: FlowVisualCompileIssue[]
+}
+
 type NodePayload = {
   stepKind?: unknown
   autoNext?: unknown
@@ -26,6 +31,86 @@ function readNodePayload(node: { data?: unknown }): NodePayload {
 
 function createIssue(code: string, message: string, path: string): FlowVisualCompileIssue {
   return { code, message, path }
+}
+
+const GROUP_BOUND_STEP_KINDS = new Set([
+  'playAudio',
+  'promptTone',
+  'recordGuide',
+  'groupPrompt',
+  'answerChoice'
+])
+
+function lintLinearSteps(steps: VisualLinearStep[]): VisualLinearLintResult {
+  const errors: FlowVisualCompileIssue[] = []
+  const warnings: FlowVisualCompileIssue[] = []
+  if (!Array.isArray(steps) || steps.length <= 0) {
+    errors.push(createIssue('steps_empty', '编译后步骤为空。', 'graph.nodes'))
+    return { errors, warnings }
+  }
+
+  let playAudioCount = 0
+  let answerChoiceCount = 0
+  let countdownCount = 0
+  let firstPlayAudioIndex = -1
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i]
+    const kind = String(step?.kind || '').trim()
+    const path = `graph.nodes(${String(step?.id || '')})`
+    if (!kind) {
+      warnings.push(createIssue('step_kind_empty', `第 ${i + 1} 步未配置步骤类型。`, path))
+      continue
+    }
+
+    if (kind === 'playAudio') {
+      playAudioCount += 1
+      if (firstPlayAudioIndex < 0) firstPlayAudioIndex = i
+    }
+    if (kind === 'answerChoice') answerChoiceCount += 1
+    if (kind === 'countdown') countdownCount += 1
+
+    if (GROUP_BOUND_STEP_KINDS.has(kind) && !String(step.groupId || '').trim()) {
+      warnings.push(createIssue('group_id_missing', `${kind} 建议绑定题组（groupId）以提升运行稳定性。`, path))
+    }
+
+    if (kind === 'countdown') {
+      const prevKind = String(steps[i - 1]?.kind || '')
+      if (i > 0 && prevKind !== 'intro' && prevKind !== 'playAudio') {
+        warnings.push(createIssue('countdown_context_unusual', `第 ${i + 1} 步倒计时前置通常为 intro/playAudio，当前为 ${prevKind || '空'}。`, path))
+      }
+    }
+
+    if (kind === 'promptTone') {
+      const prevKind = String(steps[i - 1]?.kind || '')
+      if (i > 0 && prevKind !== 'recordGuide' && prevKind !== 'answerChoice') {
+        warnings.push(createIssue('prompt_tone_context_unusual', `第 ${i + 1} 步提示音前置通常为 recordGuide/answerChoice，当前为 ${prevKind || '空'}。`, path))
+      }
+    }
+  }
+
+  if (playAudioCount <= 0) {
+    errors.push(createIssue('missing_play_audio', '流程至少需要 1 个播放音频步骤。', 'graph.nodes'))
+  }
+  if (answerChoiceCount <= 0) {
+    errors.push(createIssue('missing_answer_choice', '流程至少需要 1 个答题步骤。', 'graph.nodes'))
+  }
+  if (countdownCount <= 0) {
+    warnings.push(createIssue('missing_countdown', '流程中未配置倒计时步骤。', 'graph.nodes'))
+  }
+
+  if (firstPlayAudioIndex > 0) {
+    for (let i = 0; i < firstPlayAudioIndex; i += 1) {
+      if (String(steps[i]?.kind || '') !== 'answerChoice') continue
+      const step = steps[i]
+      errors.push(createIssue(
+        'answer_before_play_audio',
+        `第 ${i + 1} 步答题步骤出现在首个播放音频步骤之前。`,
+        `graph.nodes(${String(step?.id || '')})`
+      ))
+    }
+  }
+
+  return { errors, warnings }
 }
 
 type Degree = {
@@ -241,10 +326,13 @@ export function compileFlowVisualGraphToLinearSteps(
     current = next
   }
 
+  const lint = lintLinearSteps(steps)
+  const warnings = [...validation.warnings, ...lint.warnings]
+  const errors = [...lint.errors]
   return {
-    ok: true,
+    ok: errors.length <= 0,
     steps,
-    errors: [],
-    warnings: validation.warnings
+    errors,
+    warnings
   }
 }

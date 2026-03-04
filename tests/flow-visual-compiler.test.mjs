@@ -111,3 +111,66 @@ test('flow visual compiler should reject edges pointing to missing nodes', async
   assert.equal(result.ok, false)
   assert.ok(result.errors.some((item) => item.code === 'edge_missing_source'))
 })
+
+test('flow visual compiler should block when core loop steps are missing', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'playAudio', { stepKind: 'playAudio', autoNext: 'audioEnded' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2')
+    ],
+    canvas: { width: 320, height: 200 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph)
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'missing_answer_choice'))
+})
+
+test('flow visual compiler should block answerChoice that appears before first playAudio', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'answerChoice', { stepKind: 'answerChoice', autoNext: 'timeEnded' }),
+      createNode('n3', 'playAudio', { stepKind: 'playAudio', autoNext: 'audioEnded' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2'),
+      createEdge('e2', 'n2', 'n3')
+    ],
+    canvas: { width: 380, height: 260 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph)
+  assert.equal(result.ok, false)
+  assert.ok(result.errors.some((item) => item.code === 'answer_before_play_audio'))
+})
+
+test('flow visual compiler should return stable warning codes for unusual but compilable chains', async () => {
+  const mod = await import('../domain/flow-visual/usecases/compileGraphToSteps.ts')
+  const graph = {
+    nodes: [
+      createNode('n1', 'intro', { stepKind: 'intro' }),
+      createNode('n2', 'playAudio', { stepKind: 'playAudio', autoNext: 'audioEnded' }),
+      createNode('n3', 'promptTone', { stepKind: 'promptTone', autoNext: 'audioEnded' }),
+      createNode('n4', 'answerChoice', { stepKind: 'answerChoice', autoNext: 'timeEnded' })
+    ],
+    edges: [
+      createEdge('e1', 'n1', 'n2'),
+      createEdge('e2', 'n2', 'n3'),
+      createEdge('e3', 'n3', 'n4')
+    ],
+    canvas: { width: 420, height: 300 }
+  }
+
+  const result = mod.compileFlowVisualGraphToLinearSteps(graph)
+  assert.equal(result.ok, true)
+  const warningCodes = result.warnings.map((item) => item.code).sort()
+  assert.ok(warningCodes.includes('group_id_missing'))
+  assert.ok(warningCodes.includes('prompt_tone_context_unusual'))
+  assert.equal(result.errors.length, 0)
+})

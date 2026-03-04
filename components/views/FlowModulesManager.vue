@@ -782,6 +782,24 @@
                     class="flow-visual-detail__line"
                   >步骤 {{ index + 1 }} · {{ item.kind }} · {{ item.autoNext || 'manual' }}</text>
                 </view>
+                <template v-if="readonlyFlowCompileResult.warnings.length > 0">
+                  <text class="flow-visual-compile__status is-warning">编译提醒（{{ readonlyFlowCompileResult.warnings.length }}）</text>
+                  <view class="flow-visual-compile__list">
+                    <view
+                      v-for="item in readonlyFlowCompileResult.warnings.slice(0, 5)"
+                      :key="`warn:${item.code}:${item.path}`"
+                      class="flow-visual-compile__issue is-warning"
+                      :class="{ 'is-locatable': readFlowVisualIssueNodeId(item.path) }"
+                      @click="locateReadonlyFlowVisualIssue(item.path)"
+                    >
+                      <text class="flow-visual-detail__line">{{ item.code }} · {{ item.message }}</text>
+                      <text
+                        v-if="readFlowVisualIssueNodeId(item.path)"
+                        class="flow-visual-compile__issue-action"
+                      >点击定位</text>
+                    </view>
+                  </view>
+                </template>
               </template>
               <template v-else>
                 <text class="flow-visual-compile__status is-error">状态：不可编译（{{ readonlyFlowCompileResult.errors.length }} errors）</text>
@@ -800,6 +818,24 @@
                     >点击定位</text>
                   </view>
                 </view>
+                <template v-if="readonlyFlowCompileResult.warnings.length > 0">
+                  <text class="flow-visual-compile__status is-warning">编译提醒（{{ readonlyFlowCompileResult.warnings.length }}）</text>
+                  <view class="flow-visual-compile__list">
+                    <view
+                      v-for="item in readonlyFlowCompileResult.warnings.slice(0, 5)"
+                      :key="`warn:${item.code}:${item.path}`"
+                      class="flow-visual-compile__issue is-warning"
+                      :class="{ 'is-locatable': readFlowVisualIssueNodeId(item.path) }"
+                      @click="locateReadonlyFlowVisualIssue(item.path)"
+                    >
+                      <text class="flow-visual-detail__line">{{ item.code }} · {{ item.message }}</text>
+                      <text
+                        v-if="readFlowVisualIssueNodeId(item.path)"
+                        class="flow-visual-compile__issue-action"
+                      >点击定位</text>
+                    </view>
+                  </view>
+                </template>
               </template>
             </view>
           </view>
@@ -2552,7 +2588,10 @@ function selectReadonlyFlowVisualNode(id: string) {
 }
 
 function addReadonlyFlowVisualStep(kind: string) {
-  flowVisualEditor.appendNode(kind)
+  const result = flowVisualEditor.appendNode(kind)
+  if (!result.ok) {
+    uni.showToast({ title: result.message, icon: 'none' })
+  }
 }
 
 function reorderReadonlyFlowVisualNode(payload: { sourceId: string; targetId: string; position: 'before' | 'after' }) {
@@ -2560,7 +2599,10 @@ function reorderReadonlyFlowVisualNode(payload: { sourceId: string; targetId: st
 }
 
 function insertReadonlyFlowVisualStepNearNode(payload: { kind: string; targetId: string; position: 'before' | 'after' }) {
-  flowVisualEditor.insertNodeNearTarget(payload.kind, payload.targetId, payload.position)
+  const result = flowVisualEditor.insertNodeNearTarget(payload.kind, payload.targetId, payload.position)
+  if (!result.ok) {
+    uni.showToast({ title: result.message, icon: 'none' })
+  }
 }
 
 function undoReadonlyFlowVisual() {
@@ -2592,9 +2634,15 @@ function onReadonlyFlowVisualDrop(event: Event) {
   // instead of always appending to the end
   const targetInfo = resolveDropTargetFromDragEvent(drag)
   if (targetInfo) {
-    flowVisualEditor.insertNodeNearTarget(kind, targetInfo.nodeId, targetInfo.position)
+    const result = flowVisualEditor.insertNodeNearTarget(kind, targetInfo.nodeId, targetInfo.position)
+    if (!result.ok) {
+      uni.showToast({ title: result.message, icon: 'none' })
+    }
   } else {
-    flowVisualEditor.appendNode(kind)
+    const result = flowVisualEditor.appendNode(kind)
+    if (!result.ok) {
+      uni.showToast({ title: result.message, icon: 'none' })
+    }
   }
   flowVisualDraggingKind.value = ''
 }
@@ -4984,6 +5032,10 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
   color: rgba(220, 38, 38, 0.9);
 }
 
+.flow-visual-compile__status.is-warning {
+  color: rgba(180, 83, 9, 0.9);
+}
+
 .flow-visual-compile__list {
   display: flex;
   flex-direction: column;
@@ -5004,6 +5056,11 @@ function onPreviewSelect(subQuestionId: string, optionKey: string) {
 .flow-visual-compile__issue.is-locatable {
   cursor: pointer;
   border-color: rgba(59, 130, 246, 0.28);
+}
+
+.flow-visual-compile__issue.is-warning {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(255, 251, 235, 0.9);
 }
 
 .flow-visual-compile__issue-action {

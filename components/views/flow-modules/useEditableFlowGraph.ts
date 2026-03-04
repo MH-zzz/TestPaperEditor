@@ -61,6 +61,10 @@ export type FlowLinearConstraintCheck = {
   errorCode: string
 }
 
+export type FlowVisualInsertResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string }
+
 const STENCIL_ITEMS: FlowStencilItem[] = [
   { kind: 'intro', label: '介绍页', color: '#2563eb', category: 'control', categoryLabel: '控制', description: '展示题型介绍与说明', defaultAutoNext: 'tapNext' },
   { kind: 'countdown', label: '倒计时', color: '#f59e0b', category: 'control', categoryLabel: '控制', description: '等待倒计时结束自动推进', defaultAutoNext: 'countdownEnded' },
@@ -332,6 +336,39 @@ function createStencilNode(kind: string, index: number): FlowVisualNode<Editable
   }, index)
 }
 
+function validateStencilInsertion(
+  nodes: FlowVisualNode<EditableFlowNodePayload>[],
+  kind: string,
+  insertIndex: number
+): FlowVisualInsertResult {
+  const nextKind = String(kind || '').trim()
+  const safeInsertIndex = Math.max(0, Math.min(insertIndex, nodes.length))
+  const currentKinds = (nodes || []).map((item) => String(item?.data?.stepKind || item?.kind || ''))
+
+  if (nextKind === 'intro') {
+    const hasIntro = currentKinds.some((item) => item === 'intro')
+    if (hasIntro) {
+      return { ok: false, code: 'intro_duplicate', message: '介绍页步骤只能存在 1 个。' }
+    }
+    if (safeInsertIndex !== 0) {
+      return { ok: false, code: 'intro_must_be_first', message: '介绍页步骤必须放在流程首位。' }
+    }
+  }
+
+  if (nextKind === 'answerChoice') {
+    const hasPlayAudioBefore = currentKinds.slice(0, safeInsertIndex).some((item) => item === 'playAudio')
+    if (!hasPlayAudioBefore) {
+      return { ok: false, code: 'answer_requires_play_audio', message: '答题步骤前至少需要 1 个播放音频步骤。' }
+    }
+  }
+
+  if (nextKind === 'countdown' && safeInsertIndex <= 0) {
+    return { ok: false, code: 'countdown_requires_prev_step', message: '倒计时步骤不能作为首步骤。' }
+  }
+
+  return { ok: true }
+}
+
 function createEditableNodeFromReadonly(
   node: FlowVisualNode<ReadonlyFlowNodePayload>,
   index: number
@@ -466,24 +503,28 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     ensureSelectedNode()
   }
 
-  function appendNode(kind: string) {
+  function appendNode(kind: string): FlowVisualInsertResult {
+    const check = validateStencilInsertion(nodes.value, kind, nodes.value.length)
+    if (!check.ok) return check
     pushHistorySnapshot()
     const next = [...nodes.value, createStencilNode(kind, nodes.value.length)]
     nodes.value = relayoutNodes(next)
     selectedNodeId.value = next[next.length - 1]?.id || ''
     markRecentlyMoved(selectedNodeId.value)
     markDirty('append_node')
+    return { ok: true }
   }
 
-  function insertNodeNearTarget(kind: string, targetNodeId: string, position: FlowNodeDropPosition = 'after') {
+  function insertNodeNearTarget(kind: string, targetNodeId: string, position: FlowNodeDropPosition = 'after'): FlowVisualInsertResult {
     const targetId = String(targetNodeId || '')
     const targetIndex = nodes.value.findIndex((item) => item.id === targetId)
     if (targetIndex < 0) {
-      appendNode(kind)
-      return
+      return appendNode(kind)
     }
-    pushHistorySnapshot()
     const insertIndex = position === 'after' ? targetIndex + 1 : targetIndex
+    const check = validateStencilInsertion(nodes.value, kind, insertIndex)
+    if (!check.ok) return check
+    pushHistorySnapshot()
     const next = [...nodes.value]
     const node = createStencilNode(kind, insertIndex)
     next.splice(insertIndex, 0, node)
@@ -491,6 +532,7 @@ export function useEditableFlowGraph(questionRef: Ref<ListeningChoiceQuestion | 
     selectedNodeId.value = node.id
     markRecentlyMoved(node.id)
     markDirty('insert_node_near_target')
+    return { ok: true }
   }
 
   function patchSelectedNode(patch: FlowVisualNodePatch) {
