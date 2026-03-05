@@ -22,6 +22,7 @@ import type { Question, RenderMode } from '/types'
 import ListeningChoiceRenderer from './ListeningChoiceRenderer.vue'
 import ListeningMatchRenderer from './ListeningMatchRenderer.vue'
 import ListeningFillRenderer from './ListeningFillRenderer.vue'
+import ListeningOrderRenderer from './ListeningOrderRenderer.vue'
 import SpeakingStepsRenderer from './SpeakingStepsRenderer.vue'
 import SpeakingHearAnswerRenderer from './SpeakingHearAnswerRenderer.vue'
 
@@ -97,6 +98,15 @@ const QUESTION_RENDERER_ROUTES: Record<string, RendererRoute> = {
   },
   listening_fill: {
     component: ListeningFillRenderer,
+    resolveProps: (p) => ({
+      data: p.data,
+      mode: p.mode,
+      answers: p.answers,
+      showAnswer: p.showAnswer
+    })
+  },
+  listening_order: {
+    component: ListeningOrderRenderer,
     resolveProps: (p) => ({
       data: p.data,
       mode: p.mode,

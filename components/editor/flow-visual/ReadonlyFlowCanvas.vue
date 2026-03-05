@@ -115,7 +115,6 @@ const legendItems = computed<LegendItem[]>(() => {
 })
 
 function onNodeDragStart(nodeId: string) {
-  console.log('[ReadonlyFlowCanvas] onNodeDragStart', nodeId)
   draggingNodeId.value = String(nodeId || '')
   dropTarget.value = null
   contextMenu.value = null
@@ -132,14 +131,12 @@ function onNodeDragOver(payload: { nodeId: string; position: 'before' | 'after' 
 }
 
 function onNodeDrop(payload: { sourceId: string; targetId: string; position: 'before' | 'after'; flowKind?: string }) {
-  console.log('[ReadonlyFlowCanvas] onNodeDrop', JSON.stringify(payload))
   const sourceId = String(payload?.sourceId || draggingNodeId.value || '')
   const targetId = String(payload?.targetId || '')
   const position = payload?.position === 'after' ? 'after' : 'before'
   const flowKind = String(payload?.flowKind || '')
 
   if (!sourceId && flowKind && targetId) {
-    console.log('[ReadonlyFlowCanvas] -> insert-stencil-near-node', { kind: flowKind, targetId, position })
     emit('insert-stencil-near-node', {
       kind: flowKind,
       targetId,
@@ -150,7 +147,6 @@ function onNodeDrop(payload: { sourceId: string; targetId: string; position: 'be
   }
 
   if (!sourceId || !targetId || sourceId === targetId) {
-    console.log('[ReadonlyFlowCanvas] -> no-op, clearing drag state')
     clearDragState()
     return
   }

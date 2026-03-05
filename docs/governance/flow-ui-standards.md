@@ -114,7 +114,13 @@ Current default prompt-tone audio:
 - `listening_choice`:
   - `docs/question-types/listening-choice-ui-baseline.md`
 - `speaking_hear_answer`:
-  - baseline doc pending (must be added before UI acceptance).
+  - `docs/question-types/speaking-hear-answer-ui-baseline.md`
+- `speaking_steps`:
+  - `docs/question-types/speaking-steps-ui-baseline.md` (accepted; runtime + UI baseline locked for current release)
+- `listening_fill`:
+  - `docs/question-types/listening-fill-ui-baseline.md` (accepted; runtime + UI baseline locked for current release)
+- `listening_match`:
+  - `docs/question-types/listening-match-ui-baseline.md` (accepted; runtime + UI baseline locked for current release)
 
 ## 3. Acceptance Baseline By Type (Current)
 
@@ -123,7 +129,16 @@ Current default prompt-tone audio:
   - UI: accepted (current baseline).
 - `speaking_hear_answer`:
   - flow: accepted;
-  - UI: pending.
+  - UI: accepted (current baseline).
+- `speaking_steps`:
+  - flow: accepted;
+  - UI: accepted (current baseline).
+- `listening_fill`:
+  - flow: accepted;
+  - UI: accepted (current baseline).
+- `listening_match`:
+  - flow: accepted;
+  - UI: accepted (current baseline).
 
 ## 4. When To Update This File
 

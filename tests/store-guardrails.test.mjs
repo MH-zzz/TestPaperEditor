@@ -147,7 +147,6 @@ test('flow editor key files should not regress to any or ts-ignore', async () =>
     'components/views/FlowModulesManager.vue',
     'components/views/flow-modules/useModuleLifecycle.ts',
     'components/views/flow-modules/usePerGroupStepEditor.ts',
-    'components/views/flow-modules/useRouteSimulator.ts',
     'components/views/flow-modules/useReadonlyFlowGraph.ts',
     'components/views/flow-modules/useEditableFlowGraph.ts',
     'domain/flow-module/usecases/validateModuleCommitCrossChecks.ts',

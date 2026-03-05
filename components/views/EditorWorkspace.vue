@@ -176,7 +176,8 @@ import { questionDraft } from '/stores/questionDraft'
 import { flowModules } from '/stores/flowModules'
 import { runtimeDebug } from '/stores/runtimeDebug'
 import { saveQuestionDraft } from '/domain/question/usecases/saveQuestionDraft'
-import { runQuestionFlow, reduceQuestionFlowRuntimeState, type QuestionFlowRuntimeMeta } from '/app/usecases/runQuestionFlow'
+import { runQuestionFlow, reduceQuestionFlowRuntimeState, getQuestionFlowSteps, type QuestionFlowRuntimeMeta } from '/app/usecases/runQuestionFlow'
+import { applyListeningMatchSelection } from '/engine/flow/listening-match/runtime.ts'
 import QuestionEditor from '/components/editor/QuestionEditor.vue'
 import ListeningChoiceFlowPanel from '/components/editor/ListeningChoiceFlowPanel.vue'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
@@ -337,7 +338,7 @@ function getPreviewStepKind(index: number): string {
     return String(question.flow?.steps?.[index]?.kind || '-')
   }
   if (question.type === 'speaking_steps') {
-    return String(question.steps?.[index]?.type || '-')
+    return String(getQuestionFlowSteps(question)[index]?.kind || '-')
   }
   return '-'
 }
@@ -396,27 +397,28 @@ const selectedInteractionId = ref<string>('')
 function resolveTemplate(path: string[]): { templateKey?: TemplateKey; enabled: boolean; reason: string } {
   const root = path[0] || ''
   const leaf = path[path.length - 1] || ''
+  const unsupportedReason = '暂未开放（当前支持：听后选择、听后回答、短文朗读、听后转述、听力填空、听力连线）'
 
   if (root === '听力') {
     if (['单项选择', '多项选择', '情景选择'].includes(leaf)) {
-      return { templateKey: 'listening_choice', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+      return { templateKey: 'listening_choice', enabled: false, reason: unsupportedReason }
     }
-    if (['连线', '图文匹配'].includes(leaf)) return { templateKey: 'listening_match', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
-    if (leaf === '填空') return { templateKey: 'listening_fill', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
-    if (leaf === '排序') return { templateKey: 'listening_order', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
-    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    if (['连线', '图文匹配'].includes(leaf)) return { templateKey: 'listening_match', enabled: true, reason: '' }
+    if (leaf === '填空') return { templateKey: 'listening_fill', enabled: true, reason: '' }
+    if (leaf === '排序') return { templateKey: 'listening_order', enabled: false, reason: unsupportedReason }
+    return { enabled: false, reason: unsupportedReason }
   }
 
   if (root === '听说') {
     // "听后选择"在当前项目中统一走 listening_choice（题型模板 + 题型流程）链路。
     if (leaf === '听后选择') return { templateKey: 'listening_choice', enabled: true, reason: '' }
     if (leaf === '听后回答') return { templateKey: 'speaking_hear_answer', enabled: true, reason: '' }
-    if (leaf === '短文朗读') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
-    if (leaf === '听后转述') return { templateKey: 'speaking_steps', enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
-    return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+    if (leaf === '短文朗读') return { templateKey: 'speaking_steps', enabled: true, reason: '' }
+    if (leaf === '听后转述') return { templateKey: 'speaking_steps', enabled: true, reason: '' }
+    return { enabled: false, reason: unsupportedReason }
   }
 
-  if (root === '笔试') return { enabled: false, reason: '暂未开放（当前仅支持：听后选择、听后回答）' }
+  if (root === '笔试') return { enabled: false, reason: unsupportedReason }
 
   return { enabled: false, reason: '暂不支持' }
 }
@@ -654,55 +656,10 @@ function onPreviewStepChange(index: number) {
   dispatchPreviewRuntime({ type: 'goToStep', stepIndex: index }, 'step')
 }
 
-// 预览选择
-function applyMatchSelection(
-  current: Record<string, string | string[]>,
-  leftId: string,
-  rightId: string,
-  mode: MatchMode
-) {
-  const next = { ...current }
-  const currentValue = next[leftId]
-
-  if (mode === 'one-to-one') {
-    if (!Array.isArray(currentValue) && currentValue === rightId) {
-      delete next[leftId]
-      return next
-    }
-
-    Object.entries(next).forEach(([left, value]) => {
-      if (left === leftId) return
-      if (Array.isArray(value)) {
-        const filtered = value.filter(v => v !== rightId)
-        if (filtered.length === 0) delete next[left]
-        else next[left] = filtered
-      } else if (value === rightId) {
-        delete next[left]
-      }
-    })
-
-    next[leftId] = rightId
-    return next
-  }
-
-  let list: string[] = []
-  if (Array.isArray(currentValue)) list = [...currentValue]
-  else if (currentValue) list = [currentValue]
-
-  const index = list.indexOf(rightId)
-  if (index > -1) list.splice(index, 1)
-  else list.push(rightId)
-
-  if (list.length === 0) delete next[leftId]
-  else next[leftId] = list
-
-  return next
-}
-
 function onPreviewSelect(subId: string, key: string) {
   if (questionData.value?.type === 'listening_match') {
     const mode: MatchMode = questionData.value.matchMode || 'one-to-many'
-    previewAnswers.value = applyMatchSelection(previewAnswers.value, subId, key, mode)
+    previewAnswers.value = applyListeningMatchSelection(previewAnswers.value, subId, key, mode)
     return
   }
 

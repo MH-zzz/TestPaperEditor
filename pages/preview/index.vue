@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import type { ListeningChoiceQuestion, MatchMode, Question, SpeakingHearAnswerQuestion } from '/types'
+import { applyListeningMatchSelection } from '/engine/flow/listening-match/runtime.ts'
 import QuestionRenderer from '/components/renderer/QuestionRenderer.vue'
 import { questionTemplates, generateId } from '/templates'
 import { resolveListeningChoiceQuestion } from '../../engine/flow/listening-choice/binding.ts'
@@ -25,55 +26,10 @@ import { loadCurrentQuestionSnapshot, saveCurrentQuestionSnapshot } from '/infra
 const questionData = ref<Question | null>(null)
 const userAnswers = ref<Record<string, string | string[]>>({})
 
-// 处理选择
-function applyMatchSelection(
-  current: Record<string, string | string[]>,
-  leftId: string,
-  rightId: string,
-  mode: MatchMode
-) {
-  const next = { ...current }
-  const currentValue = next[leftId]
-
-  if (mode === 'one-to-one') {
-    if (!Array.isArray(currentValue) && currentValue === rightId) {
-      delete next[leftId]
-      return next
-    }
-
-    Object.entries(next).forEach(([left, value]) => {
-      if (left === leftId) return
-      if (Array.isArray(value)) {
-        const filtered = value.filter(v => v !== rightId)
-        if (filtered.length === 0) delete next[left]
-        else next[left] = filtered
-      } else if (value === rightId) {
-        delete next[left]
-      }
-    })
-
-    next[leftId] = rightId
-    return next
-  }
-
-  let list: string[] = []
-  if (Array.isArray(currentValue)) list = [...currentValue]
-  else if (currentValue) list = [currentValue]
-
-  const index = list.indexOf(rightId)
-  if (index > -1) list.splice(index, 1)
-  else list.push(rightId)
-
-  if (list.length === 0) delete next[leftId]
-  else next[leftId] = list
-
-  return next
-}
-
 function handleSelect(subQuestionId: string, optionKey: string) {
   if (questionData.value?.type === 'listening_match') {
     const mode: MatchMode = questionData.value.matchMode || 'one-to-many'
-    userAnswers.value = applyMatchSelection(userAnswers.value, subQuestionId, optionKey, mode)
+    userAnswers.value = applyListeningMatchSelection(userAnswers.value, subQuestionId, optionKey, mode)
     return
   }
 

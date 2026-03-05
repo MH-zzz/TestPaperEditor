@@ -1,5 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { FlowVisualEdge, FlowVisualGraph, FlowVisualNode, ListeningChoiceQuestion } from '/types'
+import { deepClone } from '/utils/deepClone'
 import {
   compileFlowVisualGraphToLinearSteps,
   type ResolveFlowMacroSnippet
@@ -830,6 +831,8 @@ export function useEditableFlowGraph(
   const historyFuture = ref<FlowVisualNode<EditableFlowNodePayload>[][]>([])
   const HISTORY_LIMIT = 40
   let movedTimer: ReturnType<typeof setTimeout> | null = null
+  let signatureErrorLogged = false
+  let loadErrorLogged = false
 
   function markDirty(action: string) {
     dirty.value = true
@@ -868,7 +871,7 @@ export function useEditableFlowGraph(
   }
 
   function cloneNodes(source: FlowVisualNode<EditableFlowNodePayload>[]): FlowVisualNode<EditableFlowNodePayload>[] {
-    return JSON.parse(JSON.stringify(source || [])) as FlowVisualNode<EditableFlowNodePayload>[]
+    return deepClone(source || [])
   }
 
   function pushHistorySnapshot() {
@@ -883,12 +886,24 @@ export function useEditableFlowGraph(
   }
 
   function loadFromQuestion(question: ListeningChoiceQuestion | null | undefined) {
-    const graph = buildListeningChoiceReadonlyFlowGraph(question)
-    const nextNodes = (graph.nodes || []).map((item, index) => createEditableNodeFromReadonly(item, index))
-    nodes.value = relayoutNodes(nextNodes)
-    resetHistory()
-    markClean('load_from_question')
-    ensureSelectedNode()
+    try {
+      const graph = buildListeningChoiceReadonlyFlowGraph(question)
+      const nextNodes = (graph.nodes || []).map((item, index) => createEditableNodeFromReadonly(item, index))
+      nodes.value = relayoutNodes(nextNodes)
+      resetHistory()
+      markClean('load_from_question')
+      ensureSelectedNode()
+      loadErrorLogged = false
+    } catch (error) {
+      if (!loadErrorLogged) {
+        console.error('[useEditableFlowGraph] failed to load graph from question', error)
+        loadErrorLogged = true
+      }
+      nodes.value = []
+      resetHistory()
+      markClean('load_from_question_failed')
+      ensureSelectedNode()
+    }
   }
 
   function reloadFromQuestion() {
@@ -901,7 +916,21 @@ export function useEditableFlowGraph(
     markClean('clear_dirty')
   }
 
-  watch(() => buildStepSignature(questionRef.value), (signature) => {
+  function readStepSignatureSafely(): string {
+    try {
+      const signature = buildStepSignature(questionRef.value)
+      signatureErrorLogged = false
+      return signature
+    } catch (error) {
+      if (!signatureErrorLogged) {
+        console.error('[useEditableFlowGraph] failed to read question step signature', error)
+        signatureErrorLogged = true
+      }
+      return ''
+    }
+  }
+
+  watch(() => readStepSignatureSafely(), (signature) => {
     if (signature === lastQuestionSignature.value && nodes.value.length > 0) return
     if (dirty.value) return
     lastQuestionSignature.value = signature

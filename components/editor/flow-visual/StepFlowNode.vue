@@ -106,7 +106,6 @@ function resolveDropPosition(event: Event): FlowNodeDropPosition {
 
 function onDragOver(event: Event) {
   if (!props.reorderable) return
-  console.log('[StepFlowNode] onDragOver', props.node.id)
   emit('drag-over', {
     nodeId: props.node.id,
     position: resolveDropPosition(event)
@@ -118,7 +117,6 @@ function onDrop(event: Event) {
   const drag = event as DragEvent
   const sourceId = String(drag.dataTransfer?.getData('text/flow-node-id') || '')
   const flowKind = String(drag.dataTransfer?.getData('text/flow-kind') || '')
-  console.log('[StepFlowNode] onDrop', { sourceId, flowKind, targetId: props.node.id })
   emit('drop-on-node', {
     sourceId,
     targetId: props.node.id,

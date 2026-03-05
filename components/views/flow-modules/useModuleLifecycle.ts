@@ -6,6 +6,7 @@ import type {
   ListeningChoiceFlowModuleV1
 } from '/types'
 import { flowModules } from '/stores/flowModules'
+import { deepClone } from '/utils/deepClone'
 import {
   type FlowModulePublishLogRecord,
   loadFlowModulePublishLogs as loadFlowModulePublishLogsFromRepository,
@@ -42,7 +43,7 @@ export type ModuleCommitValidationResult = {
 }
 
 function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v))
+  return deepClone(v)
 }
 
 function nowIso() {

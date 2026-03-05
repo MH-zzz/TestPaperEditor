@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import type { FlowRoutingContext, QuestionFlowRuntimeMeta } from '/app/usecases/runQuestionFlow'
+import { deepClone } from '/utils/deepClone'
 
 const MAX_EVENTS_PER_SESSION = 300
 
@@ -9,7 +10,7 @@ export type RuntimeDebugEvent = {
   time: string
   type: string
   message: string
-  payload?: any
+  payload?: unknown
 }
 
 export type RuntimeDebugSessionMeta = {
@@ -23,7 +24,7 @@ export type RuntimeDebugSessionMeta = {
   moduleVersionText?: string
   moduleNote?: string
   ctx?: FlowRoutingContext
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export type RuntimeDebugSession = {
@@ -44,10 +45,6 @@ function formatTime(ts: number): string {
 
 function makeEventId(): string {
   return `trace_${Date.now()}_${Math.floor(Math.random() * 100000)}`
-}
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value))
 }
 
 function mergeMeta(
@@ -178,7 +175,7 @@ class RuntimeDebugStore {
 
   record(
     sessionId: string,
-    event: { type: string; message: string; payload?: any }
+    event: { type: string; message: string; payload?: unknown }
   ): RuntimeDebugEvent | null {
     if (!this.state.enabled) return null
 
@@ -213,7 +210,7 @@ class RuntimeDebugStore {
 
     return {
       exportedAt: nowIso(),
-      session: clone(session)
+      session: deepClone(session)
     }
   }
 

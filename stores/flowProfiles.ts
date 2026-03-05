@@ -2,12 +2,8 @@ import { reactive } from 'vue'
 import type { FlowProfileV1, QuestionType } from '/types'
 import { LISTENING_CHOICE_STANDARD_FLOW_ID } from '../flows/listeningChoiceFlowModules'
 import {
-  canSubmitFlowProfiles,
-  diagnoseFlowProfileRules,
   scoreProfiles,
   type FlowRoutingCtx,
-  type FlowProfileDiagnostics,
-  type FlowProfileSubmitValidation,
   type FlowProfileScoreResult
 } from '/domain/flow-profile/usecases/scoreProfiles'
 import { parseFlowProfilesStoragePayloadStrict } from '../domain/schemas/runtimeBoundarySchemas.ts'
@@ -159,34 +155,15 @@ class FlowProfilesStore {
     return scoreProfiles(list, ctx || {}, options)
   }
 
-  diagnose(questionType: QuestionType): FlowProfileDiagnostics {
-    const list = this.listByQuestionType(questionType)
-    return diagnoseFlowProfileRules(list)
-  }
-
-  validateBeforeSubmit(questionType: QuestionType): FlowProfileSubmitValidation {
-    const list = this.listByQuestionType(questionType)
-    return canSubmitFlowProfiles(list)
-  }
-
   upsertWithDiagnostics(profileInput: unknown) {
     const inputRecord = isObjectRecord(profileInput) ? profileInput : {}
     const profile = normalizeProfile({ ...inputRecord, updatedAt: nowIso() })
     const next = this.buildNextProfilesWithUpsert(profile)
-    const nextQuestionTypeProfiles = next.filter(p => p.questionType === profile.questionType)
-    const validation = canSubmitFlowProfiles(nextQuestionTypeProfiles)
-    if (!validation.ok) {
-      return {
-        ok: false,
-        profile,
-        validation
-      }
-    }
     this.commitProfiles(next, { id: profile.id })
     return {
       ok: true,
       profile,
-      validation
+      validation: null
     }
   }
 
@@ -200,22 +177,11 @@ class FlowProfilesStore {
       }
     }
 
-    const questionType = removed.target?.questionType || 'listening_choice'
-    const nextQuestionTypeProfiles = removed.next.filter(p => p.questionType === questionType)
-    const validation = canSubmitFlowProfiles(nextQuestionTypeProfiles)
-    if (!validation.ok) {
-      return {
-        ok: false,
-        reason: 'diagnostics_failed',
-        validation
-      }
-    }
-
     this.commitProfiles(removed.next, { id, removed: true })
     return {
       ok: true,
       reason: '',
-      validation
+      validation: null
     }
   }
 

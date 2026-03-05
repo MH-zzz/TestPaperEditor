@@ -1,7 +1,8 @@
 import type { Question } from '/types'
 import {
   parseFlowExportPackageV2Strict,
-  parseQuestionSnapshotListStrict
+  parseQuestionSnapshotListStrict,
+  type ParsedFlowExportPackageV2
 } from '../../domain/schemas/runtimeBoundarySchemas.ts'
 
 const LOCAL_LEARNING_QUESTIONS_PATHS = [
@@ -17,6 +18,33 @@ const LOCAL_LEARNING_FLOWS_PATHS = [
 const APP_PLUS_LOCAL_LEARNING_QUESTIONS_PATH = '_www/static/local-learning/questions.json'
 const APP_PLUS_LOCAL_LEARNING_FLOWS_PATH = '_www/static/local-learning/flows.json'
 
+type DocumentLike = {
+  addEventListener: (event: string, callback: () => void) => void
+  removeEventListener: (event: string, callback: () => void) => void
+}
+
+type PlusFileEntryLike = {
+  file: (success: (file: unknown) => void, fail?: (err: unknown) => void) => void
+}
+
+type PlusFileReaderLike = {
+  result?: unknown
+  onloadend: null | (() => void)
+  onerror: null | ((err: unknown) => void)
+  readAsText: (file: unknown, encoding?: string) => void
+}
+
+type PlusFileReaderCtor = new () => PlusFileReaderLike
+
+type PlusIoLike = {
+  resolveLocalFileSystemURL: (
+    filePath: string,
+    onSuccess: (entry: PlusFileEntryLike) => void,
+    onFail: (err: unknown) => void
+  ) => void
+  FileReader?: PlusFileReaderCtor
+}
+
 function safeJsonParse(raw: string): unknown {
   try {
     return JSON.parse(raw)
@@ -29,18 +57,34 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+function readDocumentLike(): DocumentLike | null {
+  const doc = (globalThis as { document?: unknown }).document
+  if (!isObjectRecord(doc)) return null
+  if (typeof doc.addEventListener !== 'function') return null
+  if (typeof doc.removeEventListener !== 'function') return null
+  return doc as DocumentLike
+}
+
+function readPlusIo(): PlusIoLike | null {
+  const plusObj = (globalThis as { plus?: unknown }).plus
+  if (!isObjectRecord(plusObj)) return null
+  const io = plusObj.io
+  if (!isObjectRecord(io)) return null
+  if (typeof io.resolveLocalFileSystemURL !== 'function') return null
+  return io as PlusIoLike
+}
+
 function normalizeJsonPayload(raw: unknown): unknown {
   if (typeof raw === 'string') return safeJsonParse(raw)
   return raw
 }
 
 async function waitForPlusReady(timeoutMs = 1500): Promise<void> {
-  const plusObj = (globalThis as any)?.plus
-  if (plusObj?.io) return
+  if (readPlusIo()) return
 
   await new Promise<void>((resolve, reject) => {
-    const doc = (globalThis as any)?.document
-    if (!doc || typeof doc.addEventListener !== 'function') {
+    const doc = readDocumentLike()
+    if (!doc) {
       reject(new Error('APP-PLUS runtime unavailable'))
       return
     }
@@ -69,23 +113,22 @@ async function readAppPlusLocalJson(filePath: string): Promise<unknown> {
   await waitForPlusReady()
 
   return new Promise((resolve, reject) => {
-    const plusObj = (globalThis as any)?.plus
-    const io = plusObj?.io
-    if (!io || typeof io.resolveLocalFileSystemURL !== 'function') {
+    const io = readPlusIo()
+    if (!io) {
       reject(new Error('APP-PLUS local filesystem unavailable'))
       return
     }
 
     io.resolveLocalFileSystemURL(
       filePath,
-      (entry: any) => {
+      (entry) => {
         if (!entry || typeof entry.file !== 'function') {
           reject(new Error(`Invalid local entry: ${filePath}`))
           return
         }
 
         entry.file(
-          (file: any) => {
+          (file) => {
             const ReaderCtor = io.FileReader
             if (typeof ReaderCtor !== 'function') {
               reject(new Error('APP-PLUS FileReader unavailable'))
@@ -165,7 +208,7 @@ export async function loadLocalLearningQuestions<TQuestion extends Question = Qu
   return parsed.questions as TQuestion[]
 }
 
-export async function loadLocalLearningFlows<TFlowPack extends Record<string, unknown> = Record<string, unknown>>(): Promise<TFlowPack> {
+export async function loadLocalLearningFlows(): Promise<ParsedFlowExportPackageV2> {
   const payload = await requestJsonWithFallback(
     LOCAL_LEARNING_FLOWS_PATHS,
     APP_PLUS_LOCAL_LEARNING_FLOWS_PATH
@@ -174,5 +217,5 @@ export async function loadLocalLearningFlows<TFlowPack extends Record<string, un
   if (!parsed.ok) {
     throw new Error(`本地学习流程包数据不合法：${parsed.error}`)
   }
-  return parsed.pack as unknown as TFlowPack
+  return parsed.pack
 }

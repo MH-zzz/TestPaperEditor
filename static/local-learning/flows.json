@@ -1,11 +1,60 @@
 {
-  "exportedAt": "2026-03-03T08:25:59.779Z",
+  "exportedAt": "2026-03-05T07:01:11.119Z",
   "schemaVersion": 2,
   "exportCapabilities": {
     "branchNodeMvp": true,
     "loopNodeMvp": true
   },
   "listeningChoiceModules": [
+    {
+      "kind": "listening_choice",
+      "id": "listening_choice.standard.v1",
+      "version": 1,
+      "name": "听后选择-标准",
+      "status": "published",
+      "introShowTitle": true,
+      "introShowTitleDescription": true,
+      "introShowDescription": true,
+      "introCountdownEnabled": false,
+      "introCountdownShowTitle": true,
+      "introCountdownSeconds": 3,
+      "introCountdownLabel": "准备",
+      "perGroupSteps": [
+        {
+          "kind": "playAudio",
+          "showTitle": true,
+          "audioSource": "description",
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "countdown",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "seconds": 10,
+          "label": "准备"
+        },
+        {
+          "kind": "playAudio",
+          "showTitle": true,
+          "audioSource": "content",
+          "repeatGapSeconds": 3,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        },
+        {
+          "kind": "answerChoice",
+          "showTitle": true,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": true
+        }
+      ],
+      "createdAt": "2026-02-26T03:05:37.764Z",
+      "updatedAt": "2026-03-05T02:55:14.515Z"
+    },
     {
       "kind": "listening_choice",
       "id": "listening_hear_answer.standard.v1",
@@ -44,6 +93,17 @@
           "showGroupPrompt": true
         },
         {
+          "kind": "recordGuide",
+          "showTitle": false,
+          "showQuestionTitle": true,
+          "showQuestionTitleDescription": true,
+          "showGroupPrompt": false,
+          "textSource": "question",
+          "audioSource": "question",
+          "url": "",
+          "screenStrategy": "replaceBody"
+        },
+        {
           "kind": "promptTone",
           "showTitle": false,
           "url": "/static/audio/开始录音.mp3"
@@ -62,56 +122,7 @@
         }
       ],
       "createdAt": "2026-03-02T04:31:47.224Z",
-      "updatedAt": "2026-03-03T08:07:37.343Z"
-    },
-    {
-      "kind": "listening_choice",
-      "id": "listening_choice.standard.v1",
-      "version": 1,
-      "name": "听后选择-标准",
-      "status": "published",
-      "introShowTitle": true,
-      "introShowTitleDescription": true,
-      "introShowDescription": true,
-      "introCountdownEnabled": false,
-      "introCountdownShowTitle": true,
-      "introCountdownSeconds": 3,
-      "introCountdownLabel": "准备",
-      "perGroupSteps": [
-        {
-          "kind": "playAudio",
-          "showTitle": false,
-          "audioSource": "description",
-          "showQuestionTitle": true,
-          "showQuestionTitleDescription": true,
-          "showGroupPrompt": true
-        },
-        {
-          "kind": "countdown",
-          "showTitle": true,
-          "showQuestionTitle": true,
-          "seconds": 30,
-          "label": "准备"
-        },
-        {
-          "kind": "playAudio",
-          "showTitle": false,
-          "audioSource": "content",
-          "repeatGapSeconds": 3,
-          "showQuestionTitle": true,
-          "showQuestionTitleDescription": true,
-          "showGroupPrompt": true
-        },
-        {
-          "kind": "answerChoice",
-          "showTitle": false,
-          "showQuestionTitle": true,
-          "showQuestionTitleDescription": true,
-          "showGroupPrompt": true
-        }
-      ],
-      "createdAt": "2026-02-26T03:05:37.764Z",
-      "updatedAt": "2026-03-02T08:32:23.679Z"
+      "updatedAt": "2026-03-03T09:36:40.080Z"
     },
     {
       "kind": "listening_choice",
@@ -174,21 +185,7 @@
       "enabled": true,
       "note": "听后选择默认流程",
       "createdAt": "2026-02-11T09:19:21.346Z",
-      "updatedAt": "2026-02-26T03:53:10.797Z"
-    },
-    {
-      "id": "profile:listening_choice:region:%E5%8C%97%E4%BA%AC",
-      "questionType": "listening_choice",
-      "region": "北京",
-      "module": {
-        "id": "listening_choice.line.1772077827774",
-        "version": 1
-      },
-      "priority": 10,
-      "enabled": true,
-      "note": "北京地区流程",
-      "createdAt": "2026-02-26T03:33:21.818Z",
-      "updatedAt": "2026-02-26T03:53:10.797Z"
+      "updatedAt": "2026-03-05T02:23:18.947Z"
     }
   ],
   "publishLogs": []

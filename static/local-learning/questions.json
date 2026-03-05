@@ -5,7 +5,7 @@
     "metadata": {
       "questionVariant": "hear_answer",
       "tags": [],
-      "updatedAt": "2026/3/3 16:24:20"
+      "updatedAt": "2026/3/3 17:29:03"
     },
     "content": {
       "intro": {
@@ -68,9 +68,37 @@
                     "text": "Who is the boy talking to on the phone?"
                   }
                 ]
+              },
+              "recordGuideText": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "下面请准备录音,听到录音提示音后,再10秒内完成作答",
+                    "marks": []
+                  }
+                ]
+              },
+              "recordGuideAudio": {
+                "url": "/static/audio/听后回答-下面请准备录音,听到录音提示音后,再10秒内完成作答.mp3",
+                "playCount": 1
               }
             }
-          ]
+          ],
+          "recordGuideText": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "下面请准备录音,听到录音提示音后,再10秒内完成作答",
+                "marks": []
+              }
+            ]
+          },
+          "recordGuideAudio": {
+            "url": "/static/audio/听后回答-下面请准备录音,听到录音提示音后,再10秒内完成作答.mp3",
+            "playCount": 1
+          }
         },
         {
           "id": "1772525795990_rz0lmx1n0",
@@ -108,6 +136,20 @@
                     "text": "How often should the girl water the plant?"
                   }
                 ]
+              },
+              "recordGuideText": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "下面请准备录音,听到录音提示音后,再10秒内完成作答",
+                    "marks": []
+                  }
+                ]
+              },
+              "recordGuideAudio": {
+                "url": "/static/audio/听后回答-下面请准备录音,听到录音提示音后,再10秒内完成作答.mp3",
+                "playCount": 1
               }
             },
             {
@@ -121,9 +163,37 @@
                     "text": "What will the speakers do next?"
                   }
                 ]
+              },
+              "recordGuideText": {
+                "type": "richtext",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "下面请准备录音,听到录音提示音后,再10秒内完成作答",
+                    "marks": []
+                  }
+                ]
+              },
+              "recordGuideAudio": {
+                "url": "/static/audio/听后回答-下面请准备录音,听到录音提示音后,再10秒内完成作答.mp3",
+                "playCount": 1
               }
             }
-          ]
+          ],
+          "recordGuideAudio": {
+            "url": "/static/audio/听后回答-下面请准备录音,听到录音提示音后,再10秒内完成作答.mp3",
+            "playCount": 1
+          },
+          "recordGuideText": {
+            "type": "richtext",
+            "content": [
+              {
+                "type": "text",
+                "text": "下面请准备录音,听到录音提示音后,再10秒内完成作答",
+                "marks": []
+              }
+            ]
+          }
         }
       ]
     },
@@ -138,7 +208,7 @@
       },
       "steps": [
         {
-          "id": "1772526260963_5i6o58nig",
+          "id": "1772530143030_wpvghn7r1",
           "kind": "intro",
           "showTitle": true,
           "showTitleDescription": true,
@@ -146,7 +216,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_57ptngz5u",
+          "id": "1772530143030_dcu2maq0a",
           "kind": "playAudio",
           "groupId": "1772525795990_dxyw8g1mp",
           "audioSource": "description",
@@ -158,7 +228,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_6yfi8763s",
+          "id": "1772530143030_v559hh0hg",
           "kind": "countdown",
           "showTitle": false,
           "showQuestionTitle": true,
@@ -167,7 +237,7 @@
           "autoNext": "countdownEnded"
         },
         {
-          "id": "1772526260963_ap1dgwdu2",
+          "id": "1772530143030_cbvbzoqhd",
           "kind": "playAudio",
           "groupId": "1772525795990_dxyw8g1mp",
           "audioSource": "content",
@@ -179,7 +249,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_m5jha2wvt",
+          "id": "1772530143030_qnac2cb8f",
           "kind": "countdown",
           "showTitle": false,
           "showQuestionTitle": true,
@@ -188,7 +258,7 @@
           "autoNext": "countdownEnded"
         },
         {
-          "id": "1772526260963_xki51332m",
+          "id": "1772530143030_qfadymm17",
           "kind": "playAudio",
           "groupId": "1772525795990_dxyw8g1mp",
           "audioSource": "content",
@@ -200,7 +270,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_yuegudkfa",
+          "id": "1772530143030_7lktjhkv0",
           "kind": "promptTone",
           "groupId": "1772525795990_dxyw8g1mp",
           "showTitle": false,
@@ -208,12 +278,13 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_4gyshgpcj",
+          "id": "1772530143030_b9gxn4hsf",
           "kind": "answerChoice",
           "groupId": "1772525795990_dxyw8g1mp",
           "questionIds": [
             "1772525795990_kabytgyx6"
           ],
+          "answerSeconds": 10,
           "showTitle": false,
           "showQuestionTitle": true,
           "showQuestionTitleDescription": true,
@@ -221,7 +292,7 @@
           "autoNext": "timeEnded"
         },
         {
-          "id": "1772526260963_ma0mftoeu",
+          "id": "1772530143030_k7r9x0ggr",
           "kind": "promptTone",
           "groupId": "1772525795990_dxyw8g1mp",
           "showTitle": false,
@@ -229,7 +300,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_t9oarytmh",
+          "id": "1772530143030_n7r9dd7pb",
           "kind": "playAudio",
           "groupId": "1772525795990_rz0lmx1n0",
           "audioSource": "description",
@@ -241,7 +312,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_04f38174q",
+          "id": "1772530143030_jsh0waddn",
           "kind": "countdown",
           "showTitle": false,
           "showQuestionTitle": true,
@@ -250,7 +321,7 @@
           "autoNext": "countdownEnded"
         },
         {
-          "id": "1772526260963_rf8fju00v",
+          "id": "1772530143030_7gzzc48k9",
           "kind": "playAudio",
           "groupId": "1772525795990_rz0lmx1n0",
           "audioSource": "content",
@@ -262,7 +333,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_iwyrc7zmd",
+          "id": "1772530143030_vsa7d2wtd",
           "kind": "countdown",
           "showTitle": false,
           "showQuestionTitle": true,
@@ -271,7 +342,7 @@
           "autoNext": "countdownEnded"
         },
         {
-          "id": "1772526260963_b04ljov1k",
+          "id": "1772530143030_9iz5tjvs7",
           "kind": "playAudio",
           "groupId": "1772525795990_rz0lmx1n0",
           "audioSource": "content",
@@ -283,7 +354,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_a34pp5nri",
+          "id": "1772530143030_uhfbmrzo3",
           "kind": "promptTone",
           "groupId": "1772525795990_rz0lmx1n0",
           "showTitle": false,
@@ -291,12 +362,13 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_qogzhuu33",
+          "id": "1772530143030_v6pmuef08",
           "kind": "answerChoice",
           "groupId": "1772525795990_rz0lmx1n0",
           "questionIds": [
             "1772525795990_6fcys18l4"
           ],
+          "answerSeconds": 10,
           "showTitle": false,
           "showQuestionTitle": true,
           "showQuestionTitleDescription": true,
@@ -304,7 +376,7 @@
           "autoNext": "timeEnded"
         },
         {
-          "id": "1772526260963_lia6rpwzz",
+          "id": "1772530143030_6blgswf5z",
           "kind": "promptTone",
           "groupId": "1772525795990_rz0lmx1n0",
           "showTitle": false,
@@ -312,7 +384,7 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_ppl4x7bda",
+          "id": "1772530143030_ubk9weahi",
           "kind": "promptTone",
           "groupId": "1772525795990_rz0lmx1n0",
           "showTitle": false,
@@ -320,12 +392,13 @@
           "autoNext": "audioEnded"
         },
         {
-          "id": "1772526260963_t8tf2h3ej",
+          "id": "1772530143030_ksqw8gk8w",
           "kind": "answerChoice",
           "groupId": "1772525795990_rz0lmx1n0",
           "questionIds": [
             "1772525795990_g3w324e3f"
           ],
+          "answerSeconds": 10,
           "showTitle": false,
           "showQuestionTitle": true,
           "showQuestionTitleDescription": true,
@@ -333,7 +406,7 @@
           "autoNext": "timeEnded"
         },
         {
-          "id": "1772526260963_1kqs4opvr",
+          "id": "1772530143030_7d6rbanq5",
           "kind": "promptTone",
           "groupId": "1772525795990_rz0lmx1n0",
           "showTitle": false,
@@ -347,6 +420,10 @@
   {
     "id": "1772506420111_8ayb4d2js",
     "type": "listening_choice",
+    "metadata": {
+      "tags": [],
+      "updatedAt": "2026/3/3 14:18:13"
+    },
     "optionStyle": "ABCD",
     "content": {
       "intro": {
@@ -809,10 +886,6 @@
           "autoNext": "timeEnded"
         }
       ]
-    },
-    "metadata": {
-      "tags": [],
-      "updatedAt": "2026/3/3 14:18:13"
     }
   }
 ]

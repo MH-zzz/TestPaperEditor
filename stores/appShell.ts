@@ -1,10 +1,9 @@
 import { reactive } from 'vue'
 
-export type AppModule = 'editor' | 'learning' | 'templates' | 'flows' | 'tags' | 'library'
+export type AppModule = 'editor' | 'learning' | 'flows' | 'tags' | 'library'
 
 function normalizeModule(v: string): AppModule {
   if (v === 'learning') return 'learning'
-  if (v === 'templates') return 'templates'
   if (v === 'flows') return 'flows'
   if (v === 'tags') return 'tags'
   if (v === 'library') return 'library'

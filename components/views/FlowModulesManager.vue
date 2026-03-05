@@ -13,18 +13,17 @@
             <text class="back__text">返回</text>
           </view>
           <view class="header-titles">
-            <text class="title">{{ activeFlowDisplayName }}</text>
-            <text class="subtitle">{{ activeFlowSubtitle }}</text>
+            <text class="title">{{ activeFlowDisplayName || '题型流程' }}</text>
+            <text class="subtitle">{{ activeFlowSubtitle || '按题型维护流程规则' }}</text>
           </view>
         </template>
       </view>
 
       <view class="header-right">
         <template v-if="page !== 'home'">
-          <button class="btn btn-outline btn-sm" @click="toggleResearchEditorMode">{{ researchEditorModeSwitchText }}</button>
-          <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
+          <button class="btn btn-outline btn-sm" @click="applyStandardToCurrentQuestion">套用标准到当前题目</button>
           <button class="btn btn-outline btn-sm" @click="showPublishLogs">发布日志</button>
-          <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
+          <button class="btn btn-outline btn-sm" @click="resetStandard">恢复默认</button>
           <button class="btn btn-primary btn-sm" :disabled="!canSaveCurrentStandard" @click="updateCurrentFlowLine">更新当前流程线</button>
         </template>
       </view>
@@ -95,12 +94,14 @@
               </view>
               <view class="panel__body panel__body--template">
                 <ListeningChoiceEditor
+                  v-if="isListeningChoiceEditorReady"
                   v-model="demoBase"
                   :preview-step-index="currentStepIndex"
                   template-mode
                   :focus-path="templateFocusPath"
                   :question-mode="activeEditorQuestionMode"
                 />
+                <view v-else class="empty-tip">题型编辑器加载失败，请刷新后重试。</view>
               </view>
             </view>
           </scroll-view>
@@ -117,20 +118,6 @@
                     <text class="module-state__ref">当前流程线：{{ draftModuleDisplayRef }}</text>
                     <text class="module-state__tag" :class="`is-${currentModuleStatus}`">{{ currentModuleStatusLabel }}</text>
                   </view>
-                  <view class="research-mode-hint">
-                    <text class="research-mode-hint__title">当前模式：{{ isResearchSimpleMode ? '教研模式' : '专业模式' }}</text>
-                    <text class="research-mode-hint__desc">{{ isResearchSimpleMode ? '隐藏高级流程编排入口，仅保留题型编辑、地区绑定和发布链路。' : '显示全部能力（可视流程、片段、宏节点、局部调试）。' }}</text>
-                  </view>
-                  <view
-                    v-if="researchGuidedNextAction"
-                    class="research-next-card"
-                  >
-                    <view class="research-next-card__main">
-                      <text class="research-next-card__title">推荐下一步：{{ researchGuidedNextAction.title }}</text>
-                      <text class="research-next-card__desc">{{ researchGuidedNextAction.detail }}</text>
-                    </view>
-                    <button class="btn btn-outline btn-xs research-next-card__btn" @click="runResearchGuidedNextAction">{{ researchGuidedNextAction.cta }}</button>
-                  </view>
                   <view class="flow-line-switch">
                     <text class="flow-line-switch__label">流程线切换</text>
                     <view class="flow-line-switch__chips">
@@ -139,14 +126,15 @@
                         :key="line.id"
                         class="flow-line-chip"
                         :class="{ active: line.id === draftModuleId }"
-                        @click="switchToFlowLine(line.id)"
+                        @tap.stop="onFlowLineChipActivate(line.id)"
+                        @click.stop="onFlowLineChipActivate(line.id)"
                       >
                         <text class="flow-line-chip__name">{{ line.name }}</text>
                         <text class="flow-line-chip__meta">{{ line.statusLabel }}</text>
                       </view>
                     </view>
                   </view>
-                  <view v-if="!isResearchSimpleMode" class="module-meta-grid">
+                  <view class="module-meta-grid">
                     <view class="form-item">
                       <text class="form-item__label">流程名称</text>
                       <input
@@ -170,16 +158,16 @@
                       <button class="btn btn-outline btn-sm" @click="openFlowLineCreateWizard">新建流程线（向导）</button>
                     </view>
                   </view>
-                  <text v-if="!isResearchSimpleMode" class="module-state__hint">{{ currentModuleStatusHint }}</text>
+                  <text class="module-state__hint">{{ currentModuleStatusHint }}</text>
                 </view>
                 <view class="panel__header-actions">
-                  <button v-if="!isResearchSimpleMode" class="btn btn-outline btn-xs" @click="openReadonlyFlowVisual">查看流程图</button>
+                  <button class="btn btn-outline btn-xs" @click="openReadonlyFlowVisual">查看流程图</button>
                 </view>
               </view>
               <view class="panel__body">
                 <ListeningChoiceFlowDiagram
-                  :question="demoQuestion"
-                  :steps="demoQuestion.flow.steps"
+                  :question="demoQuestion || demoBase"
+                  :steps="demoQuestion?.flow?.steps || []"
                   :active-step-index="currentStepIndex"
                   :sortable="true"
                   :reorderable-indices="reorderableFlowIndices"
@@ -606,7 +594,6 @@
                 <view
                   v-if="isRegionRoutingEnabled"
                   class="region-binding"
-                  :class="{ 'is-focus': regionBindingFocusPulse }"
                 >
                   <view class="region-binding__head">
                     <text class="region-binding__title">地区匹配</text>
@@ -625,225 +612,46 @@
                       <text class="region-chip__target">{{ formatRegionBindingTarget(region) }}</text>
                     </view>
                   </view>
-                </view>
-                <view v-if="isRegionRoutingEnabled" class="region-overview">
-                  <view class="region-overview__head">
-                    <text class="region-overview__title">地区视角总览</text>
-                    <text class="region-overview__desc">按地区查看当前生效流程线，支持快速核对教研发布范围。</text>
-                  </view>
-                  <view class="region-overview__stats">
-                    <text class="region-overview__stat">地区数：{{ regionOverviewRows.length }}</text>
-                    <text class="region-overview__stat">当前流程线命中：{{ currentFlowBoundRegionCount }}</text>
-                  </view>
-                  <view class="region-overview__sim">
-                    <view class="region-overview__sim-main">
-                      <text class="region-overview__sim-line">当前模拟地区：{{ routeSimCurrentRegionText }}</text>
-                      <text class="region-overview__sim-line">命中流程：{{ routeSimHitSummaryText }}</text>
-                      <text class="region-overview__sim-line">{{ routeSimScoreSummaryText }}</text>
+
+                  <view class="region-template">
+                    <view class="region-template__head">
+                      <text class="region-template__title">地区流程模板</text>
+                      <text class="region-template__desc">把当前“地区 -> 流程线”绑定沉淀为模板，后续可一键应用。</text>
                     </view>
-                    <view class="region-overview__sim-actions">
-                      <button class="btn btn-outline btn-xs" @click="loadRouteSimFromCurrentQuestion">读取题目上下文</button>
-                      <button class="btn btn-outline btn-xs" @click="syncRouteSimToCurrentQuestion">写回题目上下文</button>
-                    </view>
-                  </view>
-                  <view class="region-overview__list">
-                    <view
-                      v-for="item in regionOverviewRows"
-                      :key="`region-overview:${item.region}`"
-                      class="region-overview__item"
-                      :class="{ 'is-current': item.isCurrentFlowLine, 'is-simulated': isRegionSimulationTarget(item.region) }"
-                    >
-                      <view class="region-overview__main">
-                        <text class="region-overview__region">{{ item.region }}</text>
-                        <text class="region-overview__target">{{ item.targetName }} · {{ item.targetVersionText }}</text>
-                        <text class="region-overview__state">{{ item.stateText }}</text>
-                      </view>
-                      <view class="region-overview__actions">
-                        <button class="btn btn-outline btn-xs" @click="runRegionOverviewRouteSimulation(item.region)">模拟命中</button>
-                        <button class="btn btn-outline btn-xs" @click="toggleRegionBindingForCurrentFlowLine(item.region)">
-                          {{ item.isCurrentFlowLine ? '取消绑定' : '绑定到当前流程线' }}
-                        </button>
-                      </view>
-                    </view>
-                  </view>
-                </view>
-                <view v-if="isRegionRoutingEnabled" class="route-sim">
-                  <view class="route-sim__head">
-                    <view class="route-sim__head-main">
-                      <text class="route-sim__title">路由模拟器</text>
-                      <text class="route-sim__desc">输入地区/场景/年级，实时验证命中流程线；可一键写回当前题目上下文。</text>
-                    </view>
-                    <view class="route-sim__head-actions">
-                      <button class="btn btn-outline btn-xs" @click="loadRouteSimFromCurrentQuestion">读取题目上下文</button>
-                      <button class="btn btn-outline btn-xs" @click="syncRouteSimToCurrentQuestion">写回题目上下文</button>
-                    </view>
-                  </view>
-                  <view class="route-sim__grid">
-                    <view class="form-item">
-                      <text class="form-item__label">地区</text>
+                    <view class="region-template__create">
                       <input
                         class="text-input"
-                        :value="routeSimRegion"
-                        placeholder="如：广东"
-                        @input="(e) => routeSimRegion = String(e.detail.value || '')"
+                        :value="regionBindingTemplateName"
+                        placeholder="模板名称（可选）"
+                        @input="(e) => regionBindingTemplateName = String(e.detail.value || '')"
                       />
+                      <button class="btn btn-outline btn-xs" @click="saveRegionBindingTemplateFromCurrent">沉淀当前绑定</button>
                     </view>
-                    <view class="form-item">
-                      <text class="form-item__label">场景</text>
-                      <input
-                        class="text-input"
-                        :value="routeSimScene"
-                        placeholder="如：模考"
-                        @input="(e) => routeSimScene = String(e.detail.value || '')"
-                      />
-                    </view>
-                    <view class="form-item">
-                      <text class="form-item__label">年级</text>
-                      <input
-                        class="text-input"
-                        :value="routeSimGrade"
-                        placeholder="如：九年级"
-                        @input="(e) => routeSimGrade = String(e.detail.value || '')"
-                      />
-                    </view>
-                  </view>
-                  <view class="route-sim__result">
-                    <text class="route-sim__result-title">命中结果</text>
-                    <text class="route-sim__line">命中规则：{{ flowCenterHitRuleText }}</text>
-                    <text class="route-sim__line">命中流程：{{ flowCenterHitModuleVersionText }}</text>
-                    <text class="route-sim__line">{{ routeSimScoreSummaryText }}</text>
-                  </view>
-                  <view class="route-sim__result route-sim__result--soft">
-                    <text class="route-sim__result-title">Top 候选规则</text>
-                    <view v-if="simulatedRankedCandidates.length > 0" class="route-sim__rank-list">
+                    <view v-if="regionBindingTemplateRows.length > 0" class="region-template__list">
                       <view
-                        v-for="(item, index) in simulatedRankedCandidates.slice(0, 5)"
-                        :key="`route-rank:${item.profile.id}:${index}`"
-                        class="route-sim__rank-item"
+                        v-for="item in regionBindingTemplateRows"
+                        :key="`region-template:${item.id}`"
+                        class="region-template__item"
                       >
-                        <text class="route-sim__rank-main">{{ index + 1 }}. {{ formatFlowProfileLabel(item.profile) }} · {{ formatModuleDisplayRef(item.profile.module) }}</text>
-                        <text class="route-sim__rank-sub">score={{ item.totalScore }} · region={{ item.regionScore }} · scene={{ item.sceneScore }} · grade={{ item.gradeScore }} · priority={{ item.priorityScore }}</text>
-                      </view>
-                    </view>
-                    <text v-else class="route-sim__line">当前条件下暂无命中候选。</text>
-                  </view>
-                </view>
-                <view v-if="isRegionRoutingEnabled" class="route-check">
-                  <view class="route-check__head">
-                    <text class="route-check__title">路由规则诊断</text>
-                    <text class="route-check__meta">冲突 {{ flowProfileDiagnostics.conflicts.length }} · 死规则 {{ flowProfileDiagnostics.deadRules.length }} · 弱覆盖 {{ flowProfileDiagnostics.weakCoverage.length }}</text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <view class="route-check__section-head">
-                      <text class="route-check__section-title">提交校验</text>
-                      <view class="route-check__preview-actions">
-                        <button class="btn btn-outline btn-xs" @click="showFlowProfileSubmitValidationSummary">查看详情</button>
-                        <button class="btn btn-outline btn-xs" :disabled="flowProfileFixSuggestions.length <= 0" @click="applyAllFlowProfileFixSuggestions">预览修复</button>
-                      </view>
-                    </view>
-                    <text class="route-check__item-main">{{ flowProfileSubmitValidation.ok ? '状态：可提交' : '状态：存在阻断' }}</text>
-                    <text class="route-check__item-sub">错误 {{ flowProfileSubmitValidation.errors.length }} 条 · 提醒 {{ flowProfileSubmitValidation.warnings.length }} 条</text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <text class="route-check__section-title">冲突规则</text>
-                    <view v-if="flowProfileDiagnostics.conflicts.length > 0" class="route-check__list">
-                      <view
-                        v-for="item in flowProfileDiagnostics.conflicts"
-                        :key="`route-conflict:${item.signature}`"
-                        class="route-check__item"
-                      >
-                        <text class="route-check__item-main">{{ item.signature }}</text>
-                        <text class="route-check__item-sub">冲突规则：{{ formatFlowProfileLabelsByIds(item.ids || []) }}</text>
-                      </view>
-                    </view>
-                    <text v-else class="route-check__ok">当前无冲突规则。</text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <text class="route-check__section-title">死规则</text>
-                    <view v-if="flowProfileDiagnostics.deadRules.length > 0" class="route-check__list">
-                      <view
-                        v-for="item in flowProfileDiagnostics.deadRules"
-                        :key="`route-dead:${item.id}`"
-                        class="route-check__item"
-                      >
-                        <text class="route-check__item-main">{{ formatFlowProfileLabelById(item.id) }}</text>
-                        <text class="route-check__item-sub">被覆盖：{{ formatFlowProfileLabelsByIds(item.blockedBy || []) }}</text>
-                      </view>
-                    </view>
-                    <text v-else class="route-check__ok">当前无死规则。</text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <text class="route-check__section-title">弱覆盖规则</text>
-                    <view v-if="flowProfileDiagnostics.weakCoverage.length > 0" class="route-check__list">
-                      <view
-                        v-for="item in flowProfileDiagnostics.weakCoverage"
-                        :key="`route-weak:${item.id}`"
-                        class="route-check__item"
-                      >
-                        <text class="route-check__item-main">{{ formatFlowProfileLabelById(item.id) }}</text>
-                        <text class="route-check__item-sub">{{ item.reason }}</text>
-                      </view>
-                    </view>
-                    <text v-else class="route-check__ok">当前无弱覆盖规则。</text>
-                  </view>
-
-                  <view class="route-check__section">
-                    <text class="route-check__section-title">自动修复建议</text>
-                    <view v-if="flowProfileFixSuggestions.length > 0" class="route-check__list">
-                      <view
-                        v-for="item in flowProfileFixSuggestions.slice(0, 6)"
-                        :key="item.key"
-                        class="route-check__item"
-                      >
-                        <text class="route-check__item-main">{{ item.summary }}</text>
-                        <text class="route-check__item-sub">{{ item.reason }}</text>
-                        <view class="route-check__item-actions">
-                          <button class="btn btn-outline btn-xs" @click="applyFlowProfileFixSuggestion(item)">预览修复</button>
+                        <view class="region-template__main">
+                          <text class="region-template__name">{{ item.name }}</text>
+                          <text class="region-template__meta">默认流程：{{ item.defaultTargetText }}</text>
+                          <text class="region-template__meta">地区数：{{ item.regionCount }} · {{ item.regionPreviewText }}</text>
+                          <text class="region-template__meta">更新于：{{ item.updatedAtText }}</text>
+                        </view>
+                        <view class="region-template__actions">
+                          <button class="btn btn-outline btn-xs" @click="applyRegionBindingTemplate(item.id)">一键应用</button>
+                          <button class="btn btn-text btn-xs danger" @click="removeRegionBindingTemplate(item.id)">删除</button>
                         </view>
                       </view>
                     </view>
-                    <text v-else class="route-check__ok">当前无自动修复建议。</text>
-                  </view>
-
-                  <view v-if="pendingFlowProfileFixSuggestions.length > 0" class="route-check__section">
-                    <view class="route-check__section-head">
-                      <text class="route-check__section-title">修复预览（{{ pendingFlowProfileFixSuggestions.length }}）</text>
-                      <view class="route-check__preview-actions">
-                        <button class="btn btn-outline btn-xs" @click="cancelFlowProfileFixPreview">取消</button>
-                        <button class="btn btn-outline btn-xs" @click="confirmFlowProfileFixPreview">确认应用</button>
-                      </view>
-                    </view>
-                    <view class="route-check__list">
-                      <view
-                        v-for="item in pendingFlowProfileFixSuggestions"
-                        :key="`route-fix-preview:${item.key}`"
-                        class="route-check__item"
-                      >
-                        <text class="route-check__item-main">{{ item.summary }}</text>
-                        <text class="route-check__item-sub">{{ item.reason }}</text>
-                        <view v-if="item.previewFields.length > 0" class="route-check__preview-fields">
-                          <view
-                            v-for="field in item.previewFields"
-                            :key="`route-fix-preview:${item.key}:${field.key}`"
-                            class="route-check__preview-field"
-                          >
-                            <text class="route-check__preview-key">{{ field.key }}</text>
-                            <text class="route-check__preview-before">之前：{{ field.before }}</text>
-                            <text class="route-check__preview-after">之后：{{ field.after }}</text>
-                          </view>
-                        </view>
-                      </view>
-                    </view>
+                    <view v-else class="empty-tip">暂无地区模板，先沉淀一次当前绑定。</view>
                   </view>
                 </view>
               </view>
             </view>
 
-            <view v-if="commitValidationIssues.length > 0" class="panel panel--blocking">
+            <view v-if="commitValidationIssueList.length > 0" class="panel panel--blocking">
               <view class="panel__header panel__header--blocking">
                 <view class="panel__header-left">
                   <text class="panel__title">更新阻断项</text>
@@ -857,7 +665,7 @@
               <view class="panel__body">
                 <view class="blocking-list">
                   <view
-                    v-for="item in commitValidationIssues"
+                    v-for="item in commitValidationIssueList"
                     :key="item.key"
                     class="blocking-item"
                     :class="{ active: activeCommitValidationIssueKey === item.key }"
@@ -877,6 +685,7 @@
 
         <view class="col col--preview">
           <PhonePreviewPanel
+            v-if="isPhonePreviewPanelReady"
             title="预览"
             :data="previewRenderQuestion"
             :answers="previewAnswers"
@@ -898,6 +707,7 @@
             @step-change="onPreviewStepChange"
             @clear-preview-scope="clearReadonlyFlowPartialPreviewMode"
           />
+          <view v-else class="empty-tip">预览组件加载失败，请刷新后重试。</view>
         </view>
       </view>
     </view>
@@ -1319,8 +1129,7 @@ import type {
   ListeningChoiceQuestion,
   Question,
   SpeakingHearAnswerContent,
-  SpeakingHearAnswerQuestion,
-  SubQuestion
+  SpeakingHearAnswerQuestion
 } from '/types'
 import ListeningChoiceEditor from '/components/editor/ListeningChoiceEditor.vue'
 import ListeningChoiceFlowDiagram from '/components/editor/ListeningChoiceFlowDiagram.vue'
@@ -1342,14 +1151,7 @@ import {
 } from './flow-modules/currentQuestionBridge'
 import { loadRecentQuestions } from '/infra/repository/questionRepository'
 import { generateId } from '/templates'
-import {
-  buildFlowProfileFixSuggestions as buildFlowProfileFixSuggestionsUsecase,
-  canSubmitFlowProfiles,
-  diagnoseFlowProfileRules as diagnoseFlowProfileRulesUsecase,
-  type FlowProfileDiagnostics as FlowProfileDiagnosticsUsecase,
-  type FlowProfileFixSuggestion as FlowProfileFixSuggestionUsecase,
-  type FlowProfileSubmitValidation
-} from '/domain/flow-profile/usecases/scoreProfiles'
+import { deepClone } from '/utils/deepClone'
 import { buildModuleDiffSummary, formatModuleDiffSummary } from '/domain/flow-module/usecases/buildModuleDiffSummary'
 import { validateListeningChoiceModuleCommitCrossChecks } from '/domain/flow-module/usecases/validateModuleCommitCrossChecks'
 import {
@@ -1364,7 +1166,13 @@ import {
   usePerGroupStepEditor,
   type QuickAddPerGroupKind
 } from './flow-modules/usePerGroupStepEditor'
-import { useRouteSimulator } from './flow-modules/useRouteSimulator'
+import { useCommitValidationIssues } from './flow-modules/useCommitValidationIssues'
+import { useRegionBindingOverview } from './flow-modules/useRegionBindingOverview'
+import { useRegionBindingTemplates } from './flow-modules/useRegionBindingTemplates'
+import { useFlowLineWizard } from './flow-modules/useFlowLineWizard'
+import { useFlowPreviewPanel } from './flow-modules/useFlowPreviewPanel'
+import { useFlowPageNavigation } from './flow-modules/useFlowPageNavigation'
+import { useFlowLineSwitcher } from './flow-modules/useFlowLineSwitcher'
 import {
   useEditableFlowGraph,
   type FlowPropertyFieldKey,
@@ -1385,7 +1193,7 @@ const DEFAULT_LISTENING_CHOICE_MODULE_NAME = '听后选择标准'
 const DEFAULT_LISTENING_HEAR_ANSWER_MODULE_NAME = '听后回答标准'
 
 function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v))
+  return deepClone(v)
 }
 
 function getCurrentQuestionSnapshot(): Question | null {
@@ -1578,11 +1386,6 @@ function formatFlowProfileLabel(profileLike: Partial<FlowProfileV1> | null | und
 function formatFlowProfileLabelById(id: string): string {
   const hit = flowProfiles.getById(String(id || ''))
   return formatFlowProfileLabel(hit || null)
-}
-
-function formatFlowProfileLabelsByIds(ids: string[]): string {
-  if (!Array.isArray(ids) || ids.length <= 0) return '未命名规则'
-  return ids.map((id) => formatFlowProfileLabelById(id)).join(' / ')
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -1796,6 +1599,8 @@ function buildQuestionFromTemplate(pageType: FlowPageType = 'listening_choice'):
 }
 
 const page = ref<Page>('home')
+const isListeningChoiceEditorReady = computed(() => Boolean(ListeningChoiceEditor))
+const isPhonePreviewPanelReady = computed(() => Boolean(PhonePreviewPanel))
 const activeFlowPageType = ref<FlowPageType>('listening_choice')
 const defaultModule = getDefaultModule(activeFlowPageType.value)
 const draftModuleId = ref(String(defaultModule.id || getStandardModuleIdByPageType(activeFlowPageType.value)))
@@ -1813,14 +1618,7 @@ const flowNamePlaceholder = computed(() => activeFlowPageType.value === 'speakin
   : '例如：听后选择标准 / 广东-听后选择流程')
 const flowWizardNamePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：听后回答-北京' : '例如：听后选择-北京')
 const flowWizardNotePlaceholder = computed(() => activeFlowPageType.value === 'speaking_hear_answer' ? '例如：北京地区听后回答流程' : '例如：北京地区听后选择流程')
-const isResearchSimpleMode = ref(true)
-const researchEditorModeSwitchText = computed(() => isResearchSimpleMode.value ? '切到专业模式' : '切到教研模式')
-type FlowLineWizardBaseline = 'current' | 'standard'
-const flowLineWizardVisible = ref(false)
-const flowLineWizardBaseline = ref<FlowLineWizardBaseline>('current')
-const flowLineWizardName = ref('')
-const flowLineWizardNote = ref('')
-const flowLineWizardRegions = ref<string[]>([])
+const readonlyFlowVisualVisible = ref(false)
 const listeningChoiceDraft = ref<ListeningChoiceStandardFlowModuleV1>(clone(toDraftStandardModule(defaultModule)))
 const draftModuleDisplayRef = computed(() => {
   const fallbackStandardId = getStandardModuleIdByPageType(activeFlowPageType.value)
@@ -1908,15 +1706,6 @@ function countFlowLinesByPageType(pageType: FlowPageType): number {
 
 const listeningChoiceFlowLineCount = computed(() => countFlowLinesByPageType('listening_choice'))
 const speakingHearAnswerFlowLineCount = computed(() => countFlowLinesByPageType('speaking_hear_answer'))
-const regionBindingFocusPulse = ref(false)
-let regionBindingFocusTimer: ReturnType<typeof setTimeout> | null = null
-
-type ResearchGuidedNextAction = {
-  key: 'fix_blockers' | 'bind_region' | 'save_flow' | 'idle'
-  title: string
-  detail: string
-  cta: string
-}
 const REGION_FLOW_PROFILE_PRIORITY = 10
 const REGION_GENERAL_LABEL = '通用'
 
@@ -2089,14 +1878,6 @@ const regionRoutingBindings = computed<RegionRoutingBinding[]>(() => {
   return collectRegionRoutingBindings(flowProfileRules.value || [])
 })
 
-const regionBindingMap = computed(() => {
-  const map = new Map<string, RegionRoutingBinding>()
-  regionRoutingBindings.value.forEach((item) => {
-    map.set(item.region, item)
-  })
-  return map
-})
-
 const defaultRoutingProfile = computed<FlowProfileV1 | null>(() => {
   const profiles = flowProfileRules.value || []
   for (const profile of profiles) {
@@ -2111,116 +1892,45 @@ const defaultRoutingModuleRef = computed<FlowModuleRef>(() => {
   return resolveActiveModuleRef(defaultRoutingProfile.value?.module, getPublishedFallbackModuleRef())
 })
 
-const regionBindingOptions = computed<string[]>(() => {
-  const fromTags = readRegionTagOptions()
-  const fromBindings = regionRoutingBindings.value.map((item) => item.region)
-  const unique = new Set<string>([REGION_GENERAL_LABEL, ...fromTags, ...fromBindings])
-  return Array.from(unique.values()).sort((a, b) => {
-    if (a === REGION_GENERAL_LABEL) return -1
-    if (b === REGION_GENERAL_LABEL) return 1
-    return a.localeCompare(b, 'zh-Hans-CN')
-  })
+const {
+  regionBindingOptions,
+  isRegionBoundToCurrentFlowLine,
+  formatRegionBindingTarget,
+  toggleRegionBindingForCurrentFlowLine
+} = useRegionBindingOverview({
+  isRegionRoutingEnabled,
+  regionRoutingBindings,
+  defaultRoutingModuleRef,
+  currentFlowLineRef,
+  readRegionTagOptions,
+  normalizeNullableText,
+  isGeneralRegion,
+  formatModuleDisplayRef,
+  ensureRegionRoutingMode,
+  replaceRegionRoutingBindings,
+  buildRegionProfileId,
+  getPublishedFallbackModuleRef
 })
 
-type RegionOverviewRow = {
-  region: string
-  targetName: string
-  targetVersionText: string
-  stateText: string
-  isCurrentFlowLine: boolean
-}
-
-const currentFlowBoundRegionCount = computed(() => {
-  if (!isRegionRoutingEnabled.value) return 0
-  return regionBindingOptions.value.filter((region) => isRegionBoundToCurrentFlowLine(region)).length
+const {
+  regionBindingTemplateName,
+  regionBindingTemplateRows,
+  saveRegionBindingTemplateFromCurrent,
+  applyRegionBindingTemplate,
+  removeRegionBindingTemplate
+} = useRegionBindingTemplates({
+  activeFlowDisplayName,
+  isRegionRoutingEnabled,
+  regionBindingOptions,
+  regionRoutingBindings,
+  defaultRoutingModuleRef,
+  ensureRegionRoutingMode,
+  replaceRegionRoutingBindings,
+  buildRegionProfileId,
+  isGeneralRegion,
+  toInt,
+  formatModuleDisplayRef
 })
-
-const regionOverviewRows = computed<RegionOverviewRow[]>(() => {
-  if (!isRegionRoutingEnabled.value) return []
-  return regionBindingOptions.value.map((region) => {
-    const normalizedRegion = normalizeNullableText(region) || region
-    if (isGeneralRegion(normalizedRegion)) {
-      const ref = defaultRoutingModuleRef.value
-      const isCurrent = isRegionBoundToCurrentFlowLine(normalizedRegion)
-      return {
-        region: normalizedRegion,
-        targetName: formatModuleDisplayRef(ref),
-        targetVersionText: `v${Math.max(1, toInt(ref.version || 1))}`,
-        stateText: isCurrent ? '当前默认流程线' : '默认回退流程线',
-        isCurrentFlowLine: isCurrent
-      }
-    }
-
-    const binding = regionBindingMap.value.get(normalizedRegion)
-    if (!binding) {
-      const ref = defaultRoutingModuleRef.value
-      return {
-        region: normalizedRegion,
-        targetName: formatModuleDisplayRef(ref),
-        targetVersionText: `v${Math.max(1, toInt(ref.version || 1))}`,
-        stateText: '未单独绑定（走通用）',
-        isCurrentFlowLine: false
-      }
-    }
-
-    const isCurrent = isRegionBoundToCurrentFlowLine(normalizedRegion)
-    return {
-      region: normalizedRegion,
-      targetName: formatModuleDisplayRef(binding.module),
-      targetVersionText: `v${Math.max(1, toInt(binding.module.version || 1))}`,
-      stateText: isCurrent ? '当前流程线' : '已绑定其他流程线',
-      isCurrentFlowLine: isCurrent
-    }
-  })
-})
-
-const researchGuidedNextAction = computed<ResearchGuidedNextAction | null>(() => {
-  if (!isResearchSimpleMode.value) return null
-  if (commitValidationIssues.value.length > 0) {
-    return {
-      key: 'fix_blockers',
-      title: '先修复更新阻断项',
-      detail: `当前有 ${commitValidationIssues.value.length} 个阻断项，修复后才能更新流程线。`,
-      cta: '定位问题'
-    }
-  }
-
-  if (isRegionRoutingEnabled.value && currentFlowBoundRegionCount.value <= 0) {
-    return {
-      key: 'bind_region',
-      title: '先绑定地区到当前流程线',
-      detail: '至少绑定 1 个地区（或“通用”），才能明确教研投放范围。',
-      cta: '去绑定地区'
-    }
-  }
-
-  if (canSaveCurrentStandard.value) {
-    return {
-      key: 'save_flow',
-      title: '更新当前流程线',
-      detail: '配置已就绪，建议先更新并发布当前流程线。',
-      cta: '立即更新'
-    }
-  }
-
-  return {
-    key: 'idle',
-    title: '继续检查步骤配置',
-    detail: '当前没有阻断项，按需微调步骤后再更新流程线。',
-    cta: '保持当前'
-  }
-})
-
-const canCreateFlowLineFromWizard = computed(() => {
-  return String(flowLineWizardName.value || '').trim().length > 0
-})
-
-function suggestFlowLineNameByRegions(regions: string[]): string {
-  const prefix = activeFlowDisplayName.value
-  if (regions.length === 1) return `${prefix}-${regions[0]}`
-  if (regions.length > 1) return `${prefix}-多地区`
-  return `${prefix}-新流程线`
-}
 
 function getStandardBaselineModule(): ListeningChoiceFlowModuleV1 {
   const standardId = getStandardModuleIdByPageType(activeFlowPageType.value)
@@ -2228,187 +1938,28 @@ function getStandardBaselineModule(): ListeningChoiceFlowModuleV1 {
   return standard || getDefaultModule(activeFlowPageType.value)
 }
 
-function toggleResearchEditorMode() {
-  isResearchSimpleMode.value = !isResearchSimpleMode.value
-  if (isResearchSimpleMode.value && readonlyFlowVisualVisible.value) {
-    closeReadonlyFlowVisual()
-  }
+function readCurrentFlowNameForWizard(): string {
+  return normalizeModuleName(draftModuleName.value, getDefaultModuleNameByPageType(activeFlowPageType.value))
 }
 
-function focusRegionBindingSection() {
-  if (typeof document !== 'undefined') {
-    const el = document.querySelector('.region-binding')
-    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-      ;(el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }
-  regionBindingFocusPulse.value = true
-  if (regionBindingFocusTimer) clearTimeout(regionBindingFocusTimer)
-  regionBindingFocusTimer = setTimeout(() => {
-    regionBindingFocusPulse.value = false
-    regionBindingFocusTimer = null
-  }, 1400)
-}
-
-function runResearchGuidedNextAction() {
-  const next = researchGuidedNextAction.value
-  if (!next) return
-  if (next.key === 'fix_blockers') {
-    jumpToFirstCommitValidationIssue()
-    return
-  }
-  if (next.key === 'bind_region') {
-    focusRegionBindingSection()
-    return
-  }
-  if (next.key === 'save_flow') {
-    updateCurrentFlowLine()
-    return
-  }
-}
-
-function openFlowLineCreateWizard() {
-  ensureRegionRoutingMode(true)
-  flowLineWizardVisible.value = true
-  flowLineWizardBaseline.value = 'current'
-  flowLineWizardRegions.value = []
-  const currentName = normalizeModuleName(draftModuleName.value, getDefaultModuleNameByPageType(activeFlowPageType.value))
-  flowLineWizardName.value = `${currentName}-副本`
-  flowLineWizardNote.value = ''
-}
-
-function closeFlowLineCreateWizard() {
-  flowLineWizardVisible.value = false
-}
-
-function isFlowLineWizardRegionSelected(rawRegion: string): boolean {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return false
-  return flowLineWizardRegions.value.includes(region)
-}
-
-function toggleFlowLineWizardRegion(rawRegion: string) {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return
-  const list = [...flowLineWizardRegions.value]
-  const idx = list.indexOf(region)
-  if (idx >= 0) list.splice(idx, 1)
-  else list.push(region)
-  flowLineWizardRegions.value = list
-
-  const hasManualName = String(flowLineWizardName.value || '').trim().length > 0
-  if (!hasManualName) {
-    flowLineWizardName.value = suggestFlowLineNameByRegions(list)
-  }
-}
-
-function isRegionBoundToCurrentFlowLine(rawRegion: string): boolean {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return false
-  if (isGeneralRegion(region)) {
-    const ref = defaultRoutingModuleRef.value
-    return (
-      String(ref.id || '') === String(currentFlowLineRef.value.id || '') &&
-      Number(ref.version || 0) === Number(currentFlowLineRef.value.version || 0)
-    )
-  }
-  const binding = regionBindingMap.value.get(region)
-  if (!binding) return false
-  return (
-    String(binding.module.id || '') === String(currentFlowLineRef.value.id || '') &&
-    Number(binding.module.version || 0) === Number(currentFlowLineRef.value.version || 0)
-  )
-}
-
-function formatRegionBindingTarget(rawRegion: string): string {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return '未绑定'
-  if (isGeneralRegion(region)) {
-    if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'
-    return formatModuleDisplayRef(defaultRoutingModuleRef.value)
-  }
-  const binding = regionBindingMap.value.get(region)
-  if (!binding) return `通用：${formatModuleDisplayRef(defaultRoutingModuleRef.value)}`
-  if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'
-  return formatModuleDisplayRef(binding.module)
-}
-
-function toggleRegionBindingForCurrentFlowLine(rawRegion: string) {
-  if (!isRegionRoutingEnabled.value) return
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return
-  ensureRegionRoutingMode(true)
-
-  if (isGeneralRegion(region)) {
-    const currentlyBound = isRegionBoundToCurrentFlowLine(region)
-    const targetModuleRef = currentlyBound
-      ? getPublishedFallbackModuleRef()
-      : currentFlowLineRef.value
-    const ok = replaceRegionRoutingBindings(regionRoutingBindings.value, {
-      defaultModuleRef: targetModuleRef,
-      defaultNote: currentlyBound ? '听后选择默认流程' : '听后选择通用流程'
-    })
-    if (!ok) return
-    uni.showToast({
-      title: currentlyBound ? '已恢复标准默认流程' : '已设置通用流程',
-      icon: 'success'
-    })
-    return
-  }
-
-  const nextMap = new Map<string, RegionRoutingBinding>()
-  regionRoutingBindings.value.forEach((item) => {
-    nextMap.set(item.region, item)
-  })
-
-  const currentlyBound = isRegionBoundToCurrentFlowLine(region)
-  if (currentlyBound) {
-    nextMap.delete(region)
-  } else {
-    const previous = nextMap.get(region)
-    nextMap.set(region, {
-      region,
-      module: currentFlowLineRef.value,
-      note: previous?.note || (isGeneralRegion(region) ? '地区未命中通用流程' : `${region}地区流程`),
-      id: previous?.id || buildRegionProfileId(region),
-      createdAt: previous?.createdAt,
-      updatedAt: previous?.updatedAt
-    })
-  }
-
-  const ok = replaceRegionRoutingBindings(Array.from(nextMap.values()))
-  if (!ok) return
-  uni.showToast({
-    title: currentlyBound ? `已取消 ${region} 绑定` : `已绑定 ${region}`,
-    icon: 'success'
-  })
-}
-
-function buildWizardBaselineDraft(): ListeningChoiceStandardFlowModuleV1 {
-  if (flowLineWizardBaseline.value === 'standard') {
-    return clone(toDraftStandardModule(getStandardBaselineModule()))
-  }
-  return clone(toDraftStandardModule({
-    ...listeningChoiceDraft.value,
-    id: draftModuleId.value,
-    version: draftModuleVersion.value
-  }))
-}
-
-function confirmCreateFlowLineFromWizard() {
-  const name = String(flowLineWizardName.value || '').trim()
-  if (!name) {
-    uni.showToast({ title: '请先填写流程线名称', icon: 'none' })
-    return
-  }
-  const note = String(flowLineWizardNote.value || '').trim()
+function performCreateFlowLine(payload: {
+  name: string
+  note: string
+  baseline: 'current' | 'standard'
+}): { ok: boolean; newFlowLineId?: string } {
   const nextId = buildUniqueFlowLineId(`${getFlowLineIdPrefixByPageType(activeFlowPageType.value)}.${Date.now()}`)
-  const baselineDraft = buildWizardBaselineDraft()
+  const baselineDraft = payload.baseline === 'standard'
+    ? clone(toDraftStandardModule(getStandardBaselineModule()))
+    : clone(toDraftStandardModule({
+      ...listeningChoiceDraft.value,
+      id: draftModuleId.value,
+      version: draftModuleVersion.value
+    }))
 
   draftModuleId.value = nextId
   draftModuleVersion.value = 1
-  draftModuleName.value = name
-  draftModuleNote.value = note
+  draftModuleName.value = payload.name
+  draftModuleNote.value = payload.note
   listeningChoiceDraft.value = clone(toDraftStandardModule({
     ...baselineDraft,
     id: nextId,
@@ -2422,115 +1973,34 @@ function confirmCreateFlowLineFromWizard() {
   flowVisualEditor.reloadFromQuestion()
 
   const saved = saveStandard(true, true, 1)
-  if (!saved) return
-
-  const regions = isRegionRoutingEnabled.value
-    ? (flowLineWizardRegions.value || [])
-      .map((item) => normalizeNullableText(item))
-      .filter((item): item is string => Boolean(item))
-    : []
-  if (isRegionRoutingEnabled.value && regions.length > 0) {
-    ensureRegionRoutingMode(true)
-    const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))
-    const specificRegions = regions.filter((region) => !isGeneralRegion(region))
-    const nextMap = new Map<string, RegionRoutingBinding>()
-    regionRoutingBindings.value.forEach((item) => {
-      nextMap.set(item.region, item)
-    })
-    specificRegions.forEach((region) => {
-      const previous = nextMap.get(region)
-      nextMap.set(region, {
-        region,
-        module: {
-          id: nextId,
-          version: 1
-        },
-        note: previous?.note || (isGeneralRegion(region) ? '地区未命中通用流程' : `${region}地区流程`),
-        id: previous?.id || buildRegionProfileId(region),
-        createdAt: previous?.createdAt,
-        updatedAt: previous?.updatedAt
-      })
-    })
-    replaceRegionRoutingBindings(Array.from(nextMap.values()), hasGeneralRegion
-      ? {
-          defaultModuleRef: {
-            id: nextId,
-            version: 1
-          },
-          defaultNote: '听后选择通用流程'
-        }
-      : {})
-  }
-
-  closeFlowLineCreateWizard()
+  if (!saved) return { ok: false }
+  return { ok: true, newFlowLineId: nextId }
 }
 
-const routeSimulator = useRouteSimulator({
-  flowProfileRules,
-  getCurrentQuestionSnapshot,
-  persistCurrentQuestion
-})
 const {
-  routeSimRegion,
-  routeSimScene,
-  routeSimGrade,
-  routeSimScoreResult,
-  simulatedRankedCandidates,
-  simulatedBestCandidate,
-  simulatedProfile,
-  simulatedModule
-} = routeSimulator
-const routeSimCurrentRegionText = computed(() => {
-  const region = normalizeNullableText(routeSimRegion.value)
-  return region || REGION_GENERAL_LABEL
+  flowLineWizardVisible,
+  flowLineWizardBaseline,
+  flowLineWizardName,
+  flowLineWizardNote,
+  flowLineWizardRegions,
+  canCreateFlowLineFromWizard,
+  openFlowLineCreateWizard,
+  closeFlowLineCreateWizard,
+  isFlowLineWizardRegionSelected,
+  toggleFlowLineWizardRegion,
+  confirmCreateFlowLineFromWizard
+} = useFlowLineWizard({
+  activeFlowDisplayName,
+  isRegionRoutingEnabled,
+  regionRoutingBindings,
+  readCurrentFlowNameForWizard,
+  performCreateFlowLine,
+  normalizeNullableText,
+  isGeneralRegion,
+  ensureRegionRoutingMode,
+  replaceRegionRoutingBindings,
+  buildRegionProfileId
 })
-const routeSimHitSummaryText = computed(() => {
-  if (!simulatedProfile.value?.module) return '未命中流程线'
-  const profileText = formatFlowProfileLabel(simulatedProfile.value)
-  const moduleText = formatModuleDisplayRef(simulatedProfile.value.module)
-  return `${profileText} -> ${moduleText}`
-})
-const routeSimScoreSummaryText = computed(() => {
-  const ranked = simulatedRankedCandidates.value.length
-  const score = simulatedBestCandidate.value?.totalScore || 0
-  return `候选规则 ${ranked} 条 · 命中得分 ${score}`
-})
-
-function isRegionSimulationTarget(rawRegion: string): boolean {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return false
-  const activeRegion = normalizeNullableText(routeSimRegion.value)
-  if (isGeneralRegion(region)) return !activeRegion
-  return region === activeRegion
-}
-
-function runRegionOverviewRouteSimulation(rawRegion: string) {
-  const region = normalizeNullableText(rawRegion)
-  if (!region) return
-  routeSimRegion.value = isGeneralRegion(region) ? '' : region
-  syncFlowCenterDebugMeta()
-  uni.showToast({
-    title: isGeneralRegion(region) ? '已模拟通用地区' : `已模拟 ${region}`,
-    icon: 'none'
-  })
-}
-
-const flowProfileDiagnostics = computed<FlowProfileDiagnosticsUsecase>(() => diagnoseFlowProfileRules(flowProfileRules.value || []))
-const flowProfileFixSuggestions = computed(() => {
-  return buildFlowProfileFixSuggestions(flowProfileDiagnostics.value, flowProfileRules.value || [])
-})
-const flowProfileSubmitValidation = computed<FlowProfileSubmitValidation>(() => {
-  return canSubmitFlowProfiles(flowProfileRules.value || [])
-})
-const pendingFlowProfileFixSuggestions = ref<FlowProfileFixPreviewItem[]>([])
-
-function loadRouteSimFromCurrentQuestion() {
-  routeSimulator.loadRouteSimFromCurrentQuestion()
-}
-
-function syncRouteSimToCurrentQuestion() {
-  routeSimulator.syncRouteSimToCurrentQuestion()
-}
 
 function clearFlowCenterDiagnosticsTrace() {
   runtimeDebug.resetSession(flowCenterDebugSessionId, {
@@ -2556,281 +2026,30 @@ function exportFlowCenterDiagnostics() {
   })
 }
 
-type FlowProfileFixSuggestion = FlowProfileFixSuggestionUsecase
+const {
+  commitValidationIssues,
+  activeCommitValidationIssueKey,
+  templateFocusPath,
+  normalizeCommitValidationIssue,
+  clearCommitValidationIssues,
+  jumpToCommitValidationIssue,
+  jumpToFirstCommitValidationIssue,
+  handleModuleCommitValidationFailed
+} = useCommitValidationIssues({
+  readonlyFlowVisualVisible,
+  selectFlowVisualNode: (nodeId) => flowVisualEditor.selectNode(nodeId),
+  formatFlowProfileLabelById
+})
 
-type FlowProfileFixFieldDiff = {
-  key: string
-  before: string
-  after: string
-}
-
-type FlowProfileFixPreviewItem = FlowProfileFixSuggestion & {
-  previewText: string
-  previewFields: FlowProfileFixFieldDiff[]
-}
-
-type CommitValidationIssueScope = 'template' | 'routing' | 'visual' | 'unknown'
-
-type CommitValidationIssue = {
-  key: string
-  code: string
-  path: string
-  message: string
-  scope: CommitValidationIssueScope
-  locationLabel: string
-  targetProfileId?: string
-  targetVisualNodeId?: string
-}
-
-const commitValidationIssues = ref<CommitValidationIssue[]>([])
-const activeCommitValidationIssueKey = ref('')
-const templateFocusPath = ref('')
-
-function resolveCommitValidationScope(path: string): CommitValidationIssueScope {
-  if (path.startsWith('content.')) return 'template'
-  if (path.startsWith('flowProfiles')) return 'routing'
-  if (path.startsWith('flowVisual.')) return 'visual'
-  return 'unknown'
-}
-
-function resolveCommitValidationLocationLabel(
-  path: string,
-  scope: CommitValidationIssueScope,
-  profileId?: string,
-  visualNodeId?: string
-): string {
-  if (scope === 'template') {
-    const groupMatch = path.match(/content\.groups\[(\d+)\]/)
-    if (groupMatch) {
-      const gIndex = Number(groupMatch[1] || 0)
-      return `题目模板 > 题组 ${gIndex + 1}`
-    }
-    if (path.startsWith('content.intro')) return '题目模板 > 题目说明'
-    return '题目模板'
-  }
-  if (scope === 'routing') {
-    if (profileId) return `地区匹配 > ${formatFlowProfileLabelById(profileId)}`
-    return '地区匹配'
-  }
-  if (scope === 'visual') {
-    if (visualNodeId) return `可视流程 > 节点 ${visualNodeId}`
-    return '可视流程'
-  }
-  return '未知区域'
-}
-
-function normalizeCommitValidationIssue(
-  issue: { code?: string; path?: string; message?: string },
-  index: number
-): CommitValidationIssue {
-  const code = String(issue?.code || 'unknown_issue')
-  const path = String(issue?.path || '')
-  const message = String(issue?.message || '流程提交前校验未通过')
-  const scope = resolveCommitValidationScope(path)
-  const profileMatch = path.match(/flowProfiles\[\d+\]\(([^)]+)\)/)
-  const targetProfileId = profileMatch?.[1] ? String(profileMatch[1]) : undefined
-  const visualNodeMatch = path.match(/flowVisual\.graph\.nodes\(([^)]+)\)/)
-  const targetVisualNodeId = visualNodeMatch?.[1] ? String(visualNodeMatch[1]) : undefined
-  const locationLabel = resolveCommitValidationLocationLabel(path, scope, targetProfileId, targetVisualNodeId)
-  return {
-    key: `${code}:${path}:${index}`,
-    code,
-    path,
-    message,
-    scope,
-    locationLabel,
-    targetProfileId,
-    targetVisualNodeId
-  }
-}
-
-function clearCommitValidationIssues() {
-  commitValidationIssues.value = []
-  activeCommitValidationIssueKey.value = ''
-  templateFocusPath.value = ''
-}
-
-function jumpToCommitValidationIssue(issue: CommitValidationIssue) {
-  activeCommitValidationIssueKey.value = issue.key
-  if (issue.scope === 'template') {
-    templateFocusPath.value = issue.path
-    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
-    return
-  }
-  if (issue.scope === 'routing') {
-    templateFocusPath.value = ''
-    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
-    return
-  }
-  if (issue.scope === 'visual') {
-    templateFocusPath.value = ''
-    readonlyFlowVisualVisible.value = true
-    if (issue.targetVisualNodeId) {
-      flowVisualEditor.selectNode(issue.targetVisualNodeId)
-    }
-    uni.showToast({ title: `已定位：${issue.locationLabel}`, icon: 'none' })
-    return
-  }
-  uni.showToast({ title: '该问题暂不支持自动定位', icon: 'none' })
-}
-
-function jumpToFirstCommitValidationIssue() {
-  const first = commitValidationIssues.value[0]
-  if (!first) {
-    uni.showToast({ title: '当前无阻断项', icon: 'none' })
-    return
-  }
-  jumpToCommitValidationIssue(first)
-}
-
-function handleModuleCommitValidationFailed(result: ModuleCommitValidationResult): boolean {
-  if (!Array.isArray(commitValidationIssues.value) || commitValidationIssues.value.length <= 0) {
-    const normalized = (Array.isArray(result.issues) ? result.issues : [])
-      .map(normalizeCommitValidationIssue)
-    commitValidationIssues.value = normalized
-  }
-  if (commitValidationIssues.value.length > 0) {
-    jumpToCommitValidationIssue(commitValidationIssues.value[0])
-  }
-  return true
-}
-
-function diagnoseFlowProfileRules(profiles: FlowProfileV1[]): FlowProfileDiagnosticsUsecase {
-  return diagnoseFlowProfileRulesUsecase(profiles || [])
-}
-
-function buildFlowProfileFixSuggestions(
-  diagnostics: FlowProfileDiagnosticsUsecase,
-  profiles: FlowProfileV1[]
-): FlowProfileFixSuggestion[] {
-  return buildFlowProfileFixSuggestionsUsecase(diagnostics, profiles || [])
-}
-
-function toFlowProfileFixPreviewItem(suggestion: FlowProfileFixSuggestion): FlowProfileFixPreviewItem {
-  const current = flowProfiles.getById(suggestion.targetId)
-  const previewFields = Object.entries(suggestion.patch || {})
-    .map(([k, nextValue]) => {
-      const prevValue = current ? (current as unknown as Record<string, unknown>)[k] : undefined
-      return {
-        key: k,
-        before: String(prevValue ?? '(空)'),
-        after: String(nextValue ?? '(空)')
-      } as FlowProfileFixFieldDiff
-    })
-  return {
-    ...suggestion,
-    previewText: previewFields.map(x => `${x.key}: ${x.before} -> ${x.after}`).join('；'),
-    previewFields
-  }
-}
-
-function openFlowProfileFixPreview(suggestions: FlowProfileFixSuggestion[]) {
-  const list = (Array.isArray(suggestions) ? suggestions : [])
-    .filter(item => item?.autoApplicable !== false && Object.keys(item?.patch || {}).length > 0)
-
-  if (list.length === 0) {
-    uni.showToast({ title: '暂无可应用修复', icon: 'none' })
-    return
-  }
-  pendingFlowProfileFixSuggestions.value = list.map(toFlowProfileFixPreviewItem)
-}
-
-function cancelFlowProfileFixPreview() {
-  pendingFlowProfileFixSuggestions.value = []
-}
-
-function confirmFlowProfileFixPreview() {
-  const list = pendingFlowProfileFixSuggestions.value || []
-  if (list.length === 0) {
-    uni.showToast({ title: '暂无待应用修复', icon: 'none' })
-    return
-  }
-  uni.showModal({
-    title: '确认应用修复预览',
-    content: `将应用 ${list.length} 条修复，是否继续？`,
-    confirmText: '应用',
-    cancelText: '取消',
-    success: (res) => {
-      if (!res.confirm) return
-      list.forEach((item) => {
-        patchFlowProfile(item.targetId, item.patch || {})
-      })
-      pendingFlowProfileFixSuggestions.value = []
-      uni.showToast({ title: `已应用 ${list.length} 条修复`, icon: 'success' })
-    }
-  })
-}
-
-function applyFlowProfileFixSuggestion(suggestion: FlowProfileFixSuggestion) {
-  if (!suggestion?.targetId) return
-  if (suggestion.autoApplicable === false || Object.keys(suggestion.patch || {}).length === 0) {
-    uni.showModal({
-      title: '建议需手动处理',
-      content: suggestion.reason || suggestion.summary || '该建议暂无自动修复补丁，请手动调整规则字段。',
-      showCancel: false
-    })
-    return
-  }
-  openFlowProfileFixPreview([suggestion])
-}
-
-function applyAllFlowProfileFixSuggestions() {
-  openFlowProfileFixPreview(flowProfileFixSuggestions.value || [])
-}
+const commitValidationIssueList = computed(() => {
+  const list = commitValidationIssues.value
+  return Array.isArray(list) ? list : []
+})
 
 function normalizeNullableText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined
   const s = v.trim()
   return s || undefined
-}
-
-function formatFlowProfileSubmitValidation(validation: FlowProfileSubmitValidation, max = 6) {
-  const lines: string[] = []
-  const errors = validation?.errors || []
-  const warnings = validation?.warnings || []
-  const diagnostics = validation?.diagnostics
-
-  if (errors.length > 0) {
-    lines.push('错误：')
-    errors.slice(0, max).forEach((item, index) => {
-      lines.push(`${index + 1}. ${item}`)
-    })
-    if (errors.length > max) lines.push(`... 另有 ${errors.length - max} 条错误`)
-  }
-
-  if (warnings.length > 0) {
-    if (lines.length > 0) lines.push('')
-    lines.push('提醒：')
-    warnings.slice(0, max).forEach((item, index) => {
-      lines.push(`${index + 1}. ${item}`)
-    })
-    if (warnings.length > max) lines.push(`... 另有 ${warnings.length - max} 条提醒`)
-  }
-
-  if (diagnostics) {
-    if (lines.length > 0) lines.push('')
-    lines.push(`诊断汇总：冲突 ${diagnostics.conflicts.length}，死规则 ${diagnostics.deadRules.length}，弱覆盖 ${diagnostics.weakCoverage.length}`)
-  }
-
-  if (lines.length === 0) return '路由诊断未通过，请检查规则配置。'
-  return lines.join('\n')
-}
-
-function showFlowProfileSubmitBlocked(validation: FlowProfileSubmitValidation) {
-  uni.showModal({
-    title: '路由诊断未通过',
-    content: formatFlowProfileSubmitValidation(validation),
-    showCancel: false
-  })
-}
-
-function showFlowProfileSubmitValidationSummary() {
-  const validation = flowProfileSubmitValidation.value
-  uni.showModal({
-    title: validation.ok ? '路由提交校验通过' : '路由提交校验未通过',
-    content: formatFlowProfileSubmitValidation(validation),
-    showCancel: false
-  })
 }
 
 function patchFlowProfile(id: string, patch: Record<string, unknown>) {
@@ -2845,7 +2064,7 @@ function patchFlowProfile(id: string, patch: Record<string, unknown>) {
     module: nextModule
   })
   if (!result.ok) {
-    showFlowProfileSubmitBlocked(result.validation)
+    uni.showToast({ title: '更新路由失败', icon: 'none' })
     return false
   }
   return true
@@ -2973,7 +2192,7 @@ function addFlowProfileRule() {
     note: `听后选择路由-${new Date(ts).toLocaleTimeString()}`
   })
   if (!result.ok) {
-    showFlowProfileSubmitBlocked(result.validation)
+    uni.showToast({ title: '新增路由失败', icon: 'none' })
     return
   }
   uni.showToast({ title: '已新增路由', icon: 'success' })
@@ -2991,7 +2210,6 @@ function removeFlowProfileRule(id: string) {
   }
   const result = flowProfiles.removeWithDiagnostics(id)
   if (!result.ok) {
-    if (result.validation) showFlowProfileSubmitBlocked(result.validation)
     uni.showToast({ title: '删除失败', icon: 'none' })
     return
   }
@@ -3064,6 +2282,7 @@ type FlowVisualPartialPreviewState = {
 const readonlyFlowPartialPreviewState = ref<FlowVisualPartialPreviewState | null>(null)
 const readonlyFlowPartialPreviewRestoreOverride = ref<ListeningChoiceQuestion['flow']['steps'] | null | undefined>(undefined)
 const readonlyFlowPartialPreviewActive = computed(() => !!readonlyFlowPartialPreviewState.value)
+let demoQuestionMaterializeErrorLogged = false
 const readonlyFlowPartialPreviewLabel = computed(() => {
   const state = readonlyFlowPartialPreviewState.value
   if (!state) return ''
@@ -3084,11 +2303,23 @@ const demoQuestion = computed<ListeningChoiceQuestion>(() => {
     id: draftModuleId.value,
     version: draftModuleVersion.value
   })
-  const steps = materializeListeningChoiceStandardSteps(base, {
-    generateId: makeStableIdFactory(),
-    overrides: {},
-    module
-  }) as ListeningChoiceQuestion['flow']['steps']
+  let steps: ListeningChoiceQuestion['flow']['steps'] = []
+  try {
+    const materialized = materializeListeningChoiceStandardSteps(base, {
+      generateId: makeStableIdFactory(),
+      overrides: {},
+      module
+    })
+    steps = Array.isArray(materialized) ? materialized as ListeningChoiceQuestion['flow']['steps'] : []
+    demoQuestionMaterializeErrorLogged = false
+  } catch (error) {
+    if (!demoQuestionMaterializeErrorLogged) {
+      console.error('[FlowModulesManager] Failed to materialize demo flow steps, fallback to base flow', error)
+      demoQuestionMaterializeErrorLogged = true
+    }
+    const fallback = base?.flow?.steps
+    steps = Array.isArray(fallback) ? clone(fallback) : []
+  }
   const overrideSteps = visualPreviewOverrideSteps.value
   const effectiveSteps = Array.isArray(overrideSteps) && overrideSteps.length > 0 ? overrideSteps : steps
   return {
@@ -3129,7 +2360,6 @@ const readonlyFlowSnippetSelectionNodeIds = flowVisualEditor.snippetSelectionNod
 const readonlyFlowVisualPropertyFields = flowVisualEditor.propertyFieldsForSelectedNode
 const flowVisualDebugInfo = flowVisualEditor.debugInfo
 const flowVisualDraggingKind = ref('')
-const readonlyFlowVisualVisible = ref(false)
 const readonlyFlowGraph = flowVisualEditor.graph
 const readonlyFlowCompileResult = flowVisualEditor.compileResult
 const readonlyFlowCompiledStepPreview = flowVisualEditor.compiledStepPreview
@@ -3446,17 +2676,14 @@ function applyReadonlyFlowVisualSnippetAsMacro(
 }
 
 function onReadonlyFlowVisualDragStart(kind: string) {
-  console.log('[FlowModulesManager] onReadonlyFlowVisualDragStart', kind)
   flowVisualDraggingKind.value = String(kind || '')
 }
 
 function onReadonlyFlowVisualDragEnd() {
-  console.log('[FlowModulesManager] onReadonlyFlowVisualDragEnd')
   flowVisualDraggingKind.value = ''
 }
 
 function onReadonlyFlowVisualDrop(event: Event) {
-  console.log('[FlowModulesManager] onReadonlyFlowVisualDrop fired')
   const drag = event as DragEvent
   const fromTransfer = drag.dataTransfer?.getData('text/flow-kind') || ''
   const kind = String(fromTransfer || flowVisualDraggingKind.value || '')
@@ -3711,7 +2938,6 @@ function applyReadonlyFlowVisualToDraft() {
     uni.showToast({ title: '流程图不可编译，请先修复错误', icon: 'none' })
     return
   }
-  console.log('[FlowModulesManager] apply visual to draft:start', flowVisualDebugInfo.value)
 
   const firstGroup = demoBase.value?.content?.groups?.[0]
   const mapperResult = buildListeningChoiceModuleFromLinearSteps(readonlyFlowCompileResult.value.steps, {
@@ -3765,7 +2991,6 @@ function applyReadonlyFlowVisualToDraft() {
     clearCommitValidationIssues()
     flowVisualEditor.clearDirty()
     flowVisualEditor.reloadFromQuestion()
-    console.log('[FlowModulesManager] apply visual to draft:done', flowVisualDebugInfo.value)
     const warningCount = mapperResult.warnings.length + validation.warnings.length
     if (warningCount > 0) {
       uni.showToast({ title: `已应用到流程草稿（${warningCount} 条提醒）`, icon: 'none' })
@@ -3789,12 +3014,6 @@ function applyReadonlyFlowVisualToDraft() {
     }
   })
 }
-
-const previewAnswers = ref<Record<string, string | string[]>>({})
-const showAnswer = ref(false)
-const previewVirtualIndex = ref(0)
-const currentStepIndex = ref(0)
-const configStepIndex = ref(0)
 
 type ListeningChoiceFlowStep = ListeningChoiceQuestion['flow']['steps'][number]
 type FlowPreviewGroup = ListeningChoiceContent['groups'][number] | SpeakingHearAnswerContent['groups'][number]
@@ -3874,6 +3093,27 @@ const previewExpandedSegments = computed<Array<number>>(() => {
   return out
 })
 
+const {
+  previewAnswers,
+  showAnswer,
+  previewVirtualIndex,
+  currentStepIndex,
+  configStepIndex,
+  previewDisplayTotalSteps,
+  previewDisplayStepIndex,
+  firstVirtualIndexOfLogicalStep,
+  setPreviewVirtualIndex,
+  jumpToStep: jumpToStepCore,
+  syncConfigStepToCurrent,
+  onPreviewStepChange: onPreviewStepChangeCore,
+  onPreviewSelect: onPreviewSelectCore,
+  resetFlowPreviewPanel
+} = useFlowPreviewPanel({
+  demoQuestion,
+  previewTotalSteps,
+  previewExpandedSegments
+})
+
 const previewRenderQuestion = computed<ListeningChoiceQuestion>(() => {
   const base = demoQuestion.value
   const steps = base.flow?.steps || []
@@ -3912,33 +3152,6 @@ const previewRenderQuestion = computed<ListeningChoiceQuestion>(() => {
   }
 })
 
-function firstVirtualIndexOfLogicalStep(logicalIndex: number): number {
-  const segments = previewExpandedSegments.value
-  const hit = segments.findIndex((item) => item === logicalIndex)
-  return hit >= 0 ? hit : 0
-}
-
-function setPreviewVirtualIndex(nextIndex: number) {
-  const total = previewExpandedSegments.value.length
-  if (total <= 0) {
-    previewVirtualIndex.value = 0
-    currentStepIndex.value = 0
-    return
-  }
-  const safe = Math.max(0, Math.min(total - 1, nextIndex))
-  previewVirtualIndex.value = safe
-  const logicalIndex = previewExpandedSegments.value[safe]
-  if (typeof logicalIndex === 'number' && Number.isFinite(logicalIndex)) {
-    currentStepIndex.value = Math.max(0, Math.min(logicalIndex, Math.max(0, previewTotalSteps.value - 1)))
-  }
-}
-
-const previewDisplayTotalSteps = computed(() => previewExpandedSegments.value.length)
-const previewDisplayStepIndex = computed(() => {
-  if (previewDisplayTotalSteps.value <= 0) return 0
-  const safe = Math.max(0, Math.min(previewVirtualIndex.value, previewDisplayTotalSteps.value - 1))
-  return safe + 1
-})
 const flowCenterDebugSessionId = 'flow_center:listening_choice'
 const flowCenterTraceEvents = computed<RuntimeDebugEvent[]>(() => {
   return runtimeDebug.getSession(flowCenterDebugSessionId)?.events || []
@@ -3956,23 +3169,14 @@ const flowCenterCurrentStepText = computed(() => {
 })
 const flowCenterAutoNextCode = computed(() => String(flowCenterCurrentStep.value?.autoNext || ''))
 const flowCenterAutoNextReasonText = computed(() => formatAutoNextReason(flowCenterAutoNextCode.value))
-const flowCenterHitRuleText = computed(() => {
-  if (!simulatedProfile.value) return '未命中路由规则'
-  return formatFlowProfileLabel(simulatedProfile.value)
-})
 const flowCenterHitModuleVersionText = computed(() => {
-  const ref = simulatedProfile.value?.module
-  if (!ref) return '未命中流程模块'
-  return formatModuleDisplayRef(ref)
+  return formatModuleDisplayRef(currentFlowLineRef.value)
 })
 const flowCenterRouteSignature = computed(() => {
-  const region = normalizeNullableText(routeSimRegion.value) || '-'
-  const scene = normalizeNullableText(routeSimScene.value) || '-'
-  const grade = normalizeNullableText(routeSimGrade.value) || '-'
-  const profileId = simulatedProfile.value?.id || '-'
-  const moduleRef = flowCenterHitModuleVersionText.value
-  const score = String(simulatedBestCandidate.value?.totalScore || 0)
-  return [region, scene, grade, profileId, moduleRef, score].join('|')
+  const moduleId = String(currentFlowLineRef.value.id || '-')
+  const moduleVersion = String(currentFlowLineRef.value.version || 0)
+  const profileCount = String((flowProfileRules.value || []).length)
+  return [moduleId, moduleVersion, profileCount].join('|')
 })
 const flowCenterStepSignature = computed(() => {
   return [
@@ -3989,21 +3193,17 @@ function syncFlowCenterDebugMeta() {
     mode: 'flow_center',
     questionId: String(demoQuestion.value?.id || ''),
     questionType: String(demoQuestion.value?.type || 'listening_choice'),
-    sourceKind: 'route_sim',
-    profileId: simulatedProfile.value?.id || '',
-    moduleId: String(simulatedProfile.value?.module?.id || ''),
+    sourceKind: 'flow_center',
+    profileId: '',
+    moduleId: String(currentFlowLineRef.value.id || ''),
     moduleDisplayRef: flowCenterHitModuleVersionText.value,
-    moduleVersionText: simulatedProfile.value?.module ? `v${Math.max(1, toInt(simulatedProfile.value.module.version || 1))}` : '-',
-    moduleNote: String(simulatedModule.value?.note || ''),
+    moduleVersionText: `v${Math.max(1, toInt(currentFlowLineRef.value.version || 1))}`,
+    moduleNote: String(draftModuleNote.value || ''),
     currentStep: flowCenterCurrentStepText.value,
     currentStepKind: flowCenterCurrentStepKind.value,
     autoNext: flowCenterAutoNextCode.value || '-',
     autoNextReason: flowCenterAutoNextReasonText.value,
-    ctx: {
-      region: normalizeNullableText(routeSimRegion.value),
-      scene: normalizeNullableText(routeSimScene.value),
-      grade: normalizeNullableText(routeSimGrade.value)
-    }
+    ctx: {}
   })
 }
 
@@ -4017,10 +3217,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', onFlowVisualKeydown)
-  }
-  if (regionBindingFocusTimer) {
-    clearTimeout(regionBindingFocusTimer)
-    regionBindingFocusTimer = null
   }
   setFlowVisualBodyScrollLocked(false)
 })
@@ -4045,11 +3241,11 @@ watch(flowCenterRouteSignature, (next, prev) => {
   if (!next || next === prev) return
   runtimeDebug.record(flowCenterDebugSessionId, {
     type: 'route',
-    message: `命中规则：${flowCenterHitRuleText.value} -> ${flowCenterHitModuleVersionText.value}`,
+    message: `当前流程线：${flowCenterHitModuleVersionText.value}`,
     payload: {
-      profileId: simulatedProfile.value?.id || '',
-      moduleVersion: simulatedProfile.value?.module?.version || 0,
-      totalScore: simulatedBestCandidate.value?.totalScore || 0
+      moduleId: String(currentFlowLineRef.value.id || ''),
+      moduleVersion: currentFlowLineRef.value.version || 0,
+      ruleCount: (flowProfileRules.value || []).length
     }
   })
 }, { immediate: true })
@@ -4066,33 +3262,6 @@ watch(flowCenterStepSignature, (next, prev) => {
       autoNext: flowCenterAutoNextCode.value
     }
   })
-}, { immediate: true })
-
-watch(previewTotalSteps, (n) => {
-  if (!Number.isFinite(n) || n <= 0) {
-    previewVirtualIndex.value = 0
-    currentStepIndex.value = 0
-    configStepIndex.value = -1
-    return
-  }
-
-  if (currentStepIndex.value > n - 1) currentStepIndex.value = n - 1
-  if (configStepIndex.value > n - 1) configStepIndex.value = n - 1
-  previewVirtualIndex.value = firstVirtualIndexOfLogicalStep(currentStepIndex.value)
-})
-
-watch(previewExpandedSegments, (segments) => {
-  const total = segments.length
-  if (total <= 0) {
-    previewVirtualIndex.value = 0
-    currentStepIndex.value = 0
-    return
-  }
-
-  if (previewVirtualIndex.value >= total) {
-    previewVirtualIndex.value = total - 1
-  }
-  setPreviewVirtualIndex(previewVirtualIndex.value)
 }, { immediate: true })
 
 const perGroupEditor = usePerGroupStepEditor({
@@ -4231,99 +3400,80 @@ function buildUniqueFlowLineId(baseId: string): string {
   return candidate
 }
 
-function switchDraftToModuleRef(ref: FlowModuleRef) {
-  const fallbackStandardId = getStandardModuleIdByPageType(activeFlowPageType.value)
-  const targetRef = {
-    id: String(ref?.id || fallbackStandardId),
-    version: Math.max(1, toInt(ref?.version || 1))
-  }
-  const module = flowModules.getListeningChoiceByRef(targetRef)
-  if (!module) {
-    uni.showToast({ title: '目标流程版本不存在', icon: 'none' })
-    return
-  }
-  draftModuleId.value = targetRef.id
-  draftModuleVersion.value = targetRef.version
-  syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
+function clearPreviewOverrides() {
   readonlyFlowPartialPreviewRestoreOverride.value = undefined
   readonlyFlowPartialPreviewState.value = null
   visualPreviewOverrideSteps.value = null
-  clearCommitValidationIssues()
+}
+
+function syncFlowVisualAfterDraftSwitch() {
   flowVisualEditor.clearDirty()
   flowVisualEditor.reloadFromQuestion()
 }
 
-function switchToFlowLine(lineId: string) {
-  const targetId = String(lineId || '').trim()
-  if (!targetId) return
-  const candidates = (listeningChoiceModules.value || [])
-    .filter((module) => String(module?.id || '') === targetId)
-    .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))
-  if (candidates.length <= 0) {
-    uni.showToast({ title: '流程线不存在', icon: 'none' })
-    return
+const {
+  switchDraftToModuleRef,
+  switchToFlowLine
+} = useFlowLineSwitcher({
+  activeFlowPageType,
+  listeningChoiceModules,
+  draftModuleId,
+  draftModuleVersion,
+  listeningChoiceDraft,
+  getStandardModuleIdByPageType,
+  toInt,
+  normalizeFlowModuleStatus,
+  getListeningChoiceByRef: (ref) => flowModules.getListeningChoiceByRef(ref),
+  syncDraftModuleMeta,
+  toDraftStandardModule,
+  clone,
+  clearPreviewOverrides,
+  clearCommitValidationIssues,
+  syncFlowVisualAfterDraftSwitch,
+  showToast: (title) => {
+    uni.showToast({ title, icon: 'none' })
   }
-  const preferred = candidates.find((module) => normalizeFlowModuleStatus(module?.status) !== 'archived') || candidates[0]
-  if (!preferred) return
-  switchDraftToModuleRef({
-    id: String(preferred.id || targetId),
-    version: Math.max(1, toInt(preferred.version || 1))
-  })
+})
+
+let lastFlowLineChipSwitchTs = 0
+let lastFlowLineChipSwitchId = ''
+function onFlowLineChipActivate(lineId: string) {
+  const id = String(lineId || '').trim()
+  if (!id) return
+  const now = Date.now()
+  if (id === lastFlowLineChipSwitchId && now - lastFlowLineChipSwitchTs < 180) return
+  lastFlowLineChipSwitchId = id
+  lastFlowLineChipSwitchTs = now
+  switchToFlowLine(id)
 }
 
-function goHome() {
-  page.value = 'home'
-  flowLineWizardVisible.value = false
-}
-
-function openListeningChoice() {
-  ensureRegionRoutingMode(true)
-  activeFlowPageType.value = 'listening_choice'
-  syncTemplateFromLibraryQuestion('listening_choice')
-  flowLineWizardVisible.value = false
-  const module = getDefaultModule('listening_choice')
-  draftModuleId.value = String(module.id || LISTENING_CHOICE_STANDARD_FLOW_ID)
-  draftModuleVersion.value = Number(module.version || 1)
-  syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
-  readonlyFlowPartialPreviewRestoreOverride.value = undefined
-  readonlyFlowPartialPreviewState.value = null
-  visualPreviewOverrideSteps.value = null
-  previewAnswers.value = {}
-  showAnswer.value = false
-  currentStepIndex.value = 0
-  configStepIndex.value = 0
-  page.value = 'listening_choice'
-}
-
-function openSpeakingHearAnswer() {
-  activeFlowPageType.value = 'speaking_hear_answer'
-  syncTemplateFromLibraryQuestion('speaking_hear_answer')
-  flowLineWizardVisible.value = false
-  const module = getDefaultModule('speaking_hear_answer')
-  draftModuleId.value = String(module.id || LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID)
-  draftModuleVersion.value = Number(module.version || 1)
-  syncDraftModuleMeta(module)
-  listeningChoiceDraft.value = clone(toDraftStandardModule(module))
-  readonlyFlowPartialPreviewRestoreOverride.value = undefined
-  readonlyFlowPartialPreviewState.value = null
-  visualPreviewOverrideSteps.value = null
-  previewAnswers.value = {}
-  showAnswer.value = false
-  currentStepIndex.value = 0
-  configStepIndex.value = 0
-  page.value = 'speaking_hear_answer'
-}
+const {
+  goHome,
+  openListeningChoice,
+  openSpeakingHearAnswer
+} = useFlowPageNavigation({
+  page,
+  activeFlowPageType,
+  flowLineWizardVisible,
+  draftModuleId,
+  draftModuleVersion,
+  listeningChoiceDraft,
+  listeningChoiceStandardFlowId: LISTENING_CHOICE_STANDARD_FLOW_ID,
+  listeningHearAnswerStandardFlowId: LISTENING_HEAR_ANSWER_STANDARD_FLOW_ID,
+  ensureRegionRoutingMode,
+  syncTemplateFromLibraryQuestion,
+  getDefaultModule,
+  syncDraftModuleMeta,
+  toDraftStandardModule,
+  clone,
+  clearPreviewOverrides,
+  resetFlowPreviewPanel
+})
 
 function reloadDemoBaseFromTemplate() {
   const synced = syncTemplateFromLibraryQuestion(activeFlowPageType.value)
-  readonlyFlowPartialPreviewRestoreOverride.value = undefined
-  readonlyFlowPartialPreviewState.value = null
-  visualPreviewOverrideSteps.value = null
-  previewAnswers.value = {}
-  currentStepIndex.value = 0
-  configStepIndex.value = 0
+  clearPreviewOverrides()
+  resetFlowPreviewPanel()
   if (synced) {
     uni.showToast({ title: '已同步题库测试题', icon: 'none' })
     return
@@ -4408,2074 +3558,26 @@ function applyStandardToCurrentQuestion() {
 }
 
 function jumpToStep(index: number) {
-  const next = Math.max(0, Math.min(previewTotalSteps.value - 1, index))
-  currentStepIndex.value = next
-  previewVirtualIndex.value = firstVirtualIndexOfLogicalStep(next)
-  if (configStepIndex.value === next) {
-    configStepIndex.value = -1
-    return
-  }
-  configStepIndex.value = next
+  jumpToStepCore(index)
 }
 
 function previewPrevStep() {
   setPreviewVirtualIndex(previewVirtualIndex.value - 1)
-  configStepIndex.value = currentStepIndex.value
+  syncConfigStepToCurrent()
 }
 
 function previewNextStep() {
   setPreviewVirtualIndex(previewVirtualIndex.value + 1)
-  configStepIndex.value = currentStepIndex.value
+  syncConfigStepToCurrent()
 }
 
 function onPreviewStepChange(step: number) {
-  setPreviewVirtualIndex(step)
-  configStepIndex.value = currentStepIndex.value
-}
-
-function findSubQuestionById(q: ListeningChoiceQuestion, id: string): SubQuestion | null {
-  for (const g of q.content.groups || []) {
-    for (const sq of g.subQuestions || []) {
-      if (sq.id === id) return sq
-    }
-  }
-  return null
+  onPreviewStepChangeCore(step)
 }
 
 function onPreviewSelect(subQuestionId: string, optionKey: string) {
-  const q = demoQuestion.value
-  const sq = findSubQuestionById(q, subQuestionId)
-  if (!sq) return
-
-  const mode = sq.answerMode === 'multiple' ? 'multiple' : 'single'
-  const current = previewAnswers.value[subQuestionId]
-
-  if (mode === 'multiple') {
-    const list = Array.isArray(current) ? [...current] : []
-    const idx = list.indexOf(optionKey)
-    if (idx >= 0) list.splice(idx, 1)
-    else list.push(optionKey)
-    previewAnswers.value = { ...previewAnswers.value, [subQuestionId]: list }
-    return
-  }
-
-  previewAnswers.value = { ...previewAnswers.value, [subQuestionId]: optionKey }
+  onPreviewSelectCore(subQuestionId, optionKey)
 }
 </script>
 
-<style lang="scss" scoped>
-.flow-center {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background:
-    radial-gradient(1200px 520px at 12% -10%, rgba(33, 150, 243, 0.10), rgba(255, 255, 255, 0) 60%),
-    radial-gradient(900px 420px at 92% 0%, rgba(255, 152, 0, 0.06), rgba(255, 255, 255, 0) 55%),
-    linear-gradient(180deg, #f7f9fc, #eef2f7);
-}
-
-.flow-center__header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 16px 18px;
-  background: rgba(255, 255, 255, 0.86);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.header-left {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  min-width: 0;
-}
-
-.header-titles {
-  min-width: 0;
-}
-
-.title {
-  font-size: 18px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.subtitle {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.back {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  background: rgba(255, 255, 255, 0.85);
-}
-
-.back__icon {
-  color: rgba(15, 23, 42, 0.70);
-  font-size: 14px;
-}
-
-.back__text {
-  color: rgba(15, 23, 42, 0.82);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.flow-center__body {
-  flex: 1;
-  min-height: 0;
-  height: 0;
-  padding: 18px;
-  box-sizing: border-box;
-}
-
-.flow-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.flow-card {
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 16px;
-  padding: 14px 14px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
-  transition: transform 0.14s, box-shadow 0.14s, border-color 0.14s;
-}
-
-.flow-card:active {
-  transform: translateY(1px);
-}
-
-.flow-card__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.flow-card__icon {
-  font-size: 22px;
-}
-
-.flow-card__badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.badge {
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.78);
-  background: rgba(15, 23, 42, 0.06);
-}
-
-.badge--muted {
-  color: rgba(15, 23, 42, 0.55);
-  background: rgba(15, 23, 42, 0.05);
-}
-
-.flow-card__title {
-  display: block;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.flow-card__desc {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.60);
-  line-height: 1.55;
-}
-
-.flow-card__meta {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(15, 23, 42, 0.55);
-  font-size: 12px;
-}
-
-.meta-dot {
-  color: rgba(15, 23, 42, 0.28);
-}
-
-.flow-card--disabled {
-  opacity: 0.62;
-}
-
-.flow-center__detail {
-  flex: 1;
-  min-height: 0;
-  height: 0;
-}
-
-.detail-body {
-  height: 100%;
-  display: flex;
-  gap: 12px;
-  padding: 12px 12px 14px;
-  box-sizing: border-box;
-}
-
-.col {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.col--template {
-  flex: 1.1 1 0;
-  min-width: 360px;
-  max-width: 560px;
-}
-
-.col--flow {
-  flex: 1.4 1 0;
-}
-
-.col--preview {
-  flex: 1 1 0;
-  max-width: 460px;
-  min-width: 320px;
-}
-
-.col-scroll {
-  flex: 1;
-  min-height: 0;
-}
-
-.panel {
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.90);
-  overflow: hidden;
-  margin-bottom: 12px;
-}
-
-.panel--focus {
-  border-color: rgba(239, 68, 68, 0.38);
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.10);
-}
-
-.panel--blocking {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(254, 242, 242, 0.88);
-}
-
-.panel__header {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  background: rgba(248, 250, 252, 0.86);
-}
-
-.panel__header--blocking {
-  border-bottom-color: rgba(239, 68, 68, 0.22);
-  background: rgba(254, 226, 226, 0.72);
-}
-
-.panel__header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.panel__header-actions .btn.is-active {
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #0b63c6;
-  background: rgba(219, 234, 254, 0.86);
-}
-
-.panel__title {
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.panel__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.module-state {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.module-state__ref {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.72);
-}
-
-.module-state__tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  color: rgba(15, 23, 42, 0.62);
-  background: rgba(15, 23, 42, 0.04);
-}
-
-.module-state__tag.is-draft {
-  border-color: rgba(250, 173, 20, 0.45);
-  color: #8a6200;
-  background: rgba(250, 173, 20, 0.12);
-}
-
-.module-state__tag.is-published {
-  border-color: rgba(46, 125, 50, 0.45);
-  color: #1f6f2b;
-  background: rgba(76, 175, 80, 0.12);
-}
-
-.module-state__tag.is-archived {
-  border-color: rgba(15, 23, 42, 0.2);
-  color: rgba(15, 23, 42, 0.5);
-  background: rgba(15, 23, 42, 0.06);
-}
-
-.module-state__hint {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.module-state__id {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.research-mode-hint {
-  margin-top: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.86);
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.research-mode-hint__title {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.research-mode-hint__desc {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-  line-height: 1.45;
-}
-
-.research-next-card {
-  margin-top: 8px;
-  border: 1px solid rgba(37, 99, 235, 0.24);
-  border-radius: 12px;
-  background: rgba(239, 246, 255, 0.86);
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.research-next-card__main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.research-next-card__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.86);
-}
-
-.research-next-card__desc {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-  line-height: 1.4;
-}
-
-.research-next-card__btn {
-  flex-shrink: 0;
-}
-
-.flow-line-switch {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.flow-line-switch__label {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.68);
-}
-
-.flow-line-switch__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.flow-line-chip {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(248, 250, 252, 0.9);
-}
-
-.flow-line-chip.active {
-  border-color: rgba(59, 130, 246, 0.45);
-  background: rgba(219, 234, 254, 0.72);
-}
-
-.flow-line-chip__name {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.86);
-  font-weight: 700;
-}
-
-.flow-line-chip__meta {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.module-meta-grid {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.panel__body {
-  padding: 14px;
-}
-
-.panel__body--template {
-  padding: 10px 12px;
-}
-
-.diagram-hint {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px dashed rgba(15, 23, 42, 0.14);
-  background: rgba(255, 255, 255, 0.70);
-}
-
-.diagram-hint__text {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.60);
-}
-
-.region-binding {
-  margin-top: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
-  background: rgba(248, 250, 252, 0.86);
-  padding: 10px;
-}
-
-.region-binding.is-focus {
-  border-color: rgba(37, 99, 235, 0.45);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
-}
-
-.region-binding__head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.region-binding__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.region-binding__desc {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-  line-height: 1.5;
-}
-
-.region-binding__chips {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.region-chip {
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 8px 10px;
-}
-
-.region-chip.active {
-  border-color: rgba(33, 150, 243, 0.5);
-  background: rgba(227, 242, 253, 0.95);
-}
-
-.region-chip__name {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.86);
-}
-
-.region-chip__target {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.region-overview {
-  margin-top: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.88);
-  padding: 10px;
-}
-
-.region-overview__head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.region-overview__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.region-overview__desc {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-  line-height: 1.45;
-}
-
-.region-overview__stats {
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.region-overview__stat {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.region-overview__sim {
-  margin-top: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.78);
-  padding: 8px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.region-overview__sim-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.region-overview__sim-line {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.region-overview__sim-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.region-overview__list {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.region-overview__item {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.9);
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.region-overview__item.is-current {
-  border-color: rgba(37, 99, 235, 0.36);
-  background: rgba(239, 246, 255, 0.9);
-}
-
-.region-overview__item.is-simulated {
-  border-color: rgba(245, 158, 11, 0.42);
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.16);
-}
-
-.region-overview__main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.region-overview__region {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.region-overview__target,
-.region-overview__state {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-}
-
-.region-overview__actions {
-  flex-shrink: 0;
-}
-
-.quick-add-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.step-config {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.node-config {
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
-  padding: 10px 10px 8px;
-  background: rgba(248, 250, 252, 0.9);
-}
-
-.node-config__head {
-  margin-bottom: 8px;
-}
-
-.node-config__title {
-  display: block;
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.86);
-}
-
-.node-config__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.form-item {
-  margin-bottom: 0;
-}
-
-.form-item--grid {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.form-item--full {
-  grid-column: 1 / -1;
-}
-
-.form-item__label {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.68);
-  margin-bottom: 6px;
-}
-
-.form-item__value-hint {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.56);
-  line-height: 1.45;
-}
-
-.text-input {
-  width: 100%;
-  height: 36px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 12px;
-  padding: 0 12px;
-  font-size: 14px;
-  background: rgba(248, 250, 252, 0.9);
-}
-
-.textarea-input {
-  width: 100%;
-  min-height: 72px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 12px;
-  padding: 8px 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  background: rgba(248, 250, 252, 0.9);
-  box-sizing: border-box;
-}
-
-.toggle {
-  height: 36px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(15, 23, 42, 0.62);
-  background: #fff;
-}
-
-.toggle.active {
-  border-color: rgba(33, 150, 243, 0.55);
-  color: #0b63c6;
-  background: rgba(227, 242, 253, 0.95);
-}
-
-.mode-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mode-toggle--triple {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.mode-btn {
-  height: 36px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(15, 23, 42, 0.64);
-  background: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mode-btn.active {
-  border-color: rgba(33, 150, 243, 0.55);
-  color: #0b63c6;
-  background: rgba(227, 242, 253, 0.95);
-}
-
-.empty-tip {
-  padding: 12px;
-  color: $text-hint;
-  font-size: 12px;
-}
-
-.step-config > .empty-tip {
-  grid-column: 1 / -1;
-}
-
-.step-structure {
-  grid-column: 1 / -1;
-  border-top: 1px dashed rgba(15, 23, 42, 0.14);
-  margin-top: 2px;
-  padding-top: 8px;
-}
-
-.step-structure__label {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.60);
-  margin-bottom: 6px;
-}
-
-.step-structure__actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.profile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.profile-card {
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.profile-card.is-focus {
-  border-color: rgba(239, 68, 68, 0.42);
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12);
-}
-
-.profile-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.profile-card__id {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.profile-card__module {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.78);
-}
-
-.profile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.profile-ref-list {
-  margin-top: 8px;
-}
-
-.profile-ref-list__label {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.62);
-  margin-bottom: 6px;
-}
-
-.profile-ref-list__chips {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.profile-chip {
-  padding: 5px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 999px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.62);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.profile-chip.active {
-  border-color: rgba(33, 150, 243, 0.5);
-  color: #0b63c6;
-  background: rgba(227, 242, 253, 0.95);
-}
-
-.profile-card__actions {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.blocking-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.blocking-item {
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 8px 10px;
-}
-
-.blocking-item.active {
-  border-color: rgba(239, 68, 68, 0.45);
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12);
-}
-
-.blocking-item__loc {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: #991b1b;
-}
-
-.blocking-item__msg {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.72);
-  line-height: 1.45;
-}
-
-.blocking-item__path {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.5);
-}
-
-.blocking-item__actions {
-  margin-top: 6px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.route-check {
-  margin-top: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 12px;
-  background: rgba(248, 250, 252, 0.82);
-  padding: 10px;
-}
-
-.route-check__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.route-check__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.route-check__meta {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.route-check__section {
-  margin-top: 8px;
-}
-
-.route-check__section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.route-check__preview-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.route-check__section-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.72);
-  margin-bottom: 4px;
-}
-
-.route-check__ok {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.52);
-}
-
-.route-check__list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.route-check__item {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.88);
-  padding: 6px 8px;
-}
-
-.route-check__item-main {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.7);
-}
-
-.route-check__item-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.52);
-}
-
-.route-check__item-actions {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.route-check__manual-tip {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.5);
-}
-
-.route-check__preview-fields {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.route-check__preview-field {
-  border: 1px dashed rgba(15, 23, 42, 0.14);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.85);
-  padding: 5px 6px;
-}
-
-.route-check__preview-key {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.66);
-}
-
-.route-check__preview-before,
-.route-check__preview-after {
-  display: block;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-  margin-top: 2px;
-}
-
-.route-sim {
-  margin-top: 12px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.14);
-  padding-top: 10px;
-}
-
-.route-sim__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.route-sim__head-main {
-  min-width: 0;
-}
-
-.route-sim__head-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.route-sim__title {
-  display: block;
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.86);
-}
-
-.route-sim__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.route-sim__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.route-sim__result {
-  margin-top: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: rgba(248, 250, 252, 0.8);
-}
-
-.route-sim__result-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.78);
-  margin-bottom: 4px;
-}
-
-.route-sim__line {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.65);
-  line-height: 1.5;
-}
-
-.route-sim__result--soft {
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.route-sim__rank-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.route-sim__rank-item {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 8px;
-  background: rgba(248, 250, 252, 0.7);
-  padding: 6px 8px;
-}
-
-.route-sim__rank-main {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.72);
-}
-
-.route-sim__rank-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.54);
-}
-
-.flow-diagnostics {
-  margin-top: 10px;
-  border: 1px solid rgba(2, 132, 199, 0.22);
-  border-radius: 10px;
-  background: rgba(240, 249, 255, 0.72);
-  padding: 8px 10px;
-}
-
-.flow-diagnostics__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.flow-diagnostics__head-main {
-  min-width: 0;
-}
-
-.flow-diagnostics__head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.flow-diagnostics__title {
-  display: block;
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.86);
-}
-
-.flow-diagnostics__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.flow-diagnostics__grid {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 3px;
-}
-
-.flow-diagnostics__line {
-  display: block;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.7);
-  line-height: 1.5;
-}
-
-.flow-diagnostics__trace {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.14);
-}
-
-.flow-diagnostics__trace-title {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.64);
-}
-
-.flow-diagnostics__trace-list {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-diagnostics__trace-item {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 5px 7px;
-}
-
-.flow-diagnostics__trace-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.flow-diagnostics__trace-time {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.46);
-}
-
-.flow-diagnostics__trace-type {
-  font-size: 11px;
-  color: rgba(2, 132, 199, 0.9);
-  font-weight: 700;
-}
-
-.flow-diagnostics__trace-text {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.66);
-  line-height: 1.5;
-}
-
-.flow-visual-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 340;
-  overscroll-behavior: contain;
-}
-
-.flow-visual-modal__mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.44);
-}
-
-.flow-visual-modal__panel {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(980px, 92vw);
-  height: min(700px, 88vh);
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  overscroll-behavior: contain;
-}
-
-.flow-visual-modal__header {
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 10px 12px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.flow-visual-modal__title-wrap {
-  min-width: 0;
-}
-
-.flow-visual-modal__title {
-  display: block;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.flow-visual-modal__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.flow-visual-modal__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.flow-visual-modal__body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 300px;
-}
-
-.flow-line-wizard-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 360;
-}
-
-.flow-line-wizard-modal__mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.44);
-}
-
-.flow-line-wizard-modal__panel {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(760px, 92vw);
-  max-height: min(720px, 88vh);
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.flow-line-wizard-modal__header {
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 12px 14px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.flow-line-wizard-modal__title-wrap {
-  min-width: 0;
-}
-
-.flow-line-wizard-modal__title {
-  display: block;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.flow-line-wizard-modal__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.flow-line-wizard-modal__body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: rgba(248, 250, 252, 0.7);
-}
-
-.flow-line-wizard-modal__footer {
-  flex-shrink: 0;
-  border-top: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.95);
-}
-
-.flow-line-wizard-modal__summary {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.flow-line-wizard-modal__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.wizard-section {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 10px;
-}
-
-.wizard-section__title {
-  display: block;
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.82);
-}
-
-.wizard-section__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.wizard-baseline {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.wizard-baseline__chip {
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.86);
-  padding: 8px 10px;
-}
-
-.wizard-baseline__chip.active {
-  border-color: rgba(59, 130, 246, 0.48);
-  background: rgba(219, 234, 254, 0.72);
-}
-
-.wizard-baseline__name {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.82);
-}
-
-.wizard-baseline__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.wizard-form {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.wizard-region {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.wizard-region__chip {
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.86);
-  padding: 8px 10px;
-}
-
-.wizard-region__chip.active {
-  border-color: rgba(59, 130, 246, 0.48);
-  background: rgba(219, 234, 254, 0.72);
-}
-
-.wizard-region__name {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.82);
-}
-
-.wizard-region__desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.56);
-}
-
-.flow-visual-stencil-pane {
-  border-right: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 12px;
-  background: rgba(248, 250, 252, 0.86);
-  overflow: auto;
-}
-
-.flow-visual-snippet {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.18);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-snippet__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.flow-visual-snippet__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.flow-visual-snippet__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.flow-visual-snippet__desc,
-.flow-visual-snippet__meta,
-.flow-visual-snippet__empty {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-  line-height: 1.4;
-}
-
-.flow-visual-snippet__list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-snippet__item {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-snippet__main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.flow-visual-snippet__name {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.82);
-}
-
-.flow-visual-snippet__steps {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.6);
-  word-break: break-all;
-}
-
-.flow-visual-snippet__ops {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.flow-visual-bulk {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.16);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.flow-visual-bulk__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.flow-visual-bulk__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.84);
-}
-
-.flow-visual-bulk__meta,
-.flow-visual-bulk__desc {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-  line-height: 1.35;
-}
-
-.flow-visual-bulk__field {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 7px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-bulk__field-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.flow-visual-bulk__label {
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.76);
-}
-
-.flow-visual-bulk__state {
-  font-size: 11px;
-  color: rgba(30, 64, 175, 0.88);
-}
-
-.flow-visual-bulk__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.flow-visual-bulk__chip {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.62);
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  border-radius: 999px;
-  padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.flow-visual-bulk__chip.active {
-  color: rgba(30, 64, 175, 0.95);
-  border-color: rgba(59, 130, 246, 0.45);
-  background: rgba(219, 234, 254, 0.68);
-}
-
-.flow-visual-bulk__input {
-  width: 100%;
-  min-height: 30px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 8px;
-  padding: 6px 8px;
-  box-sizing: border-box;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.82);
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.flow-visual-bulk__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.flow-visual-canvas-dropzone {
-  min-height: 0;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(241, 245, 249, 0.94));
-  overflow: hidden;
-}
-
-.flow-visual-canvas-wrap {
-  min-height: 0;
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  padding: 14px;
-  box-sizing: border-box;
-  background: transparent;
-}
-
-.flow-visual-detail {
-  border-left: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 12px;
-  background: rgba(248, 250, 252, 0.88);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow: auto;
-}
-
-.flow-visual-detail__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.82);
-}
-
-.flow-visual-detail__line {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.66);
-  line-height: 1.45;
-}
-
-.flow-visual-macro-expand {
-  margin-top: 4px;
-  border: 1px solid rgba(147, 51, 234, 0.24);
-  border-radius: 10px;
-  background: rgba(250, 245, 255, 0.82);
-  padding: 6px;
-}
-
-.flow-visual-macro-expand__title {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(88, 28, 135, 0.88);
-}
-
-.flow-visual-macro-expand__list {
-  margin-top: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.flow-visual-compile {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.16);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-constraint {
-  margin-top: 2px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.86);
-  padding: 6px;
-}
-
-.flow-visual-constraint__title {
-  display: block;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.58);
-}
-
-.flow-visual-constraint__list {
-  margin-top: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.flow-visual-constraint__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-radius: 8px;
-  padding: 4px 6px;
-}
-
-.flow-visual-constraint__item.is-ok {
-  background: rgba(16, 185, 129, 0.12);
-}
-
-.flow-visual-constraint__item.is-error {
-  background: rgba(239, 68, 68, 0.12);
-}
-
-.flow-visual-constraint__label {
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.8);
-}
-
-.flow-visual-constraint__detail {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.62);
-}
-
-.flow-visual-compile__status {
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.flow-visual-compile__status.is-ok {
-  color: rgba(5, 150, 105, 0.9);
-}
-
-.flow-visual-compile__status.is-error {
-  color: rgba(220, 38, 38, 0.9);
-}
-
-.flow-visual-compile__status.is-warning {
-  color: rgba(180, 83, 9, 0.9);
-}
-
-.flow-visual-compile__status.is-fix {
-  color: rgba(29, 78, 216, 0.92);
-}
-
-.flow-visual-compile__list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.flow-visual-compile__issue {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
-  padding: 4px 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.flow-visual-compile__issue.is-locatable {
-  cursor: pointer;
-  border-color: rgba(59, 130, 246, 0.28);
-}
-
-.flow-visual-compile__issue.is-warning {
-  border-color: rgba(245, 158, 11, 0.34);
-  background: rgba(255, 251, 235, 0.9);
-}
-
-.flow-visual-fix-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.flow-visual-fix-item {
-  border: 1px solid rgba(37, 99, 235, 0.18);
-  border-radius: 8px;
-  background: rgba(239, 246, 255, 0.7);
-  padding: 6px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.flow-visual-fix-item__main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.flow-visual-fix-item__title {
-  font-size: 12px;
-  color: rgba(29, 78, 216, 0.95);
-  font-weight: 700;
-}
-
-.flow-visual-fix-item__detail {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.65);
-}
-
-.flow-visual-fix-item__btn {
-  flex-shrink: 0;
-}
-
-.flow-visual-compile__issue-action {
-  font-size: 11px;
-  color: rgba(37, 99, 235, 0.9);
-  flex-shrink: 0;
-}
-
-.library-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.lib-card {
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
-  padding: 10px 12px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.95);
-}
-
-.lib-card__main {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.lib-card__title {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.88);
-  word-break: break-all;
-}
-
-.lib-card__meta {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.lib-card__steps {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.65);
-  word-break: break-word;
-}
-
-.lib-card__ops {
-  flex-shrink: 0;
-}
-
-@media (max-width: 1100px) {
-  .detail-body {
-    flex-direction: column;
-  }
-
-  .route-sim__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .region-overview__sim {
-    flex-direction: column;
-  }
-
-  .region-overview__sim-actions {
-    justify-content: flex-start;
-  }
-
-  .col--template {
-    max-width: none;
-    min-width: 0;
-  }
-
-  .col--preview {
-    max-width: none;
-    min-width: 0;
-  }
-
-  .flow-visual-modal__body {
-    grid-template-columns: 1fr;
-  }
-
-  .flow-visual-stencil-pane {
-    border-right: 0;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-  }
-
-  .flow-visual-detail {
-    border-left: 0;
-    border-top: 1px solid rgba(15, 23, 42, 0.1);
-  }
-
-  .flow-line-wizard-modal__panel {
-    width: min(760px, 94vw);
-    max-height: min(760px, 92vh);
-  }
-
-  .wizard-baseline,
-  .wizard-form,
-  .wizard-region {
-    grid-template-columns: 1fr;
-  }
-
-}
-</style>
+<style src="./flow-modules/FlowModulesManager.scss" lang="scss" scoped></style>

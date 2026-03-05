@@ -23,9 +23,6 @@
       <!-- 模块：题库查询 -->
       <QuestionLibrary v-else-if="currentModule === 'library'" @open-editor="onSwitchToEditor" />
 
-      <!-- 模块：题型模板 -->
-      <ContentTemplatesManager v-else-if="currentModule === 'templates'" />
-
       <!-- 模块：流程 -->
       <FlowModulesManager v-else-if="currentModule === 'flows'" />
     </view>
@@ -40,7 +37,6 @@ import LearningWorkspace from '/components/views/LearningWorkspace.vue'
 import TagsManager from '/components/views/TagsManager.vue'
 import QuestionLibrary from '/components/views/QuestionLibrary.vue'
 import FlowModulesManager from '/components/views/FlowModulesManager.vue'
-import ContentTemplatesManager from '/components/views/ContentTemplatesManager.vue'
 import { questionTemplates, type TemplateKey } from '/templates'
 import { questionDraft } from '/stores/questionDraft'
 import { appShell } from '/stores/appShell'

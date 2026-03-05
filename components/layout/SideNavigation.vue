@@ -26,15 +26,6 @@
 
       <view
         class="nav-item"
-        :class="{ active: currentModule === 'templates' }"
-        @click="switchModule('templates')"
-      >
-        <text class="nav-icon">🧩</text>
-        <text class="nav-label">题型模板</text>
-      </view>
-
-      <view
-        class="nav-item"
         :class="{ active: currentModule === 'flows' }"
         @click="switchModule('flows')"
       >
@@ -121,6 +112,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import TagTreeOption from '/components/editor/TagTreeOption.vue'
+import type { TagNode } from '/types/tag'
 import { tagStore } from '/stores/tag'
 import { questionDraft } from '/stores/questionDraft'
 
@@ -154,16 +146,14 @@ function createNewQuestion() {
 }
 
 function loadCurrentQuestion() {
-  const data: any = questionDraft.state.currentQuestion
+  const data = questionDraft.state.currentQuestion
   if (!data) {
     selectedTags.value = []
     sourceText.value = ''
     return
   }
-  if (!data.metadata) data.metadata = {}
-  if (!data.metadata.tags) data.metadata.tags = []
-  selectedTags.value = [...data.metadata.tags]
-  sourceText.value = data.metadata.source || ''
+  selectedTags.value = Array.isArray(data.metadata?.tags) ? [...data.metadata.tags] : []
+  sourceText.value = typeof data.metadata?.source === 'string' ? data.metadata.source : ''
 }
 
 function resolveRegionFromTags(tags: string[]): string {
@@ -197,7 +187,7 @@ function updateSource(val: string) {
   saveCurrentQuestion(selectedTags.value, val)
 }
 
-function onSourceInput(e: any) {
+function onSourceInput(e: { detail?: { value?: string } }) {
   const value = e?.detail?.value ?? sourceText.value
   updateSource(value)
 }
@@ -215,16 +205,17 @@ const descendantSelectedCountById = computed<Record<string, number>>(() => {
   const selectedSet = new Set(selectedTags.value)
   const map: Record<string, number> = {}
 
-  const walk = (node: any): number => {
+  const walk = (node: TagNode): number => {
     let total = selectedSet.has(node.id) ? 1 : 0
-    ;(node.children || []).forEach((c: any) => {
+    const children = Array.isArray(node.children) ? node.children : []
+    children.forEach((c) => {
       total += walk(c)
     })
     map[node.id] = total - (selectedSet.has(node.id) ? 1 : 0)
     return total
   }
 
-  tagStore.state.tree.forEach((n: any) => walk(n))
+  tagStore.state.tree.forEach((n) => walk(n))
   return map
 })
 
@@ -274,7 +265,17 @@ function clearAll() {
   updateTags([])
 }
 
-watch(() => questionDraft.state.currentQuestion, loadCurrentQuestion, { deep: true, immediate: true })
+watch(
+  () => {
+    const current = questionDraft.state.currentQuestion
+    const id = String(current?.id || '')
+    const tags = Array.isArray(current?.metadata?.tags) ? current.metadata.tags.join('|') : ''
+    const source = String(current?.metadata?.source || '')
+    return `${id}|${tags}|${source}`
+  },
+  loadCurrentQuestion,
+  { immediate: true }
+)
 </script>
 
 <style lang="scss" scoped>

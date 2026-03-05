@@ -1,6 +1,6 @@
 # 计划文档目录说明
 
-更新时间：2026-02-26
+更新时间：2026-03-04
 
 ## 当前有效文档
 
@@ -9,6 +9,9 @@
 
 2. `docs/plans/next_implementation_plan.md`
 - 接下来要做的实现清单、优先级与验收标准。
+
+3. `docs/plans/2026-03-04-type-coverage-and-flow-center-maintainability.md`
+- 聚焦“题型矩阵补齐 + 流程中心可维护性”的专项计划（对应 3 / 4 方向，当前已完成第一轮闭环）。
 
 ## 历史文档处理策略
 

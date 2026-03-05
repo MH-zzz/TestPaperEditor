@@ -19,7 +19,7 @@
           <view class="panel__header">
             <view>
               <text class="panel__title">题库选题</text>
-              <text class="panel__desc">当前仅支持：听后选择</text>
+              <text class="panel__desc">支持题库全部题型</text>
             </view>
             <text class="panel__meta">{{ filteredQuestionPool.length }} 题</text>
           </view>
@@ -42,7 +42,7 @@
                 @click="selectQuestion(q.id)"
               >
                 <view class="question-item__head">
-                  <text class="question-item__type">听后选择</text>
+                  <text class="question-item__type">{{ getTypeName(q) }}</text>
                   <text class="question-item__id">{{ q.id }}</text>
                 </view>
                 <text class="question-item__summary">{{ getQuestionSummary(q) }}</text>
@@ -159,8 +159,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import type {
   ListeningChoiceQuestion,
+  Question,
   QuestionMetadata,
-  RichTextContent
+  RichTextContent,
+  SpeakingHearAnswerQuestion
 } from '/types'
 import type { FlowRuntimeEvent } from '/engine/flow/runtime.ts'
 import PhonePreviewPanel from '/components/layout/PhonePreviewPanel.vue'
@@ -170,13 +172,15 @@ import { flowModules } from '/stores/flowModules'
 import { runtimeDebug } from '/stores/runtimeDebug'
 import { questionDraft } from '/stores/questionDraft'
 import { loadRecentQuestions } from '/infra/repository/questionRepository'
+import { applyListeningMatchSelection } from '/engine/flow/listening-match/runtime.ts'
 import {
+  getQuestionFlowSteps,
   runQuestionFlow,
   reduceQuestionFlowRuntimeState,
   type QuestionFlowRuntimeMeta
 } from '/app/usecases/runQuestionFlow'
 
-type LocalQuestion = ListeningChoiceQuestion & {
+type LocalQuestion = Question & {
   metadata?: QuestionMetadata
 }
 
@@ -202,7 +206,7 @@ const simScene = ref('')
 const simGrade = ref('')
 const learningDebugSessionId = 'learning-simulation-runtime'
 
-const resolvedQuestion = ref<ListeningChoiceQuestion | null>(null)
+const resolvedQuestion = ref<LocalQuestion | null>(null)
 const previewAnswers = ref<Record<string, string | string[]>>({})
 const showAnswer = ref(false)
 const currentStepIndex = ref(0)
@@ -227,19 +231,24 @@ const selectedQuestion = computed(() => {
 const filteredQuestionPool = computed(() => {
   const q = normalizeText(questionQuery.value)
   return (questionPool.value || []).filter((item) => {
-    if (item.type !== 'listening_choice') return false
     if (!q) return true
     const hay = normalizeText([item.id, getQuestionSummary(item)].join(' '))
     return hay.includes(q)
   })
 })
 
+const runtimeSteps = computed(() => {
+  const question = resolvedQuestion.value
+  if (!question) return []
+  return getQuestionFlowSteps(question)
+})
+
 const previewTotalSteps = computed(() => {
-  return Number(resolvedQuestion.value?.flow?.steps?.length || 0)
+  return runtimeSteps.value.length
 })
 
 const activeStepLabel = computed(() => {
-  const steps = resolvedQuestion.value?.flow?.steps || []
+  const steps = runtimeSteps.value
   const idx = currentStepIndex.value
   const step = steps[idx]
   if (!step) return '-'
@@ -268,12 +277,31 @@ function getPlainText(richtext: unknown): string {
 }
 
 function getQuestionSummary(q: LocalQuestion): string {
-  if (!q || q.type !== 'listening_choice') return ''
-  return (
-    getPlainText(q.content?.intro?.text) ||
-    getPlainText(q.content?.groups?.[0]?.prompt) ||
-    '听后选择'
-  )
+  if (!q) return ''
+  if (q.type === 'listening_choice' || q.type === 'speaking_hear_answer') {
+    return (
+      getPlainText((q as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).content?.intro?.text) ||
+      getPlainText((q as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).content?.groups?.[0]?.prompt) ||
+      getTypeName(q)
+    )
+  }
+  if (q.type === 'speaking_steps') {
+    const title = String((q as any).title || '').trim()
+    const desc = String((q as any).description || '').trim()
+    return [title, desc].filter(Boolean).join(' ') || getTypeName(q)
+  }
+  return getPlainText((q as any).stem) || getTypeName(q)
+}
+
+function getTypeName(question: LocalQuestion): string {
+  if (!question) return ''
+  if (question.type === 'speaking_hear_answer') return '听后回答'
+  if (question.type === 'listening_choice') return '听后选择'
+  if (question.type === 'listening_fill') return '听力填空'
+  if (question.type === 'listening_match') return '听力连线'
+  if (question.type === 'listening_order') return '听力排序'
+  if (question.type === 'speaking_steps') return '口语步骤'
+  return String(question.type || '')
 }
 
 function syncTraceEventsFromStore() {
@@ -324,7 +352,7 @@ function selectQuestion(questionId: string) {
 }
 
 function resolveStepKindByIndex(index: number): string {
-  const step = resolvedQuestion.value?.flow?.steps?.[index]
+  const step = runtimeSteps.value[index]
   return String(step?.kind || '-')
 }
 
@@ -343,7 +371,7 @@ function resolveModuleDisplay(ref: { id: string; version: number }): { displayRe
 
 function reloadQuestionPool() {
   try {
-    const list = loadRecentQuestions<LocalQuestion>().filter((item) => item && item.type === 'listening_choice')
+    const list = loadRecentQuestions<LocalQuestion>().filter((item) => !!item)
     questionPool.value = list
     if (!questionPool.value.find((item) => item.id === selectedQuestionId.value)) {
       selectedQuestionId.value = questionPool.value[0]?.id || ''
@@ -375,7 +403,7 @@ function startSimulation() {
     resolveModuleDisplay
   })
 
-  resolvedQuestion.value = run.resolvedQuestion as ListeningChoiceQuestion
+  resolvedQuestion.value = run.resolvedQuestion as LocalQuestion
   previewAnswers.value = {}
   showAnswer.value = false
   currentStepIndex.value = Number(run.runtimeState.stepIndex || 0)
@@ -438,7 +466,11 @@ function onPreviewStepChange(index: number) {
 }
 
 function resolveAnswerMode(subQuestionId: string): 'single' | 'multiple' {
-  const groups = resolvedQuestion.value?.content?.groups || []
+  const question = resolvedQuestion.value
+  if (!question || (question.type !== 'listening_choice' && question.type !== 'speaking_hear_answer')) {
+    return 'single'
+  }
+  const groups = (question as ListeningChoiceQuestion | SpeakingHearAnswerQuestion).content?.groups || []
   for (const g of groups) {
     for (const sq of (g.subQuestions || [])) {
       if (sq.id === subQuestionId) {
@@ -449,9 +481,38 @@ function resolveAnswerMode(subQuestionId: string): 'single' | 'multiple' {
   return 'single'
 }
 
-function onPreviewSelect(subQuestionId: string, optionKey: string) {
-  if (!resolvedQuestion.value) return
+function onPreviewSelect(subQuestionId: string, value: any) {
+  const question = resolvedQuestion.value
+  if (!question) return
 
+  if (question.type === 'listening_match') {
+    const rightId = String(value || '')
+    const mode = question.matchMode === 'one-to-many' ? 'one-to-many' : 'one-to-one'
+    previewAnswers.value = applyListeningMatchSelection(
+      previewAnswers.value,
+      subQuestionId,
+      rightId,
+      mode
+    )
+    appendTrace('select', `连线：${subQuestionId} -> ${rightId}`)
+    return
+  }
+
+  if (question.type === 'listening_fill') {
+    const text = String(value || '')
+    previewAnswers.value = { ...previewAnswers.value, [subQuestionId]: text }
+    appendTrace('select', `填空：${subQuestionId} -> ${text}`)
+    return
+  }
+
+  if (question.type === 'listening_order') {
+    const order = Array.isArray(value) ? value.map((item) => String(item || '')) : []
+    previewAnswers.value = { ...previewAnswers.value, [subQuestionId]: order }
+    appendTrace('select', `排序：${subQuestionId} -> ${order.join(' > ')}`)
+    return
+  }
+
+  const optionKey = String(value || '')
   const mode = resolveAnswerMode(subQuestionId)
   const current = previewAnswers.value[subQuestionId]
 
@@ -481,7 +542,7 @@ watch(selectedQuestionId, () => {
   runtimeDebug.resetSession(learningDebugSessionId, {
     meta: {
       mode: 'exam',
-      questionType: 'listening_choice'
+      questionType: String(selectedQuestion.value?.type || '')
     }
   })
   syncTraceEventsFromStore()
@@ -491,8 +552,7 @@ watch(selectedQuestionId, () => {
 onMounted(() => {
   runtimeDebug.setActiveSession(learningDebugSessionId)
   runtimeDebug.ensureSession(learningDebugSessionId, {
-    mode: 'exam',
-    questionType: 'listening_choice'
+    mode: 'exam'
   })
   reloadQuestionPool()
   loadContextFromSelectedQuestion()

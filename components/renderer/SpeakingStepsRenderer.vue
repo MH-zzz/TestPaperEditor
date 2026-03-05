@@ -23,7 +23,7 @@
     <!-- 底部区域（固定在底部） -->
     <view class="speaking-steps__footer">
       <!-- 音频/倒计时控制区 -->
-      <view v-if="currentStepData?.type === 'play-audio'" class="footer-control">
+      <view v-if="footerMode === 'play-audio'" class="footer-control">
         <button class="control-play-btn" @click="toggleAudio">
           {{ isPlaying ? '⏸' : '▶' }}
         </button>
@@ -36,7 +36,7 @@
         <text class="control-time">{{ formatTime(currentTime) }}/{{ formatTime(totalTime) }}</text>
       </view>
 
-      <view v-else-if="currentStepData?.type === 'countdown'" class="footer-control">
+      <view v-else-if="footerMode === 'countdown'" class="footer-control">
         <view class="countdown-display">
           <text class="countdown-icon">⏱</text>
           <view class="control-progress">
@@ -44,11 +44,11 @@
               <view class="progress-fill" :style="{ width: '60%' }"></view>
             </view>
           </view>
-          <text class="control-time">{{ currentStepData.duration }}秒</text>
+          <text class="control-time">{{ countdownSeconds }}秒</text>
         </view>
       </view>
 
-      <view v-else-if="currentStepData?.type === 'record'" class="footer-control">
+      <view v-else-if="footerMode === 'record'" class="footer-control">
         <view class="record-display">
           <text class="record-icon">🎤</text>
           <view class="control-progress">
@@ -56,7 +56,7 @@
               <view class="progress-fill progress-fill--record" style="width: 30%"></view>
             </view>
           </view>
-          <text class="control-time">00:00/{{ formatTime(currentStepData.duration) }}</text>
+          <text class="control-time">00:00/{{ formatTime(recordDurationSeconds) }}</text>
         </view>
       </view>
 
@@ -82,6 +82,7 @@ import { ref, computed, watch } from 'vue'
 import type { SpeakingStepsQuestion, SpeakingStepsStep, RenderMode } from '/types'
 import type { SpeakingStepsRuntimeEvent } from '/engine/flow/speaking-steps/runtime.ts'
 import { createSpeakingStepsRuntimeState, reduceSpeakingStepsRuntimeState } from '/engine/flow/speaking-steps/runtime.ts'
+import { expandSpeakingQuestionSteps, resolveSpeakingStepFooterMode } from '/engine/flow/speaking-steps/expand.ts'
 import StepPreview from '../editor/speaking/StepPreview.vue'
 
 const props = withDefaults(defineProps<{
@@ -133,33 +134,25 @@ function toggleAudio() {
   }
 }
 
-// 展开循环步骤，生成完整的步骤列表
 const expandedSteps = computed<SpeakingStepsStep[]>(() => {
-  const result: SpeakingStepsStep[] = []
-  const subQuestions = props.data.subQuestions || []
-
-  for (const step of props.data.steps) {
-    if (step.type === 'loop-sub-questions') {
-      // 为每个小题展开循环步骤
-      for (let i = 0; i < subQuestions.length; i++) {
-        for (const subStep of step.stepsPerQuestion) {
-          result.push({
-            ...subStep,
-            id: `${subStep.id}_q${i}`
-          })
-        }
-      }
-    } else {
-      result.push(step)
-    }
-  }
-
-  return result
+  return expandSpeakingQuestionSteps(props.data)
 })
 
 // 当前步骤数据
 const currentStepData = computed(() => {
   return expandedSteps.value[currentStepIndex.value]
+})
+
+const footerMode = computed(() => resolveSpeakingStepFooterMode(currentStepData.value))
+
+const countdownSeconds = computed(() => {
+  if (currentStepData.value?.type !== 'countdown') return 0
+  return Number(currentStepData.value.duration || 0)
+})
+
+const recordDurationSeconds = computed(() => {
+  if (currentStepData.value?.type !== 'record') return 0
+  return Number(currentStepData.value.duration || 0)
 })
 
 watch(expandedSteps, (list) => {

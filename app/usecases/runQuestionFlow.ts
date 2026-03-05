@@ -8,6 +8,9 @@ import {
   createSpeakingStepsRuntimeState,
   reduceSpeakingStepsRuntimeState
 } from '/engine/flow/speaking-steps/runtime.ts'
+import { expandSpeakingQuestionSteps } from '/engine/flow/speaking-steps/expand.ts'
+import { buildListeningFillRuntimeSteps } from '/engine/flow/listening-fill/runtime.ts'
+import { buildListeningMatchRuntimeSteps } from '/engine/flow/listening-match/runtime.ts'
 import { resolveListeningChoiceQuestion } from '/engine/flow/listening-choice/binding.ts'
 import {
   LISTENING_CHOICE_STANDARD_FLOW_ID,
@@ -159,12 +162,20 @@ export function getQuestionFlowSteps(question: Question): RuntimeStepProtocol[] 
   }
 
   if (question.type === 'speaking_steps') {
-    const steps = (question as SpeakingStepsQuestion).steps || []
+    const steps = expandSpeakingQuestionSteps(question as SpeakingStepsQuestion)
     return steps.map((step, index) => ({
       id: String(step?.id || `speaking_steps_${index + 1}`),
       kind: String(step?.type || 'unknown'),
       autoNext: readSpeakingStepsAutoNext(step)
     }))
+  }
+
+  if (question.type === 'listening_fill') {
+    return buildListeningFillRuntimeSteps()
+  }
+
+  if (question.type === 'listening_match') {
+    return buildListeningMatchRuntimeSteps()
   }
 
   return []
@@ -203,7 +214,7 @@ export function reduceQuestionFlowRuntimeState(
   if (question.type === 'speaking_steps') {
     return reduceSpeakingStepsRuntimeState(
       state,
-      (question as SpeakingStepsQuestion).steps || [],
+      expandSpeakingQuestionSteps(question as SpeakingStepsQuestion),
       event
     )
   }

@@ -80,6 +80,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ListeningFillQuestion, RenderMode } from '/types'
+import {
+  parseListeningFillTemplate,
+  resolveListeningFillWordBank,
+  isListeningFillAnswerCorrect
+} from '/engine/flow/listening-fill/runtime.ts'
 import RichTextRenderer from './RichTextRenderer.vue'
 import AudioPlayer from './AudioPlayer.vue'
 
@@ -105,45 +110,9 @@ const selectedWord = ref<string | null>(null)
 // 确定交互模式
 const inputMode = computed(() => props.data.inputMode || 'text')
 
-function hashSeed(input: string): number {
-  let h = 2166136261
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-
-function seededShuffle(words: string[], seedText: string): string[] {
-  const arr = [...words]
-  let seed = hashSeed(seedText) || 1
-
-  // Deterministic xorshift to keep word order stable for the same question seed.
-  const nextRand = () => {
-    seed ^= seed << 13
-    seed ^= seed >>> 17
-    seed ^= seed << 5
-    return (seed >>> 0) / 4294967296
-  }
-
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(nextRand() * (i + 1))
-    const tmp = arr[i]
-    arr[i] = arr[j]
-    arr[j] = tmp
-  }
-  return arr
-}
-
 // 打乱词库顺序
 const shuffledWordBank = computed(() => {
-  const seed = `${String(props.data?.id || '')}|${String(props.data?.template || '')}`
-  if (!props.data.wordBank?.length) {
-    // 如果没有设置词库，自动从答案生成
-    const words = props.data.blanks.map(b => b.answer[0]).filter(Boolean) as string[]
-    return seededShuffle(words, `${seed}|auto`)
-  }
-  return seededShuffle(props.data.wordBank as string[], `${seed}|wordBank`)
+  return resolveListeningFillWordBank(props.data)
 })
 
 // 已使用的词
@@ -153,41 +122,7 @@ const usedWords = computed(() => {
 
 // 解析模板字符串，拆分为文本和填空项
 const parsedTemplate = computed(() => {
-  const parts: any[] = []
-  const template = props.data.template
-  const regex = /\{\{(\d+)\}\}/g
-
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(template)) !== null) {
-    // 文本部分
-    if (match.index > lastIndex) {
-      parts.push({
-        type: 'text',
-        value: template.substring(lastIndex, match.index)
-      })
-    }
-
-    // 填空部分
-    parts.push({
-      type: 'blank',
-      id: `blank_${match[1]}`,
-      index: match[1]
-    })
-
-    lastIndex = regex.lastIndex
-  }
-
-  // 剩余文本
-  if (lastIndex < template.length) {
-    parts.push({
-      type: 'text',
-      value: template.substring(lastIndex)
-    })
-  }
-
-  return parts
+  return parseListeningFillTemplate(props.data.template)
 })
 
 // 直接输入模式的回调
@@ -255,8 +190,7 @@ function getBlankClass(blankId: string) {
   const userAnswer = props.answers[blankId] || ''
   const blank = props.data.blanks.find(b => b.id === blankId)
   if (!blank) return ''
-
-  const isCorrect = blank.answer.some(a => a.toLowerCase().trim() === userAnswer.toLowerCase().trim())
+  const isCorrect = isListeningFillAnswerCorrect(blank, userAnswer)
 
   return isCorrect ? 'is-correct' : 'is-wrong'
 }

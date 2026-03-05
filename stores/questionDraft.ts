@@ -20,6 +20,7 @@ import {
   saveCurrentQuestionSnapshot,
   saveRecentQuestions
 } from '/infra/repository/questionRepository'
+import { deepClone } from '/utils/deepClone'
 
 type DraftQuestion = Question & {
   metadata?: QuestionMetadata
@@ -27,7 +28,7 @@ type DraftQuestion = Question & {
 type DraftEntryMode = 'draft' | 'new' | 'library'
 
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value))
+  return deepClone(value)
 }
 
 function nowIso() {

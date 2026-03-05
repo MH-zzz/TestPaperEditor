@@ -80,6 +80,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch, getCurrentInstance } from 'vue'
 import type { ListeningMatchQuestion, RenderMode } from '/types'
+import { buildListeningMatchPairsFromAnswers } from '/engine/flow/listening-match/runtime.ts'
 import RichTextRenderer from './RichTextRenderer.vue'
 import AudioPlayer from './AudioPlayer.vue'
 
@@ -109,15 +110,7 @@ const currentPairs = computed(() => {
   if (props.showAnswer) {
     return props.data.answers
   }
-  const pairs: { left: string, right: string }[] = []
-  Object.entries(props.answers).forEach(([left, right]) => {
-    if (Array.isArray(right)) {
-      right.forEach(r => pairs.push({ left, right: r }))
-    } else if (right) {
-      pairs.push({ left, right: String(right) })
-    }
-  })
-  return pairs
+  return buildListeningMatchPairsFromAnswers(props.answers)
 })
 
 // 计算渲染线段 (贝塞尔曲线，相对于 spacer)

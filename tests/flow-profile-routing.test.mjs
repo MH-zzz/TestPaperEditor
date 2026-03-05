@@ -56,26 +56,49 @@ test('flow center copy should use the new "题型流程" terminology', async () 
 
 test('flow center should provide region-binding checklist in listening-choice flow page', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const wizardSrc = await readFile('components/views/flow-modules/useFlowLineWizard.ts')
 
   assert.ok(src.includes('地区匹配'))
   assert.ok(src.includes('一个流程线可绑定多个地区；一个地区只能绑定 1 个流程线'))
   assert.ok(src.includes("const REGION_GENERAL_LABEL = '通用'"))
-  assert.ok(src.includes('听后选择通用流程'))
+  assert.ok(wizardSrc.includes('听后选择通用流程'))
   assert.ok(src.includes('「通用」就是默认/标准流程'))
   assert.ok(src.includes('toggleRegionBindingForCurrentFlowLine'))
   assert.ok(src.includes('formatRegionBindingTarget'))
   assert.ok(!src.includes('题型流程路由'))
 })
 
+test('flow center should support region flow templates with one-click apply', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  const templateSrc = await readFile('components/views/flow-modules/useRegionBindingTemplates.ts')
+  const templateRepoSrc = await readFile('infra/repository/flowRegionBindingTemplateRepository.ts')
+
+  assert.ok(src.includes('地区流程模板'))
+  assert.ok(src.includes('沉淀当前绑定'))
+  assert.ok(src.includes('一键应用'))
+  assert.ok(src.includes('useRegionBindingTemplates'))
+  assert.ok(src.includes('saveRegionBindingTemplateFromCurrent'))
+  assert.ok(src.includes('applyRegionBindingTemplate'))
+  assert.ok(templateSrc.includes('export function useRegionBindingTemplates'))
+  assert.ok(templateSrc.includes('saveRegionBindingTemplateFromCurrent'))
+  assert.ok(templateSrc.includes('applyRegionBindingTemplate'))
+  assert.ok(templateRepoSrc.includes('loadFlowRegionBindingTemplates'))
+  assert.ok(templateRepoSrc.includes('saveFlowRegionBindingTemplates'))
+})
+
 test('flow center should support flow-line switching and wizard-based create/publish', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const wizardSrc = await readFile('components/views/flow-modules/useFlowLineWizard.ts')
   assert.ok(src.includes('流程线切换'))
   assert.ok(src.includes('新建流程线（向导）'))
   assert.ok(src.includes('flowLineWizardVisible'))
+  assert.ok(src.includes('useFlowLineWizard'))
   assert.ok(src.includes('openFlowLineCreateWizard'))
   assert.ok(src.includes('confirmCreateFlowLineFromWizard'))
   assert.ok(src.includes('创建并发布'))
   assert.ok(src.includes('switchToFlowLine'))
+  assert.ok(wizardSrc.includes('export function useFlowLineWizard'))
+  assert.ok(wizardSrc.includes('confirmCreateFlowLineFromWizard'))
 })
 
 test('flow center should remove onboarding guide and route presets from flow page', async () => {
@@ -87,30 +110,31 @@ test('flow center should remove onboarding guide and route presets from flow pag
   assert.ok(!src.includes('地区+场景示例'))
 })
 
-test('flow profile store should support removing profile rules via diagnostics-safe API', async () => {
+test('flow profile store should support removing profile rules API', async () => {
   const src = await readFile('stores/flowProfiles.ts')
   assert.ok(src.includes('removeWithDiagnostics(id: string)'))
   assert.ok(!src.includes('remove(id: string)'))
   assert.ok(src.includes('this.state.profiles = next'))
 })
 
-test('flow profile domain usecase should provide scoring, diagnostics and submit validation', async () => {
+test('flow profile domain usecase should keep scoring only', async () => {
   const src = await readFile('domain/flow-profile/usecases/scoreProfiles.ts')
   assert.ok(src.includes('export function scoreProfiles('))
-  assert.ok(src.includes('export function diagnoseFlowProfileRules('))
-  assert.ok(src.includes('export function buildFlowProfileFixSuggestions('))
-  assert.ok(src.includes('export function canSubmitFlowProfiles('))
+  assert.ok(!src.includes('export function diagnoseFlowProfileRules('))
+  assert.ok(!src.includes('export function buildFlowProfileFixSuggestions('))
+  assert.ok(!src.includes('export function canSubmitFlowProfiles('))
   assert.ok(src.includes('FLOW_REGION_GENERIC_LABEL'))
   assert.ok(src.includes('regionDimScore'))
-  assert.ok(src.includes('weakCoverage'))
+  assert.ok(!src.includes('weakCoverage'))
 })
 
-test('flow profile store should support diagnostic-gated submit helpers', async () => {
+test('flow profile store should keep simple upsert/remove helpers without diagnostics gating', async () => {
   const src = await readFile('stores/flowProfiles.ts')
   assert.ok(src.includes('upsertWithDiagnostics(profileInput: unknown)'))
   assert.ok(src.includes('removeWithDiagnostics(id: string)'))
-  assert.ok(src.includes('validateBeforeSubmit(questionType: QuestionType)'))
-  assert.ok(src.includes('canSubmitFlowProfiles('))
+  assert.ok(!src.includes('validateBeforeSubmit(questionType: QuestionType)'))
+  assert.ok(!src.includes('canSubmitFlowProfiles('))
+  assert.ok(!src.includes('diagnoseFlowProfileRules('))
   assert.ok(src.includes('scoreProfiles('))
   assert.ok(src.includes('replaceQuestionTypeProfiles(questionType: QuestionType, profileInputs: unknown[])'))
 })
@@ -125,24 +149,22 @@ test('flow center should enforce one-region-one-flow via canonical binding repla
 
 test('flow center should treat 通用 as default profile binding instead of region rule', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const regionBindingSrc = await readFile('components/views/flow-modules/useRegionBindingOverview.ts')
+  const wizardSrc = await readFile('components/views/flow-modules/useFlowLineWizard.ts')
   assert.ok(src.includes('if (isGeneralRegion(region)) return'))
-  assert.ok(src.includes('defaultRoutingModuleRef'))
-  assert.ok(src.includes('defaultModuleRef: targetModuleRef'))
-  assert.ok(src.includes('defaultNote: currentlyBound ? \'听后选择默认流程\' : \'听后选择通用流程\''))
-  assert.ok(src.includes('const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))'))
+  assert.ok(src.includes('useRegionBindingOverview'))
+  assert.ok(regionBindingSrc.includes('defaultRoutingModuleRef'))
+  assert.ok(regionBindingSrc.includes('defaultModuleRef: targetModuleRef'))
+  assert.ok(regionBindingSrc.includes('defaultNote: currentlyBound ? \'听后选择默认流程\' : \'听后选择通用流程\''))
+  assert.ok(wizardSrc.includes('const hasGeneralRegion = regions.some((region) => isGeneralRegion(region))'))
 })
 
-test('route simulator util should support loading context from current question metadata', async () => {
-  const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
-  assert.ok(sim.includes('loadRouteSimFromCurrentQuestion'))
-  assert.ok(sim.includes('readQuestionFlowContext(data)'))
-})
-
-test('route simulator util should support writing context back to current question metadata', async () => {
-  const sim = await readFile('components/views/flow-modules/useRouteSimulator.ts')
-  assert.ok(sim.includes('syncRouteSimToCurrentQuestion'))
-  assert.ok(sim.includes('patchQuestionFlowContext'))
-  assert.ok(sim.includes('persistCurrentQuestion(next)'))
+test('flow center should remove route simulator util and panel entry', async () => {
+  const src = await readFile('components/views/FlowModulesManager.vue')
+  assert.ok(!src.includes('useRouteSimulator'))
+  assert.ok(!src.includes('route-sim'))
+  assert.ok(!src.includes('loadRouteSimFromCurrentQuestion'))
+  assert.ok(!src.includes('syncRouteSimToCurrentQuestion'))
 })
 
 test('editor workspace should display route matching summary without editable flow context bar', async () => {
@@ -179,6 +201,18 @@ test('editor workspace should map 听说-听后回答 to speaking_hear_answer te
   const src = await readFile('components/views/EditorWorkspace.vue')
   assert.ok(src.includes("if (leaf === '听后回答') return { templateKey: 'speaking_hear_answer', enabled: true, reason: '' }"))
   assert.ok(!src.includes("if (leaf === '听后回答') return { templateKey: 'speaking_steps', enabled: false"))
+})
+
+test('editor workspace should enable 听力-填空 and 听力-图文匹配/连线 templates', async () => {
+  const src = await readFile('components/views/EditorWorkspace.vue')
+  assert.ok(src.includes("if (['连线', '图文匹配'].includes(leaf)) return { templateKey: 'listening_match', enabled: true, reason: '' }"))
+  assert.ok(src.includes("if (leaf === '填空') return { templateKey: 'listening_fill', enabled: true, reason: '' }"))
+})
+
+test('editor workspace should enable 听说-短文朗读 and 听说-听后转述 via speaking_steps template', async () => {
+  const src = await readFile('components/views/EditorWorkspace.vue')
+  assert.ok(src.includes("if (leaf === '短文朗读') return { templateKey: 'speaking_steps', enabled: true, reason: '' }"))
+  assert.ok(src.includes("if (leaf === '听后转述') return { templateKey: 'speaking_steps', enabled: true, reason: '' }"))
 })
 
 test('question templates should expose speaking_hear_answer creation entry', async () => {
@@ -230,11 +264,13 @@ test('flow center should keep region-routing mode handling without legacy auto-m
 
 test('flow center should show region binding target summary per chip', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const regionBindingSrc = await readFile('components/views/flow-modules/useRegionBindingOverview.ts')
   assert.ok(src.includes('region-chip__target'))
-  assert.ok(src.includes('function formatRegionBindingTarget('))
-  assert.ok(src.includes('defaultRoutingModuleRef'))
-  assert.ok(src.includes('if (!binding) return `通用：${formatModuleDisplayRef(defaultRoutingModuleRef.value)}`'))
-  assert.ok(src.includes("if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'"))
+  assert.ok(src.includes('useRegionBindingOverview'))
+  assert.ok(regionBindingSrc.includes('function formatRegionBindingTarget('))
+  assert.ok(regionBindingSrc.includes('defaultRoutingModuleRef'))
+  assert.ok(regionBindingSrc.includes('if (!binding) return `通用：${formatModuleDisplayRef(defaultRoutingModuleRef.value)}`'))
+  assert.ok(regionBindingSrc.includes("if (isRegionBoundToCurrentFlowLine(region)) return '当前流程线'"))
 })
 
 test('flow center should keep runtime trace hooks even without routing panel UI', async () => {
@@ -353,43 +389,14 @@ test('flow center should provide read-only visual graph modal from steps', async
   assert.ok(typeSrc.includes('export interface FlowVisualGraph'))
 })
 
-test('flow center should keep routing diagnostics helpers and simulator panel', async () => {
+test('flow center should remove routing simulator panel and diagnostics helpers', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes('flowProfileFixSuggestions'))
-  assert.ok(src.includes('applyFlowProfileFixSuggestion'))
-  assert.ok(src.includes('applyAllFlowProfileFixSuggestions'))
-  assert.ok(src.includes('路由模拟器'))
-  assert.ok(src.includes('路由规则诊断'))
-  assert.ok(src.includes('自动修复建议'))
-  assert.ok(src.includes('showFlowProfileSubmitValidationSummary'))
-})
-
-test('flow center should preview fix suggestions before applying changes', async () => {
-  const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes('修复预览'))
-  assert.ok(src.includes('pendingFlowProfileFixSuggestions'))
-  assert.ok(src.includes('openFlowProfileFixPreview'))
-  assert.ok(src.includes('confirmFlowProfileFixPreview'))
-})
-
-test('flow center fix preview should show field-level before and after details', async () => {
-  const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes('previewFields'))
-  assert.ok(src.includes('previewText'))
-  assert.ok(src.includes('before: String(prevValue'))
-  assert.ok(src.includes('after: String(nextValue'))
-})
-
-test('flow center should confirm before applying previewed fixes', async () => {
-  const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes("title: '确认应用修复预览'"))
-  assert.ok(src.includes('uni.showModal'))
-})
-
-test('flow center should block route submissions when diagnostics fail', async () => {
-  const src = await readFile('components/views/FlowModulesManager.vue')
-  assert.ok(src.includes("title: '路由诊断未通过'"))
-  assert.ok(src.includes('showFlowProfileSubmitBlocked'))
+  assert.ok(!src.includes('路由模拟器'))
+  assert.ok(!src.includes('Top 候选规则'))
+  assert.ok(!src.includes('路由规则诊断'))
+  assert.ok(!src.includes('自动修复建议'))
+  assert.ok(!src.includes('showFlowProfileSubmitValidationSummary'))
+  assert.ok(!src.includes('useFlowProfileDiagnostics'))
   assert.ok(src.includes('flowProfiles.upsertWithDiagnostics'))
   assert.ok(src.includes('flowProfiles.removeWithDiagnostics'))
 })
@@ -445,8 +452,9 @@ test('flow center should allow editing module display name and note for save/pub
 
 test('flow center should show module names in region-binding targets', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const regionBindingSrc = await readFile('components/views/flow-modules/useRegionBindingOverview.ts')
   assert.ok(src.includes('function formatModuleDisplayRef('))
-  assert.ok(src.includes('formatModuleDisplayRef(binding.module)'))
+  assert.ok(regionBindingSrc.includes('formatModuleDisplayRef(binding.module)'))
   assert.ok(src.includes('formatRegionBindingTarget'))
   assert.ok(src.includes('当前流程线：{{ draftModuleDisplayRef }}'))
 })
@@ -522,18 +530,23 @@ test('applying visual flow to draft should clear stale blockers and resync visua
 
 test('flow center should provide field-level blocking issues with one-click jump for commit validation', async () => {
   const src = await readFile('components/views/FlowModulesManager.vue')
+  const commitIssuesSrc = await readFile('components/views/flow-modules/useCommitValidationIssues.ts')
   const lifecycleSrc = await readFile('components/views/flow-modules/useModuleLifecycle.ts')
   const editorSrc = await readFile('components/editor/ListeningChoiceEditor.vue')
 
   assert.ok(src.includes('更新阻断项'))
+  assert.ok(src.includes('useCommitValidationIssues'))
   assert.ok(src.includes('jumpToCommitValidationIssue'))
   assert.ok(src.includes('jumpToFirstCommitValidationIssue'))
-  assert.ok(src.includes("if (issue.scope === 'visual')"))
-  assert.ok(src.includes("if (path.startsWith('flowVisual.')) return 'visual'"))
-  assert.ok(src.includes("if (path.startsWith('flowProfiles')) return 'routing'"))
-  assert.ok(src.includes('地区匹配 >'))
+  assert.ok(commitIssuesSrc.includes("if (issue.scope === 'visual')"))
+  assert.ok(commitIssuesSrc.includes("if (path.startsWith('flowVisual.')) return 'visual'"))
+  assert.ok(commitIssuesSrc.includes("if (path.startsWith('flowProfiles')) return 'routing'"))
+  assert.ok(commitIssuesSrc.includes('地区匹配 >'))
   assert.ok(src.includes(':focus-path="templateFocusPath"'))
   assert.ok(src.includes("onCommitValidationFailed: handleModuleCommitValidationFailed"))
+  assert.ok(commitIssuesSrc.includes('export function useCommitValidationIssues'))
+  assert.ok(commitIssuesSrc.includes('resolveCommitValidationLocationLabel'))
+  assert.ok(commitIssuesSrc.includes('handleModuleCommitValidationFailed'))
   assert.ok(lifecycleSrc.includes('onCommitValidationFailed?: (result: ModuleCommitValidationResult) => boolean'))
   assert.ok(lifecycleSrc.includes('const handled = onCommitValidationFailed ? onCommitValidationFailed(result) : false'))
   assert.ok(editorSrc.includes('focusPath?: string'))

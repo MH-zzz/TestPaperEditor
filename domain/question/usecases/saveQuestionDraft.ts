@@ -1,6 +1,7 @@
 import type { Question } from '/types'
 import { validateQuestionBeforeSave, type QuestionValidationResult } from '../validators/listeningChoiceValidator.ts'
 import { parseQuestionSnapshot } from '../../schemas/runtimeBoundarySchemas.ts'
+import { deepClone } from '../../../utils/deepClone.ts'
 
 type NormalizeQuestionFn = (question: Question) => Question
 
@@ -14,7 +15,7 @@ export type SaveQuestionDraftResult = QuestionValidationResult & {
 }
 
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value))
+  return deepClone(value)
 }
 
 type QuestionWithMetadata = Question & {
